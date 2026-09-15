@@ -1,0 +1,35 @@
+# Runs the paint by numbers API next to n8n on the same Docker network.
+#   cd server && docker compose up -d --build
+#
+# n8n reaches it at http://pbn-api:3000 (no public port needed).
+# Set the network name below to the network your n8n container uses (docker network ls).
+
+services:
+  pbn-api:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: pbn-api
+    restart: unless-stopped
+    environment:
+      API_KEY: ${PBN_API_KEY:?Set PBN_API_KEY in server/.env}
+      CALLBACK_SECRET: ${PBN_CALLBACK_SECRET:-}
+      PUBLIC_BASE_URL: http://pbn-api:3000
+      CONCURRENCY: ${PBN_CONCURRENCY:-2}
+      JOB_TIMEOUT_MS: ${PBN_JOB_TIMEOUT_MS:-600000}
+      RETENTION_DAYS: ${PBN_RETENTION_DAYS:-14}
+    volumes:
+      - pbn-data:/data
+    networks:
+      - n8n
+    # Uncomment to call the API from the host for testing
+    # ports:
+    #   - "127.0.0.1:3000:3000"
+
+volumes:
+  pbn-data:
+
+networks:
+  n8n:
+    external: true
+    name: ${N8N_NETWORK:-n8n_default}

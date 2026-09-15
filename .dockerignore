@@ -1,0 +1,11 @@
+node_modules
+dist
+server/dist
+data
+server/data
+.git
+.claude
+scripts
+styles
+src-cli
+*.md

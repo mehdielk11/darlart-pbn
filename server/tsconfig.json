@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "commonjs",
+        "moduleResolution": "node",
+        "lib": ["es2020", "dom"],
+        "types": ["node"],
+        "strict": true,
+        "noImplicitAny": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "rootDir": "..",
+        "outDir": "dist",
+        "sourceMap": false
+    },
+    "include": ["src/**/*.ts"]
+}

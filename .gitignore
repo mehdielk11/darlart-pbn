@@ -1,0 +1,6 @@
+node_modules/
+.agents/
+# API build output and runtime data
+server/dist/
+server/.env
+data/
