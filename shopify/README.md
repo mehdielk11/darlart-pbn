@@ -41,6 +41,18 @@ The generator uses the photo as-is (`cropMode: "center"`): it only trims the pix
    - When the product has a size variant (e.g. "40x50"), the widget selects the matching variant automatically. Add `sync_variant: false` to turn that off.
 5. **Texts and colors:** the texts are at the top of `darlart-canvas-crop.js` (`TEXT`), and the colors are CSS variables at the top of `darlart-canvas-crop.css` (`--dcc-accent`…).
 
+## Darl'Art theme (custom product section "section 2 - product")
+
+That section has no product form: its "Add to cart" button sends the cart with its own Ajax call. It was changed (theme "Copy of Darl'Art", `sections/2.liquid`) so it can ask for the photo:
+
+- New settings under **Customer photo (custom kits)**: *Ask for the customer's photo* (off by default) and *Photo step heading*.
+- When the setting is on, the widget is rendered as step 4, after the colors, with
+  `{% render 'darlart-canvas-crop', size_group: '.pcp-size-group', colors_group: '.pcp-palette-group', sync_variant: false %}`.
+  The widget hides its own size buttons and follows the section's Size and Colors pickers.
+- "Add to cart" waits for `widget.dccGetProperties()`. Without a photo, nothing is added and the widget shows a message. With one, the kit line is sent as multipart form data (the photo file can't go in JSON), then any add-ons as JSON.
+
+The template `templates/product.custom-pbn.json` is a copy of `product.json` with the setting turned on. The product "Custom Paint by Numbers Kit" uses it (options `Size` 30x40 / 40x50 / 50x50 / 60x70 and `Colors` 12 / 24 / 36 / 48).
+
 ## Test before going live
 
 - Open `shopify/demo.html` locally. It simulates the product form and shows what would be sent to the cart, including the cropped photo.

@@ -78,7 +78,11 @@
     const form = (formId && document.getElementById(formId)) || root.closest('form');
     const sizes = (root.dataset.sizes || '30x40,40x50,50x50,60x70').split(',').map((s) => ({ key: s.trim(), size: parseSize(s) })).filter((s) => s.size);
     const colorChoices = (root.dataset.colors || '').split(',').map((c) => parseInt(c, 10)).filter((c) => c > 0);
-    const syncVariant = root.dataset.syncVariant !== 'false';
+    // optional: follow the theme's own size / colors option pickers instead of showing our buttons
+    const pickerScope = root.closest('.shopify-section') || document;
+    const sizeGroup = root.dataset.sizeGroup ? pickerScope.querySelector(root.dataset.sizeGroup) : null;
+    const colorsGroup = root.dataset.colorsGroup ? pickerScope.querySelector(root.dataset.colorsGroup) : null;
+    const syncVariant = root.dataset.syncVariant !== 'false' && !sizeGroup;
 
     const state = {
       size: sizes[0] ? sizes[0].size : { short: 30, long: 40 },
@@ -91,11 +95,11 @@
       exporting: false,
       exportTimer: 0,
       exportToken: 0,
-      submitAfterExport: false,
+      afterExport: [], // callbacks waiting for the cropped photo, called with true once attached
     };
 
     root.innerHTML = `
-      <div class="dcc__group">
+      <div class="dcc__group"${sizeGroup ? ' hidden' : ''}>
         <span class="dcc__label" id="${formId}-dcc-size">${TEXT.size}</span>
         <div class="dcc__options dcc-sizes" role="radiogroup" aria-labelledby="${formId}-dcc-size">
           ${sizes.map((s) => `<button type="button" class="dcc__option" role="radio" data-size="${escapeHtml(s.key)}">${s.size.short} × ${s.size.long} cm</button>`).join('')}
@@ -167,7 +171,7 @@
       photo: addInput('file', PROPERTIES.photo),
       size: addInput('hidden', PROPERTIES.size),
       orientation: addInput('hidden', PROPERTIES.orientation),
-      colors: state.colors ? addInput('hidden', PROPERTIES.colors) : null,
+      colors: state.colors || colorsGroup ? addInput('hidden', PROPERTIES.colors) : null,
     };
     inputs.photo.accept = 'image/jpeg';
 
@@ -196,7 +200,7 @@
     const updateInputs = () => {
       inputs.size.value = `${sizeLabel()} cm`;
       inputs.orientation.value = isSquare() ? TEXT.square : state.orientation === 'landscape' ? TEXT.landscape : TEXT.portrait;
-      if (inputs.colors) inputs.colors.value = String(state.colors);
+      if (inputs.colors) inputs.colors.value = state.colors ? String(state.colors) : '';
       setPressed(ui.sizes, 'data-size', (sizes.find((s) => s.size.short === state.size.short && s.size.long === state.size.long) || {}).key);
       setPressed(ui.orientations, 'data-orientation', state.orientation);
       setPressed(ui.colors, 'data-colors', state.colors);
@@ -244,6 +248,12 @@
       else form.submit();
     };
 
+    const finishExport = (attached) => {
+      const callbacks = state.afterExport;
+      state.afterExport = [];
+      callbacks.forEach((callback) => callback(attached));
+    };
+
     const exportCrop = () => {
       const cropper = state.cropper;
       if (!cropper) return;
@@ -258,6 +268,7 @@
       if (!canvas) {
         state.exporting = false;
         showError(TEXT.unreadable);
+        finishExport(false);
         return;
       }
       canvas.toBlob((blob) => {
@@ -265,6 +276,7 @@
         state.exporting = false;
         if (!blob) {
           showError(TEXT.unreadable);
+          finishExport(false);
           return;
         }
         const file = new File([blob], `${state.baseName}-${sizeLabel()}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
@@ -276,11 +288,7 @@
         const lowResolution = Math.min(crop.width, crop.height) < MIN_RECOMMENDED_SIDE;
         setStatus(lowResolution ? TEXT.lowResolution : TEXT.ready, lowResolution);
         root.dispatchEvent(new CustomEvent('dcc:photo-ready', { bubbles: true, detail: { file, width: canvas.width, height: canvas.height, size: inputs.size.value, orientation: inputs.orientation.value } }));
-
-        if (state.submitAfterExport) {
-          state.submitAfterExport = false;
-          submitForm();
-        }
+        finishExport(true);
       }, 'image/jpeg', JPEG_QUALITY);
     };
 
@@ -442,6 +450,24 @@
       state.cropper.zoomTo(state.baseRatio * parseFloat(ui.zoom.value));
     });
 
+    /** Calls back with true when the cropped photo is attached, right away or once the latest crop is exported */
+    const whenPhotoAttached = (callback) => {
+      const attached = inputs.photo.files && inputs.photo.files.length > 0;
+      if (attached && !state.exporting) {
+        callback(true);
+        return;
+      }
+      if (!state.cropper) {
+        showError(TEXT.missingPhoto);
+        root.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        callback(false);
+        return;
+      }
+      state.afterExport.push(callback);
+      clearTimeout(state.exportTimer);
+      exportCrop();
+    };
+
     // block "add to cart" until the cropped photo is attached (capture phase: runs before the theme's own submit handler)
     if (form) {
       form.addEventListener('submit', (event) => {
@@ -449,17 +475,57 @@
         if (attached && !state.exporting) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!state.cropper) {
-          showError(TEXT.missingPhoto);
-          root.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return;
-        }
-        // a crop change is still being prepared: submit as soon as it's attached
-        state.submitAfterExport = true;
-        clearTimeout(state.exportTimer);
-        exportCrop();
+        whenPhotoAttached((ok) => ok && submitForm());
       }, true);
     }
+
+    /**
+     * For themes that add to cart with their own Ajax call instead of a form: resolves with the line item properties
+     * ({ Photo: File, Taille, Orientation, Couleurs }) to send as multipart form data, or null when there is no photo yet.
+     */
+    root.dccGetProperties = () => new Promise((resolve) => {
+      whenPhotoAttached((ok) => {
+        if (!ok) {
+          resolve(null);
+          return;
+        }
+        const properties = {};
+        Object.keys(inputs).forEach((key) => {
+          const input = inputs[key];
+          if (!input) return;
+          if (input.type === 'file') properties[PROPERTIES[key]] = input.files[0];
+          else if (input.value) properties[PROPERTIES[key]] = input.value;
+        });
+        resolve(properties);
+      });
+    });
+
+    // follow the theme's size / colors pickers (selection is shown with the is-selected class or a select)
+    const pickerValue = (group) => {
+      const select = group.querySelector('select');
+      if (select) return select.value;
+      const selected = group.querySelector('.is-selected[data-option-value], [aria-checked="true"][data-option-value], input:checked');
+      return selected ? selected.getAttribute('data-option-value') || selected.value : '';
+    };
+    const watchPicker = (group, apply) => {
+      if (!group) return;
+      apply(pickerValue(group));
+      const onChange = () => apply(pickerValue(group));
+      new MutationObserver(onChange).observe(group, { subtree: true, attributes: true, attributeFilter: ['class', 'aria-checked', 'aria-pressed'] });
+      group.addEventListener('change', onChange);
+    };
+    watchPicker(sizeGroup, (value) => {
+      const size = parseSize(value);
+      if (!size || (size.short === state.size.short && size.long === state.size.long)) return;
+      state.size = size;
+      applyCanvasShape();
+    });
+    watchPicker(colorsGroup, (value) => {
+      const colors = parseInt(value, 10) || null;
+      if (colors === state.colors) return;
+      state.colors = colors;
+      updateInputs();
+    });
 
     if (!canAttachFiles()) {
       ui.pick.disabled = true;
