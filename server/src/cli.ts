@@ -12,6 +12,7 @@ import { PAPER_SIZES, PaperSize } from "../../src/core/pdf";
 import { Difficulty, DIFFICULTIES } from "../../src/core/settings";
 import { config } from "./config";
 import { generate } from "./generate";
+import { CROP_MODES, CropMode } from "./image";
 import { loadPalette } from "./palettes";
 
 const USAGE = "Usage: node server/dist/server/src/cli.js -i <photo> -o <output dir> --size <e.g. 40x50> [--colors 24] [--difficulty auto] "
@@ -60,6 +61,10 @@ async function main() {
         }
         crop = { x: values[0], y: values[1], w: values[2], h: values[3] };
     }
+    const cropMode = String(args["crop-mode"] || "attention").toLowerCase();
+    if (!CROP_MODES.includes(cropMode as CropMode)) {
+        fail(`Invalid --crop-mode "${cropMode}", use ${CROP_MODES.join(" or ")}`);
+    }
 
     const paletteId = args.palette || config.defaultPalette;
     const outputDir = path.resolve(args.o);
@@ -71,6 +76,7 @@ async function main() {
         colors,
         difficulty: difficulty as Difficulty | "auto",
         crop,
+        cropMode: cropMode as CropMode,
         paperSize: paperSize as PaperSize,
         paletteId,
         customColors: loadPalette(paletteId),

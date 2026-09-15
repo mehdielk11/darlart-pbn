@@ -1,0 +1,29 @@
+{%- comment -%}
+  Darl'Art canvas crop widget: the customer chooses the canvas size, the orientation (and optionally the number of colors),
+  uploads a photo and frames it. The cropped photo is added to the order as the "Photo" line item property.
+
+  Usage in the product template (e.g. a "Custom Liquid" block of the product section):
+    {%- assign dcc_form = 'product-form-' | append: section.id -%}
+    {% render 'darlart-canvas-crop', form_id: dcc_form %}
+
+  Optional parameters:
+    sizes: '30x40,40x50,50x50,60x70'   canvas sizes in cm (portrait form, landscape is offered automatically)
+    colors: '12,24,36,48'              show a color count choice (leave empty when colors are a product variant)
+    default_colors: '24'
+    sync_variant: false                don't select the product variant matching the chosen size
+  See shopify/README.md
+{%- endcomment -%}
+{{ 'darlart-canvas-crop.css' | asset_url | stylesheet_tag }}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<div
+  class="dcc"
+  data-form-id="{{ form_id }}"
+  data-sizes="{{ sizes | default: '30x40,40x50,50x50,60x70' }}"
+  data-colors="{{ colors }}"
+  data-default-colors="{{ default_colors | default: '24' }}"
+  data-sync-variant="{% if sync_variant == false %}false{% else %}true{% endif %}"
+>
+  <noscript>Activez JavaScript pour importer et cadrer votre photo.</noscript>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js" defer></script>
+<script src="{{ 'darlart-canvas-crop.js' | asset_url }}" defer></script>

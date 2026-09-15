@@ -12,7 +12,7 @@ import { buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
 import { buildSettings, Difficulty } from "../../src/core/settings";
 import { buildSvgString } from "../../src/core/svg";
-import { CropMethod, prepareImage } from "./image";
+import { CropMethod, CropMode, prepareImage } from "./image";
 
 export interface GenerateRequest {
     inputPath: string;
@@ -22,6 +22,8 @@ export interface GenerateRequest {
     colors: number;
     difficulty: Difficulty | "auto";
     crop: RelativeBox | null;
+    /** Used when no crop box is given: "center" for photos already cropped by the customer */
+    cropMode: CropMode;
     paperSize: PaperSize;
     paletteId: string;
     /** Palette text resolved by the API ("" for no palette) */
@@ -101,6 +103,7 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
         canvasSize: request.canvasSize,
         orientation: request.orientation,
         crop: request.crop,
+        cropMode: request.cropMode || "attention",
         maxSide: 1024,
     });
 

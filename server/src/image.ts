@@ -5,13 +5,22 @@ import sharp from "sharp";
 import { fitCropToAspect, PixelBox, RelativeBox, resolveCanvasSize, ResolvedCanvasSize } from "../../src/core/crop";
 import { RGBAImage } from "../../src/core/pipeline";
 
-export type CropMethod = "provided" | "attention";
+export type CropMethod = "provided" | "attention" | "center";
+
+/**
+ * How the photo is cropped when no crop box is given:
+ * - "center": the photo is already framed (e.g. cropped by the customer), only the few pixels that don't fit the exact canvas ratio are trimmed from the middle
+ * - "attention": the largest crop with the canvas ratio is placed on the most interesting area
+ */
+export type CropMode = "center" | "attention";
+export const CROP_MODES: CropMode[] = ["center", "attention"];
 
 export interface PrepareOptions {
     canvasSize: string;
     orientation: "auto" | "portrait" | "landscape";
-    /** Crop box as fractions of the (rotated) photo, e.g. proposed by an AI vision model. Without it, sharp's attention strategy picks the crop. */
+    /** Crop box as fractions of the (rotated) photo. Without it, the crop mode decides. */
     crop: RelativeBox | null;
+    cropMode: CropMode;
     /** Longest side of the image that is processed (the website uses 1024) */
     maxSide: number;
 }
@@ -78,6 +87,9 @@ export async function prepareImage(input: Buffer, options: PrepareOptions): Prom
     if (options.crop) {
         crop = fitCropToAspect(options.crop, canvas.aspect, decoded.width, decoded.height);
         cropMethod = "provided";
+    } else if (options.cropMode === "center") {
+        crop = fitCropToAspect(null, canvas.aspect, decoded.width, decoded.height);
+        cropMethod = "center";
     } else {
         crop = await attentionCrop(decoded.data, decoded.width, decoded.height, canvas.aspect);
         cropMethod = "attention";

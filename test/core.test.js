@@ -97,6 +97,22 @@ test("fitCropToAspect always returns a box with the right aspect inside the imag
     assert.ok(Math.abs(small.left + small.width / 2 - 400) <= 1 && Math.abs(small.top + small.height / 2 - 225) <= 1, JSON.stringify(small));
 });
 
+test("center crop mode keeps a photo already cropped by the customer", async () => {
+    const sharp = require("sharp");
+    const { prepareImage } = require(path.join(dist, "server/src/image"));
+    const photo = (width, height) => sharp({ create: { width, height, channels: 3, background: { r: 200, g: 60, b: 40 } } }).png().toBuffer();
+    const options = { canvasSize: "30x40", orientation: "landscape", crop: null, cropMode: "center", maxSide: 1024 };
+
+    // exactly 4:3 like a 40x30 landscape canvas: nothing is cut
+    const exact = await prepareImage(await photo(1200, 900), options);
+    assert.deepEqual(exact.crop, { left: 0, top: 0, width: 1200, height: 900 });
+    assert.equal(exact.cropMethod, "center");
+
+    // one pixel too wide (rounding in the browser): only that pixel is trimmed
+    const offByOne = await prepareImage(await photo(1201, 900), options);
+    assert.deepEqual(offByOne.crop, { left: 1, top: 0, width: 1200, height: 900 });
+});
+
 test("suggestDifficulty scores a detailed photo higher than a simple image", async () => {
     const toImage = (d) => ({ width: d.width, height: d.height, data: new Uint8ClampedArray(d.data.buffer, d.data.byteOffset, d.data.length) });
     const simple = suggestDifficulty(toImage(await decodeImage(fs.readFileSync(simpleImage))));

@@ -4,3 +4,6 @@ node_modules/
 server/dist/
 server/.env
 data/
+
+# local Claude Code / preview settings
+.claude/

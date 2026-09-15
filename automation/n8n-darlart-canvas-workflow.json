@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ===== Settings =====\nconst PBN_API_URL = 'http://pbn-api:3000'; // the API container on the same Docker network\nconst PAPER_SIZE = 'a4';\nconst PALETTE = 'darlart-v2';\nconst DEFAULT_COLORS = 24;\n// Shopify line item property / option names (lowercase, matched with \"includes\")\nconst PHOTO_PROPERTIES = ['photo', 'image', 'upload', 'fichier'];\nconst SIZE_OPTIONS = ['size', 'taille', 'format', 'canvas', 'dimension'];\nconst COLOR_OPTIONS = ['color', 'couleur'];\nconst ORIENTATION_OPTIONS = ['orientation'];\n// ====================\n\nconst norm = (s) => String(s || '').trim().toLowerCase();\nconst findSize = (text) => { const m = String(text || '').match(/(\\d{2,3})\\s*[x×*]\\s*(\\d{2,3})/i); return m ? `${m[1]}x${m[2]}` : ''; };\nconst findColors = (text) => { const m = String(text || '').match(/\\b(12|24|36|48)\\b/); return m ? Number(m[1]) : 0; };\nconst findOrientation = (text) => { const t = norm(text); return /paysage|landscape/.test(t) ? 'landscape' : (/portrait/.test(t) ? 'portrait' : ''); };\nconst base = { apiUrl: PBN_API_URL, paperSize: PAPER_SIZE, palette: PALETTE };\nconst out = [];\n\nfor (const item of $input.all()) {\n  // the webhook node wraps the payload in \"body\"\n  const data = item.json.body && item.json.body.orderId ? item.json.body : item.json;\n\n  // Generic payload: { orderId, paid, photoUrl, canvasSize, colors, orientation?, customerEmail? }\n  if (data.orderId && !data.line_items) {\n    if (data.paid !== true && data.paid !== 'true') continue; // only paid orders\n    const canvasSize = findSize(data.canvasSize);\n    const issues = [];\n    if (!/^https?:\\/\\//i.test(data.photoUrl || '')) issues.push('missing photo URL');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    out.push({ json: { ...base, orderId: String(data.orderId).replace(/^#/, ''), photoUrl: data.photoUrl || '', canvasSize, colors: findColors(data.colors) || DEFAULT_COLORS, orientation: findOrientation(data.orientation) || 'auto', customerEmail: data.customerEmail || '', ready: issues.length === 0, issues: issues.join(', ') } });\n    continue;\n  }\n\n  // Shopify order (orders/paid)\n  if (data.financial_status !== 'paid') continue;\n  const orderId = String(data.name || data.order_number || data.id).replace(/^#/, '');\n  const lines = [];\n  for (const line of data.line_items || []) {\n    const props = (line.properties || []).map((p) => ({ name: norm(p.name), value: String(p.value || '') }));\n    const prop = (names) => { const p = props.find((x) => names.some((n) => x.name.includes(n)) && x.value); return p ? p.value : ''; };\n    const photo = props.find((x) => PHOTO_PROPERTIES.some((n) => x.name.includes(n)) && /^https?:\\/\\//i.test(x.value))\n      || props.find((x) => /^https?:\\/\\/\\S+\\.(jpe?g|png|webp|heic)(\\?|$)/i.test(x.value));\n    const canvasSize = findSize(prop(SIZE_OPTIONS)) || findSize(line.variant_title) || findSize(line.title);\n    if (!photo && !canvasSize) continue; // not a paint by numbers product\n    const issues = [];\n    if (!photo) issues.push('missing photo upload');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    lines.push({\n      ...base,\n      product: line.title,\n      photoUrl: photo ? photo.value : '',\n      canvasSize,\n      colors: findColors(prop(COLOR_OPTIONS)) || findColors(line.variant_title) || DEFAULT_COLORS,\n      orientation: findOrientation(prop(ORIENTATION_OPTIONS)) || findOrientation(line.variant_title) || 'auto',\n      customerEmail: data.email || '',\n      ready: issues.length === 0,\n      issues: issues.join(', '),\n    });\n  }\n  // one canvas per photo: suffix the order number when an order has several\n  lines.forEach((line, index) => out.push({ json: { ...line, orderId: lines.length > 1 ? `${orderId}-${index + 1}` : orderId } }));\n}\n\nreturn out;"
+        "jsCode": "// ===== Settings =====\nconst PBN_API_URL = 'http://127.0.0.1:3000'; // the API on the same machine as n8n\nconst PAPER_SIZE = 'a4';\nconst PALETTE = 'darlart-v2';\nconst DIFFICULTY = 'medium'; // easy, medium or hard: the same level for every order\nconst DEFAULT_COLORS = 24;\n// Line item properties written by the Darl'Art crop widget (shopify/ folder), lowercase, matched with \"includes\"\nconst PHOTO_PROPERTIES = ['photo', 'image', 'upload', 'fichier'];\nconst SIZE_PROPERTIES = ['canvas size', 'taille', 'size', 'format'];\nconst ORIENTATION_PROPERTIES = ['orientation'];\nconst COLOR_PROPERTIES = ['colors', 'couleurs', 'color', 'couleur'];\n// ====================\n\nconst norm = (s) => String(s || '').trim().toLowerCase();\nconst findSize = (text) => { const m = String(text || '').match(/(\\d{2,3})\\s*[x×*]\\s*(\\d{2,3})/i); return m ? `${m[1]}x${m[2]}` : ''; };\nconst findColors = (text) => { const m = String(text || '').match(/\\b(12|24|36|48)\\b/); return m ? Number(m[1]) : 0; };\nconst findOrientation = (text) => { const t = norm(text); return /paysage|landscape/.test(t) ? 'landscape' : (/portrait/.test(t) ? 'portrait' : ''); };\n// the photo is already cropped by the customer: the API only trims the pixels that don't fit the exact canvas ratio\nconst base = { apiUrl: PBN_API_URL, paperSize: PAPER_SIZE, palette: PALETTE, difficulty: DIFFICULTY, cropMode: 'center' };\nconst out = [];\n\nfor (const item of $input.all()) {\n  // the webhook node wraps the payload in \"body\"\n  const data = item.json.body && item.json.body.orderId ? item.json.body : item.json;\n\n  // Generic payload: { orderId, paid, photoUrl (already cropped), canvasSize, orientation, colors, customerEmail? }\n  if (data.orderId && !data.line_items) {\n    if (data.paid !== true && data.paid !== 'true') continue; // only paid orders\n    const canvasSize = findSize(data.canvasSize);\n    const issues = [];\n    if (!/^https?:\\/\\//i.test(data.photoUrl || '')) issues.push('missing photo URL');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    out.push({ json: { ...base, orderId: String(data.orderId).replace(/^#/, ''), photoUrl: data.photoUrl || '', canvasSize, colors: findColors(data.colors) || DEFAULT_COLORS, orientation: findOrientation(data.orientation) || 'auto', customerEmail: data.customerEmail || '', ready: issues.length === 0, issues: issues.join(', ') } });\n    continue;\n  }\n\n  // Shopify order (orders/paid)\n  if (data.financial_status !== 'paid') continue;\n  const orderId = String(data.name || data.order_number || data.id).replace(/^#/, '');\n  const lines = [];\n  for (const line of data.line_items || []) {\n    const props = (line.properties || []).map((p) => ({ name: norm(p.name), value: String(p.value || '') }));\n    const prop = (names) => { const p = props.find((x) => names.some((n) => x.name.includes(n)) && x.value); return p ? p.value : ''; };\n    const photo = props.find((x) => PHOTO_PROPERTIES.some((n) => x.name.includes(n)) && /^https?:\\/\\//i.test(x.value))\n      || props.find((x) => /^https?:\\/\\/\\S+\\.(jpe?g|png|webp)(\\?|$)/i.test(x.value));\n    const canvasSize = findSize(prop(SIZE_PROPERTIES)) || findSize(line.variant_title) || findSize(line.title);\n    if (!photo && !canvasSize) continue; // not a paint by numbers product\n    const issues = [];\n    if (!photo) issues.push('missing photo upload');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    lines.push({\n      ...base,\n      product: line.title,\n      photoUrl: photo ? photo.value : '',\n      canvasSize,\n      colors: findColors(prop(COLOR_PROPERTIES)) || findColors(line.variant_title) || DEFAULT_COLORS,\n      // chosen by the customer in the widget; \"auto\" follows the cropped photo, which already has the right shape\n      orientation: findOrientation(prop(ORIENTATION_PROPERTIES)) || findOrientation(line.variant_title) || 'auto',\n      customerEmail: data.email || '',\n      ready: issues.length === 0,\n      issues: issues.join(', '),\n    });\n  }\n  // one canvas per photo: suffix the order number when an order has several\n  lines.forEach((line, index) => out.push({ json: { ...line, orderId: lines.length > 1 ? `${orderId}-${index + 1}` : orderId } }));\n}\n\nreturn out;"
       },
       "id": "a0b8f7c1-0003-4d6e-9c11-000000000003",
       "name": "Normalize order",
@@ -69,84 +69,19 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.apiUrl }}/v1/analyze",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ imageUrl: $json.photoUrl, canvasSize: $json.canvasSize, orientation: $json.orientation }) }}",
-        "options": { "timeout": 120000 }
-      },
-      "id": "a0b8f7c1-0006-4d6e-9c11-000000000006",
-      "name": "Analyze photo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [900, 180],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Builds the Claude request that chooses the crop, orientation and difficulty\nconst order = $('Loop over photos').item.json;\nconst analysis = $json.error ? null : $json; // POST /v1/analyze response\n\nconst [a, b] = order.canvasSize.split('x').map(Number);\nconst short = Math.min(a, b);\nconst long = Math.max(a, b);\nlet orientationRule;\nif (short === long) {\n  orientationRule = `The canvas is square (${short}x${long} cm, width/height = 1).`;\n} else if (order.orientation === 'auto') {\n  orientationRule = `Choose the orientation that suits the subject best: portrait (${short}x${long} cm, width/height = ${(short / long).toFixed(3)}) or landscape (${long}x${short} cm, width/height = ${(long / short).toFixed(3)}).`;\n} else {\n  orientationRule = `The customer ordered a ${order.orientation} canvas, use orientation \"${order.orientation}\".`;\n}\n\nconst hints = analysis\n  ? [\n      `Photo size: ${analysis.width}x${analysis.height} px.`,\n      `Automatic detail score: ${analysis.complexity.score.toFixed(2)} on 0-1 (suggests \"${analysis.suggestedDifficulty}\").`,\n      analysis.cropSuggestion ? `Automatic crop suggestion (may cut the subject): ${JSON.stringify(analysis.cropSuggestion.crop)}.` : '',\n    ].filter(Boolean).join('\\n')\n  : 'No automatic analysis is available for this photo.';\n\nconst prompt = `You prepare customer photos for Darl'Art paint-by-numbers canvases. The customer ordered a ${order.canvasSize} cm canvas with ${order.colors} paint colors.\n${orientationRule}\n\nDecide:\n1. crop - the part of the photo to paint, as fractions of the full photo (x, y = top-left corner, w, h = width and height, all between 0 and 1). In pixels its width/height ratio must match the chosen orientation. Keep the main subject whole: never cut through faces, heads, hands or pets, keep a little space around the subject and leave out distracting empty borders.\n2. orientation - portrait, landscape (a square canvas can use either).\n3. difficulty - easy for simple shapes, flat colors and little depth; medium for moderate detail; hard for detailed or realistic photos (portraits, landscapes, fur, foliage, textures, many small areas).\n4. photoQualityWarning - a short reason when the photo is too small, blurry, very dark or unsuitable to paint; otherwise an empty string.\n5. reason - one short sentence explaining the crop and difficulty.\n\n${hints}`;\n\nconst schema = {\n  type: 'object',\n  properties: {\n    crop: {\n      type: 'object',\n      properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } },\n      required: ['x', 'y', 'w', 'h'],\n      additionalProperties: false,\n    },\n    orientation: { type: 'string', enum: ['portrait', 'landscape'] },\n    difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },\n    photoQualityWarning: { type: 'string' },\n    reason: { type: 'string' },\n  },\n  required: ['crop', 'orientation', 'difficulty', 'photoQualityWarning', 'reason'],\n  additionalProperties: false,\n};\n\nreturn {\n  json: {\n    ...order,\n    analysis,\n    claudeBody: {\n      model: 'claude-opus-5',\n      max_tokens: 16000,\n      // re-runs the request on Anthropic's recommended model if Claude Opus 5 declines it\n      fallbacks: 'default',\n      output_config: { format: { type: 'json_schema', schema } },\n      messages: [\n        {\n          role: 'user',\n          content: [\n            { type: 'image', source: { type: 'url', url: order.photoUrl } },\n            { type: 'text', text: prompt },\n          ],\n        },\n      ],\n    },\n  },\n};"
-      },
-      "id": "a0b8f7c1-0007-4d6e-9c11-000000000007",
-      "name": "Build Claude request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1120, 180]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "anthropic-beta", "value": "server-side-fallback-2026-07-01" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.claudeBody) }}",
-        "options": { "timeout": 300000 }
-      },
-      "id": "a0b8f7c1-0008-4d6e-9c11-000000000008",
-      "name": "Claude: crop & difficulty",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1340, 180],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Validates Claude's decision; anything invalid falls back to the API's automatic crop / difficulty\nconst request = $('Build Claude request').item.json;\nconst response = $json;\n\nlet decision = null;\nlet aiError = '';\nif (response.error) {\n  aiError = typeof response.error === 'object' ? (response.error.message || JSON.stringify(response.error)) : String(response.error);\n} else if (response.stop_reason === 'refusal') {\n  aiError = 'Claude declined to analyze the photo';\n} else {\n  const text = (response.content || []).filter((block) => block.type === 'text').map((block) => block.text).join('');\n  try {\n    decision = JSON.parse(text);\n  } catch (e) {\n    aiError = 'the AI answer could not be read';\n  }\n}\n\nconst inRange = (v) => typeof v === 'number' && v >= 0 && v <= 1;\nconst c = decision && decision.crop;\nconst crop = c && ['x', 'y', 'w', 'h'].every((k) => inRange(c[k])) && c.w > 0 && c.h > 0 && c.x + c.w <= 1.001 && c.y + c.h <= 1.001\n  ? { x: c.x, y: c.y, w: c.w, h: c.h }\n  : null;\nconst difficulty = decision && ['easy', 'medium', 'hard'].includes(decision.difficulty) ? decision.difficulty : 'auto';\nconst orientation = request.orientation !== 'auto'\n  ? request.orientation\n  : (decision && ['portrait', 'landscape'].includes(decision.orientation) ? decision.orientation : 'auto');\n\nconst warnings = [];\nif (aiError) warnings.push(`AI step skipped (${aiError}): automatic crop and difficulty were used`);\nif (decision && !crop) warnings.push('the AI crop was invalid: automatic crop was used');\nif (decision && decision.photoQualityWarning) warnings.push(`photo quality: ${decision.photoQualityWarning}`);\n\nconst { analysis, claudeBody, ...order } = request;\nreturn {\n  json: {\n    ...order,\n    crop,\n    difficulty,\n    orientation,\n    aiReason: decision ? decision.reason : '',\n    warning: warnings.join(' | '),\n  },\n};"
-      },
-      "id": "a0b8f7c1-0009-4d6e-9c11-000000000009",
-      "name": "Parse AI decision",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1560, 180]
-    },
-    {
-      "parameters": {
-        "method": "POST",
         "url": "={{ $json.apiUrl }}/v1/jobs",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ imageUrl: $json.photoUrl, canvasSize: $json.canvasSize, orientation: $json.orientation, colors: $json.colors, difficulty: $json.difficulty, crop: $json.crop, paperSize: $json.paperSize, palette: $json.palette, orderId: $json.orderId, callbackUrl: $execution.resumeUrl }) }}",
+        "jsonBody": "={{ JSON.stringify({ imageUrl: $json.photoUrl, canvasSize: $json.canvasSize, orientation: $json.orientation, colors: $json.colors, difficulty: $json.difficulty, cropMode: $json.cropMode, paperSize: $json.paperSize, palette: $json.palette, orderId: $json.orderId, callbackUrl: $execution.resumeUrl }) }}",
         "options": { "timeout": 120000 }
       },
       "id": "a0b8f7c1-0010-4d6e-9c11-000000000010",
       "name": "Create generation job",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1780, 180],
+      "position": [900, 180],
       "onError": "continueRegularOutput"
     },
     {
@@ -169,7 +104,7 @@
       "name": "Job accepted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2000, 180]
+      "position": [1120, 180]
     },
     {
       "parameters": {
@@ -186,7 +121,7 @@
       "name": "Wait for job",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [2220, 80],
+      "position": [1340, 80],
       "webhookId": "b7c3f5d2-3333-4a8e-8f00-darlart00003"
     },
     {
@@ -209,12 +144,12 @@
       "name": "Job completed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2440, 80]
+      "position": [1560, 80]
     },
     {
       "parameters": {
         "resource": "folder",
-        "name": "={{ $('Parse AI decision').item.json.orderId }}",
+        "name": "={{ $('Loop over photos').first().json.orderId }}",
         "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
         "folderId": { "__rl": true, "mode": "id", "value": "REPLACE_WITH_ORDERS_FOLDER_ID" },
         "options": {}
@@ -223,17 +158,17 @@
       "name": "Create order folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [2660, 0]
+      "position": [1780, 0]
     },
     {
       "parameters": {
-        "jsCode": "// One item per generated file (PDF, SVG, preview, palette)\nconst job = $('Wait for job').first().json.body;\nconst order = $('Parse AI decision').first().json;\nconst folderId = $input.first().json.id;\nreturn job.result.files.map((file) => ({\n  json: {\n    url: file.url,\n    downloadName: file.downloadName,\n    folderId,\n    orderId: order.orderId,\n    difficulty: job.result.difficulty,\n    warning: order.warning,\n    aiReason: order.aiReason,\n  },\n}));"
+        "jsCode": "// One item per generated file (PDF, SVG, preview, palette)\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst folderId = $input.first().json.id;\nreturn job.result.files.map((file) => ({\n  json: {\n    url: file.url,\n    downloadName: file.downloadName,\n    folderId,\n    orderId: order.orderId,\n  },\n}));"
       },
       "id": "a0b8f7c1-0015-4d6e-9c11-000000000015",
       "name": "List output files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2880, 0]
+      "position": [2000, 0]
     },
     {
       "parameters": {
@@ -249,7 +184,7 @@
       "name": "Download file",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3100, 0]
+      "position": [2220, 0]
     },
     {
       "parameters": {
@@ -262,17 +197,17 @@
       "name": "Upload to Google Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [3320, 0]
+      "position": [2440, 0]
     },
     {
       "parameters": {
-        "jsCode": "const order = $('List output files').first().json;\nreturn [{ json: { orderId: order.orderId, warning: order.warning, aiReason: order.aiReason, files: $input.all().length } }];"
+        "jsCode": "// Flags customer photos with too few pixels for a detailed template\nconst MIN_SHORT_SIDE = 800;\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst source = (job.result && job.result.source) || {};\nconst shortSide = Math.min(source.width || 0, source.height || 0);\nconst warning = shortSide > 0 && shortSide < MIN_SHORT_SIDE\n  ? `the customer's cropped photo is small (${source.width}x${source.height} px), check that the template keeps enough detail`\n  : '';\nreturn [{ json: { orderId: order.orderId, warning, files: $input.all().length } }];"
       },
       "id": "a0b8f7c1-0018-4d6e-9c11-000000000018",
       "name": "Summarize order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3540, 0]
+      "position": [2660, 0]
     },
     {
       "parameters": {
@@ -294,7 +229,7 @@
       "name": "Photo warning?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [3760, 0]
+      "position": [2880, 0]
     },
     {
       "parameters": {
@@ -302,29 +237,29 @@
         "toEmail": "you@example.com",
         "subject": "=Darl'Art order {{ $json.orderId }}: check the canvas",
         "emailFormat": "text",
-        "text": "=The canvas for order {{ $json.orderId }} was generated and saved to Google Drive, but it needs a look:\n\n{{ $json.warning }}\n\nAI note: {{ $json.aiReason }}",
+        "text": "=The canvas for order {{ $json.orderId }} was generated and saved to Google Drive, but it needs a look:\n\n{{ $json.warning }}",
         "options": {}
       },
       "id": "a0b8f7c1-0020-4d6e-9c11-000000000020",
       "name": "Notify: photo warning",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [3980, -100]
+      "position": [3100, -100]
     },
     {
       "parameters": {
         "fromEmail": "automation@example.com",
         "toEmail": "you@example.com",
-        "subject": "=Darl'Art order {{ $('Parse AI decision').item.json.orderId }}: generation failed",
+        "subject": "=Darl'Art order {{ $('Loop over photos').first().json.orderId }}: generation failed",
         "emailFormat": "text",
-        "text": "=The canvas for order {{ $('Parse AI decision').item.json.orderId }} could not be generated.\n\nReason: {{ $json.body ? ($json.body.error || $json.body.status) : ($json.error ? ($json.error.message || JSON.stringify($json.error)) : 'no answer from the API within 30 minutes') }}\n\nPhoto: {{ $('Parse AI decision').item.json.photoUrl }}",
+        "text": "=The canvas for order {{ $('Loop over photos').first().json.orderId }} could not be generated.\n\nReason: {{ $json.body ? ($json.body.error || $json.body.status) : ($json.error ? ($json.error.message || JSON.stringify($json.error)) : 'no answer from the API within 30 minutes') }}\n\nPhoto: {{ $('Loop over photos').first().json.photoUrl }}",
         "options": {}
       },
       "id": "a0b8f7c1-0021-4d6e-9c11-000000000021",
       "name": "Notify: generation failed",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [2660, 300]
+      "position": [1780, 300]
     },
     {
       "parameters": {
@@ -355,13 +290,9 @@
     "Loop over photos": {
       "main": [
         [],
-        [{ "node": "Analyze photo", "type": "main", "index": 0 }]
+        [{ "node": "Create generation job", "type": "main", "index": 0 }]
       ]
     },
-    "Analyze photo": { "main": [[{ "node": "Build Claude request", "type": "main", "index": 0 }]] },
-    "Build Claude request": { "main": [[{ "node": "Claude: crop & difficulty", "type": "main", "index": 0 }]] },
-    "Claude: crop & difficulty": { "main": [[{ "node": "Parse AI decision", "type": "main", "index": 0 }]] },
-    "Parse AI decision": { "main": [[{ "node": "Create generation job", "type": "main", "index": 0 }]] },
     "Create generation job": { "main": [[{ "node": "Job accepted?", "type": "main", "index": 0 }]] },
     "Job accepted?": {
       "main": [

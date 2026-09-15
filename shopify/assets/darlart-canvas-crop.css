@@ -1,0 +1,218 @@
+/* Darl'Art canvas crop widget. Colors inherit from the theme where possible; override the variables in the theme CSS. */
+.dcc {
+  --dcc-accent: #111827;
+  --dcc-accent-contrast: #ffffff;
+  --dcc-border: rgba(17, 24, 39, 0.14);
+  --dcc-muted: rgba(17, 24, 39, 0.62);
+  --dcc-surface: #f5f5f4;
+  --dcc-radius: 10px;
+  --dcc-warning: #9a3412;
+  --dcc-error: #b91c1c;
+  display: grid;
+  gap: 1.1rem;
+  margin: 1.25rem 0;
+  font: inherit;
+  color: inherit;
+}
+
+.dcc [hidden] {
+  display: none !important;
+}
+
+.dcc__group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dcc__label {
+  font-size: 0.95em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.dcc__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dcc__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--dcc-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.92em;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.dcc__option:hover {
+  border-color: var(--dcc-accent);
+}
+
+.dcc__option:focus-visible,
+.dcc__upload-button:focus-visible,
+.dcc__link:focus-visible,
+.dcc__zoom input:focus-visible {
+  outline: 2px solid var(--dcc-accent);
+  outline-offset: 2px;
+}
+
+.dcc__option.is-selected {
+  border-color: var(--dcc-accent);
+  background: var(--dcc-accent);
+  color: var(--dcc-accent-contrast);
+}
+
+.dcc__option svg,
+.dcc__upload-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.dcc__upload {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 1.75rem 1rem;
+  border: 1.5px dashed var(--dcc-border);
+  border-radius: var(--dcc-radius);
+  background: var(--dcc-surface);
+  text-align: center;
+}
+
+.dcc__upload-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 48px;
+  padding: 0.75rem 1.4rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dcc-accent);
+  color: var(--dcc-accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dcc__upload-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dcc__hint {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--dcc-muted);
+}
+
+.dcc__editor {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.dcc__editor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dcc__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.88em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.dcc__stage {
+  position: relative;
+  height: min(420px, 60vh);
+  overflow: hidden;
+  border-radius: var(--dcc-radius);
+  background: #1f2937;
+}
+
+.dcc__stage img {
+  display: block;
+  max-width: 100%;
+}
+
+.dcc__zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9em;
+}
+
+.dcc__zoom input {
+  flex: 1;
+  accent-color: var(--dcc-accent);
+  min-height: 32px;
+}
+
+.dcc__status {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: 0.85em;
+  color: var(--dcc-muted);
+}
+
+.dcc__status--warning {
+  color: var(--dcc-warning);
+}
+
+.dcc__error {
+  margin: 0;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--dcc-error);
+}
+
+/* Cropper.js: clean white frame instead of the default blue */
+.dcc .cropper-view-box {
+  outline: 2px solid rgba(255, 255, 255, 0.95);
+  outline-color: rgba(255, 255, 255, 0.95);
+}
+
+.dcc .cropper-modal {
+  background-color: #000;
+  opacity: 0.55;
+}
+
+.dcc .cropper-dashed {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.dcc .cropper-center::before,
+.dcc .cropper-center::after {
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+@media (max-width: 749px) {
+  .dcc__stage {
+    height: min(340px, 55vh);
+  }
+
+  .dcc__option {
+    padding: 0.5rem 0.85rem;
+  }
+}

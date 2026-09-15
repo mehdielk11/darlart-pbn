@@ -19,7 +19,7 @@ import { PAPER_SIZES, PaperSize } from "../../src/core/pdf";
 import { Difficulty, DIFFICULTIES } from "../../src/core/settings";
 import { config } from "./config";
 import { OUTPUT_FILES } from "./generate";
-import { assertReadableImage, attentionCrop, loadForAnalysis } from "./image";
+import { assertReadableImage, attentionCrop, CROP_MODES, CropMode, loadForAnalysis } from "./image";
 import { JobManager, JobOptions, publicJob } from "./jobs";
 import { isValidPaletteId, listPalettes, loadPalette, NO_PALETTE } from "./palettes";
 
@@ -182,6 +182,11 @@ export function parseJobOptions(fields: Fields): { options: JobOptions; callback
 
     const crop = parseCrop(fields.crop, errors);
 
+    const cropMode = (asString(fields.cropMode) || "attention").toLowerCase();
+    if (!CROP_MODES.includes(cropMode as CropMode)) {
+        errors.push(`cropMode must be one of ${CROP_MODES.join(", ")} ("center" for photos already cropped by the customer)`);
+    }
+
     let randomSeed: number | undefined;
     if (asString(fields.randomSeed) !== undefined) {
         randomSeed = Number(fields.randomSeed);
@@ -205,6 +210,7 @@ export function parseJobOptions(fields: Fields): { options: JobOptions; callback
             colors,
             difficulty: difficulty as JobOptions["difficulty"],
             crop,
+            cropMode: cropMode as CropMode,
             paperSize: paperSize as PaperSize,
             paletteId,
             orderId,
