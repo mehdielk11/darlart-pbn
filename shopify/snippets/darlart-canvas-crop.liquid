@@ -11,6 +11,7 @@
     colors: '12,24,36,48'              show a color count choice (leave empty when colors are a product variant)
     default_colors: '24'
     sync_variant: false                don't select the product variant matching the chosen size
+    texts: '{"upload":"…"}'            JSON overriding any widget string, e.g. from your locale files
     size_group: '.pcp-size-group'      CSS selector of the theme's size picker: the widget follows it and hides its own size buttons
     colors_group: '.pcp-palette-group' CSS selector of the theme's colors picker, copied to the "Couleurs" property
   Themes that add to cart with their own Ajax call (no product form) send the photo with
@@ -21,6 +22,8 @@
 <div
   class="dcc"
   data-form-id="{{ form_id }}"
+  data-locale="{{ request.locale.iso_code }}"
+  {%- if texts != blank %} data-texts="{{ texts | escape }}"{% endif %}
   data-sizes="{{ sizes | default: 'A4,A3,A2' }}"
   data-colors="{{ colors }}"
   data-default-colors="{{ default_colors | default: '24' }}"

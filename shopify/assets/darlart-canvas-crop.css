@@ -19,6 +19,12 @@
   display: none !important;
 }
 
+/* Arabic and other right to left storefronts: the widget mirrors with the page */
+.dcc[dir='rtl'] {
+  direction: rtl;
+  text-align: right;
+}
+
 .dcc__group {
   display: grid;
   gap: 0.5rem;

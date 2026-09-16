@@ -11,32 +11,120 @@
 (() => {
   'use strict';
 
-  const TEXT = {
-    size: "Format d'impression",
-    orientation: 'Orientation',
-    portrait: 'Portrait',
-    landscape: 'Paysage',
-    square: 'Carré',
-    colors: 'Nombre de couleurs',
-    upload: 'Importer ma photo',
-    uploadHint: 'JPG ou PNG, la photo la plus nette possible pour un modèle détaillé',
-    crop: 'Cadrage',
-    cropHint: 'Déplacez et zoomez la photo pour choisir la partie à peindre.',
-    change: 'Changer de photo',
-    validate: 'Valider le cadrage',
-    edit: 'Modifier le cadrage',
-    previewTitle: 'Votre modèle',
-    colorsUnit: 'couleurs',
-    previewAlt: 'Aperçu de votre modèle',
-    zoom: 'Zoom',
-    preparing: 'Préparation de la photo…',
-    ready: 'Votre photo cadrée servira à créer vos fichiers à imprimer.',
-    lowResolution: 'Photo de faible résolution : le modèle risque de manquer de détails.',
-    missingPhoto: "Importez et cadrez votre photo avant d'ajouter au panier.",
-    notImage: "Ce fichier n'est pas une image. Choisissez une photo JPG ou PNG.",
-    tooLarge: 'Photo trop volumineuse (40 Mo maximum).',
-    unreadable: 'Impossible de lire cette photo. Essayez une photo JPG ou PNG.',
-    unsupported: 'Votre navigateur ne permet pas de joindre la photo. Essayez avec un autre navigateur.',
+  /**
+   * One dictionary per published storefront language. The widget picks the one matching the page
+   * (data-locale from the snippet, then Shopify.locale, then <html lang>), and falls back to English.
+   * A theme can override any string by passing data-texts='{"upload":"…"}' on the widget.
+   */
+  const TEXTS = {
+    en: {
+      size: 'Print format',
+      orientation: 'Orientation',
+      portrait: 'Portrait',
+      landscape: 'Landscape',
+      square: 'Square',
+      colors: 'Number of colors',
+      upload: 'Upload my photo',
+      uploadHint: 'JPG or PNG — the sharper the photo, the more detailed your template',
+      crop: 'Framing',
+      cropHint: 'Drag and zoom the photo to choose the part you will paint.',
+      change: 'Change photo',
+      validate: 'Confirm framing',
+      edit: 'Edit framing',
+      previewTitle: 'Your template',
+      colorsUnit: 'colors',
+      previewAlt: 'Preview of your template',
+      zoom: 'Zoom',
+      preparing: 'Preparing your photo…',
+      ready: 'Your framed photo will be used to create your printable files.',
+      lowResolution: 'Low resolution photo: your template may lack detail.',
+      missingPhoto: 'Upload and frame your photo before adding to cart.',
+      notImage: 'That file is not an image. Choose a JPG or PNG photo.',
+      tooLarge: 'Photo too large (40 MB maximum).',
+      unreadable: 'We could not read this photo. Try a JPG or PNG photo.',
+      unsupported: 'Your browser cannot attach the photo. Try another browser.',
+    },
+    fr: {
+      size: "Format d'impression",
+      orientation: 'Orientation',
+      portrait: 'Portrait',
+      landscape: 'Paysage',
+      square: 'Carré',
+      colors: 'Nombre de couleurs',
+      upload: 'Importer ma photo',
+      uploadHint: 'JPG ou PNG, la photo la plus nette possible pour un modèle détaillé',
+      crop: 'Cadrage',
+      cropHint: 'Déplacez et zoomez la photo pour choisir la partie à peindre.',
+      change: 'Changer de photo',
+      validate: 'Valider le cadrage',
+      edit: 'Modifier le cadrage',
+      previewTitle: 'Votre modèle',
+      colorsUnit: 'couleurs',
+      previewAlt: 'Aperçu de votre modèle',
+      zoom: 'Zoom',
+      preparing: 'Préparation de la photo…',
+      ready: 'Votre photo cadrée servira à créer vos fichiers à imprimer.',
+      lowResolution: 'Photo de faible résolution : le modèle risque de manquer de détails.',
+      missingPhoto: "Importez et cadrez votre photo avant d'ajouter au panier.",
+      notImage: "Ce fichier n'est pas une image. Choisissez une photo JPG ou PNG.",
+      tooLarge: 'Photo trop volumineuse (40 Mo maximum).',
+      unreadable: 'Impossible de lire cette photo. Essayez une photo JPG ou PNG.',
+      unsupported: 'Votre navigateur ne permet pas de joindre la photo. Essayez avec un autre navigateur.',
+    },
+    ar: {
+      size: 'مقاس الطباعة',
+      orientation: 'الاتجاه',
+      portrait: 'عمودي',
+      landscape: 'أفقي',
+      square: 'مربع',
+      colors: 'عدد الألوان',
+      upload: 'تحميل صورتي',
+      uploadHint: 'JPG أو PNG، كلما كانت الصورة أوضح كان النموذج أدق',
+      crop: 'التأطير',
+      cropHint: 'حرّك الصورة وقرّبها لاختيار الجزء الذي سترسمه.',
+      change: 'تغيير الصورة',
+      validate: 'تأكيد التأطير',
+      edit: 'تعديل التأطير',
+      previewTitle: 'نموذجك',
+      colorsUnit: 'لون',
+      previewAlt: 'معاينة نموذجك',
+      zoom: 'تكبير',
+      preparing: 'جارٍ تحضير الصورة…',
+      ready: 'ستُستخدم صورتك المؤطّرة لإنشاء ملفاتك القابلة للطباعة.',
+      lowResolution: 'دقة الصورة منخفضة: قد يفتقر النموذج إلى التفاصيل.',
+      missingPhoto: 'حمّل صورتك وأطّرها قبل الإضافة إلى السلة.',
+      notImage: 'هذا الملف ليس صورة. اختر صورة JPG أو PNG.',
+      tooLarge: 'الصورة كبيرة جدًا (40 ميغابايت كحد أقصى).',
+      unreadable: 'تعذّرت قراءة هذه الصورة. جرّب صورة JPG أو PNG.',
+      unsupported: 'متصفحك لا يسمح بإرفاق الصورة. جرّب متصفحًا آخر.',
+    },
+  };
+
+  const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
+
+  /** The page language, as a bare language code ("fr-CA" → "fr") */
+  const resolveLanguage = (root) => {
+    const candidates = [
+      root.dataset.locale,
+      window.Shopify && window.Shopify.locale,
+      document.documentElement.lang,
+    ];
+    for (const candidate of candidates) {
+      const language = String(candidate || '').trim().toLowerCase().split(/[-_]/)[0];
+      if (language && TEXTS[language]) return language;
+    }
+    return 'en';
+  };
+
+  /** The dictionary for this widget: the page language, plus any per-string override from the theme */
+  const resolveTexts = (root, language) => {
+    let overrides = {};
+    try {
+      overrides = root.dataset.texts ? JSON.parse(root.dataset.texts) : {};
+    } catch (e) {
+      overrides = {};
+    }
+    return { ...TEXTS.en, ...TEXTS[language], ...overrides };
   };
 
   // names of the line item properties read by the n8n workflow
@@ -93,6 +181,12 @@
   function init(root) {
     if (root.dataset.dccReady) return;
     root.dataset.dccReady = 'true';
+
+    const language = resolveLanguage(root);
+    const TEXT = resolveTexts(root, language);
+    if (RTL_LANGUAGES.includes(language)) {
+      root.setAttribute('dir', 'rtl');
+    }
 
     const formId = root.dataset.formId || '';
     const form = (formId && document.getElementById(formId)) || root.closest('form');
@@ -282,7 +376,8 @@
 
     const updateInputs = () => {
       inputs.size.value = sizeProperty();
-      inputs.orientation.value = isSquare() ? TEXT.square : state.orientation === 'landscape' ? TEXT.landscape : TEXT.portrait;
+      // canonical English, so the order and the n8n workflow read the same value whatever the shop language
+      inputs.orientation.value = isSquare() ? 'Square' : state.orientation === 'landscape' ? 'Landscape' : 'Portrait';
       if (inputs.colors) inputs.colors.value = state.colors ? String(state.colors) : '';
       setPressed(ui.sizes, 'data-size', (sizes.find((s) => s.size.short === state.size.short && s.size.long === state.size.long) || {}).key);
       // "Carré" is offered whenever the product has a square canvas; choosing it switches the canvas to that size
