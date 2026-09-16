@@ -475,12 +475,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.graphqlUrl }}",
+        "url": "={{ $('Prepare delivery').first().json.graphqlUrl }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "shopifyOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ query: 'query OrderFulfillmentOrders($id: ID!) { order(id: $id) { id name fulfillmentOrders(first: 5) { nodes { id status } } } }', variables: { id: $json.orderGid } }) }}",
+        "jsonBody": "={{ JSON.stringify({ query: 'query OrderFulfillmentOrders($id: ID!) { order(id: $id) { id name fulfillmentOrders(first: 5) { nodes { id status } } } }', variables: { id: $('Prepare delivery').first().json.orderGid } }) }}",
         "options": {
           "timeout": 30000
         }
