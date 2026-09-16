@@ -7,7 +7,7 @@
     {% render 'darlart-canvas-crop', form_id: dcc_form %}
 
   Optional parameters:
-    sizes: '30x40,40x50,50x50,60x70'   canvas sizes in cm (portrait form, landscape is offered automatically)
+    sizes: 'A4,A3,A2'                  print formats, or canvas sizes in cm like '30x40,40x50' (landscape is offered automatically)
     colors: '12,24,36,48'              show a color count choice (leave empty when colors are a product variant)
     default_colors: '24'
     sync_variant: false                don't select the product variant matching the chosen size
@@ -21,7 +21,7 @@
 <div
   class="dcc"
   data-form-id="{{ form_id }}"
-  data-sizes="{{ sizes | default: '30x40,40x50,50x50,60x70' }}"
+  data-sizes="{{ sizes | default: 'A4,A3,A2' }}"
   data-colors="{{ colors }}"
   data-default-colors="{{ default_colors | default: '24' }}"
   data-sync-variant="{% if sync_variant == false %}false{% else %}true{% endif %}"

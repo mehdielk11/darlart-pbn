@@ -9,7 +9,7 @@ const root = path.join(__dirname, "..");
 const dist = path.join(root, "server", "dist");
 const { parseCustomColors, buildSettings, DEFAULT_RANDOM_SEED } = require(path.join(dist, "src/core/settings"));
 const { reorderColorsByFamily, buildPaletteEntries, groupPaletteEntries } = require(path.join(dist, "src/core/palette"));
-const { fitCropToAspect, resolveCanvasSize } = require(path.join(dist, "src/core/crop"));
+const { fitCropToAspect, resolveCanvasSize, PRINT_FORMATS, PRINT_FORMAT_IDS, parsePrintFormat, printFormatForCanvas } = require(path.join(dist, "src/core/crop"));
 const { suggestDifficulty } = require(path.join(dist, "src/core/complexity"));
 const { findPaletteFamily } = require(path.join(dist, "src/palettefamilies"));
 const { decodeImage } = require(path.join(dist, "server/src/image"));
@@ -78,6 +78,25 @@ test("resolveCanvasSize follows the photo orientation", () => {
     assert.equal(resolveCanvasSize("40x50", "landscape", 600, 900).label, "50x40");
     assert.equal(resolveCanvasSize("50x50", "portrait", 600, 900).orientation, "square");
     assert.throws(() => resolveCanvasSize("big", "auto", 10, 10));
+});
+
+test("print formats keep the A series shape and are recognised by name", () => {
+    assert.deepEqual(PRINT_FORMAT_IDS, ["a4", "a3", "a2"]);
+    for (const format of PRINT_FORMATS) {
+        const resolved = resolveCanvasSize(format.canvasSize, "portrait", 600, 900);
+        assert.ok(Math.abs(resolved.aspect - 1 / Math.SQRT2) < 0.001, `${format.label} aspect ${resolved.aspect}`);
+    }
+    // the cm pair travels to the API, so decimals must survive the round trip
+    assert.equal(resolveCanvasSize("21x29.7", "portrait", 600, 900).label, "21x29.7");
+    assert.equal(resolveCanvasSize("21x29.7", "landscape", 900, 600).label, "29.7x21");
+
+    assert.equal(parsePrintFormat("A3").id, "a3");
+    assert.equal(parsePrintFormat("Format A4 — 21 × 29,7 cm").id, "a4");
+    assert.equal(parsePrintFormat("40x50"), null);
+
+    assert.equal(printFormatForCanvas("29.7x42").label, "A3");
+    assert.equal(printFormatForCanvas("59.4x42").label, "A2"); // landscape
+    assert.equal(printFormatForCanvas("30x40"), null);
 });
 
 test("fitCropToAspect always returns a box with the right aspect inside the image", () => {

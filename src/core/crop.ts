@@ -7,6 +7,29 @@ export type Orientation = "portrait" | "landscape" | "square";
 /** Canvas sizes in cm, as offered in the crop dialog (portrait form; landscape swaps them) */
 export const CANVAS_SIZES = ["30x40", "40x50", "50x50", "60x70"];
 
+/**
+ * Print formats of the digital products: the customer prints the template on that paper.
+ * The canvas is the paper itself, so the template fills the page: every A size has the same 1:√2 shape.
+ */
+export interface PrintFormat {
+    /** "a4", also the API paperSize */
+    id: "a2" | "a3" | "a4";
+    /** "A4", shown to the customer and used in file names */
+    label: string;
+    /** canvas size in cm, portrait form, as sent to the API */
+    canvasSize: string;
+    widthCm: number;
+    heightCm: number;
+}
+
+export const PRINT_FORMATS: PrintFormat[] = [
+    { id: "a4", label: "A4", canvasSize: "21x29.7", widthCm: 21, heightCm: 29.7 },
+    { id: "a3", label: "A3", canvasSize: "29.7x42", widthCm: 29.7, heightCm: 42 },
+    { id: "a2", label: "A2", canvasSize: "42x59.4", widthCm: 42, heightCm: 59.4 },
+];
+
+export const PRINT_FORMAT_IDS = PRINT_FORMATS.map((format) => format.id);
+
 export interface ResolvedCanvasSize {
     widthCm: number;
     heightCm: number;
@@ -24,6 +47,22 @@ export function parseCanvasSize(size: string): { a: number; b: number } | null {
     const b = parseFloat(match[2]);
     if (!(a > 0) || !(b > 0)) { return null; }
     return { a, b };
+}
+
+/** The print format named in a text, e.g. "A3", "Format A4 — 21 × 29,7 cm" */
+export function parsePrintFormat(text: string): PrintFormat | null {
+    const match = (text || "").match(/\ba\s*([234])\b/i);
+    if (!match) { return null; }
+    return PRINT_FORMATS.find((format) => format.id === `a${match[1]}`) || null;
+}
+
+/** The print format of a canvas size in either orientation, e.g. "29.7x42" and "42x29.7" are both A3 */
+export function printFormatForCanvas(size: string): PrintFormat | null {
+    const parsed = parseCanvasSize(size);
+    if (!parsed) { return null; }
+    const short = Math.min(parsed.a, parsed.b);
+    const long = Math.max(parsed.a, parsed.b);
+    return PRINT_FORMATS.find((format) => Math.abs(format.widthCm - short) < 0.05 && Math.abs(format.heightCm - long) < 0.05) || null;
 }
 
 /**

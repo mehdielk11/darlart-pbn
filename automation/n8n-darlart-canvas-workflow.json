@@ -9,7 +9,10 @@
       "name": "Shopify: order paid",
       "type": "n8n-nodes-base.shopifyTrigger",
       "typeVersion": 1,
-      "position": [0, 200],
+      "position": [
+        0,
+        200
+      ],
       "webhookId": "b7c3f5d2-1111-4a8e-8f00-darlart00001"
     },
     {
@@ -23,29 +26,43 @@
       "name": "Webhook: order from another channel",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 420],
+      "position": [
+        0,
+        420
+      ],
       "webhookId": "b7c3f5d2-2222-4a8e-8f00-darlart00002"
     },
     {
       "parameters": {
-        "jsCode": "// ===== Settings =====\nconst PBN_API_URL = 'http://127.0.0.1:3000'; // the API on the same machine as n8n\nconst PAPER_SIZE = 'a4';\nconst PALETTE = 'darlart-v2';\nconst DIFFICULTY = 'medium'; // easy, medium or hard: the same level for every order\nconst DEFAULT_COLORS = 24;\n// Line item properties written by the Darl'Art crop widget (shopify/ folder), lowercase, matched with \"includes\"\nconst PHOTO_PROPERTIES = ['photo', 'image', 'upload', 'fichier'];\nconst SIZE_PROPERTIES = ['canvas size', 'taille', 'size', 'format'];\nconst ORIENTATION_PROPERTIES = ['orientation'];\nconst COLOR_PROPERTIES = ['colors', 'couleurs', 'color', 'couleur'];\n// ====================\n\nconst norm = (s) => String(s || '').trim().toLowerCase();\nconst findSize = (text) => { const m = String(text || '').match(/(\\d{2,3})\\s*[x×*]\\s*(\\d{2,3})/i); return m ? `${m[1]}x${m[2]}` : ''; };\nconst findColors = (text) => { const m = String(text || '').match(/\\b(12|24|36|48)\\b/); return m ? Number(m[1]) : 0; };\nconst findOrientation = (text) => { const t = norm(text); return /paysage|landscape/.test(t) ? 'landscape' : (/portrait/.test(t) ? 'portrait' : ''); };\n// the photo is already cropped by the customer: the API only trims the pixels that don't fit the exact canvas ratio\nconst base = { apiUrl: PBN_API_URL, paperSize: PAPER_SIZE, palette: PALETTE, difficulty: DIFFICULTY, cropMode: 'center' };\nconst out = [];\n\nfor (const item of $input.all()) {\n  // the webhook node wraps the payload in \"body\"\n  const data = item.json.body && item.json.body.orderId ? item.json.body : item.json;\n\n  // Generic payload: { orderId, paid, photoUrl (already cropped), canvasSize, orientation, colors, customerEmail? }\n  if (data.orderId && !data.line_items) {\n    if (data.paid !== true && data.paid !== 'true') continue; // only paid orders\n    const canvasSize = findSize(data.canvasSize);\n    const issues = [];\n    if (!/^https?:\\/\\//i.test(data.photoUrl || '')) issues.push('missing photo URL');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    out.push({ json: { ...base, orderId: String(data.orderId).replace(/^#/, ''), photoUrl: data.photoUrl || '', canvasSize, colors: findColors(data.colors) || DEFAULT_COLORS, orientation: findOrientation(data.orientation) || 'auto', customerEmail: data.customerEmail || '', ready: issues.length === 0, issues: issues.join(', ') } });\n    continue;\n  }\n\n  // Shopify order (orders/paid)\n  if (data.financial_status !== 'paid') continue;\n  const orderId = String(data.name || data.order_number || data.id).replace(/^#/, '');\n  const lines = [];\n  for (const line of data.line_items || []) {\n    const props = (line.properties || []).map((p) => ({ name: norm(p.name), value: String(p.value || '') }));\n    const prop = (names) => { const p = props.find((x) => names.some((n) => x.name.includes(n)) && x.value); return p ? p.value : ''; };\n    const photo = props.find((x) => PHOTO_PROPERTIES.some((n) => x.name.includes(n)) && /^https?:\\/\\//i.test(x.value))\n      || props.find((x) => /^https?:\\/\\/\\S+\\.(jpe?g|png|webp)(\\?|$)/i.test(x.value));\n    const canvasSize = findSize(prop(SIZE_PROPERTIES)) || findSize(line.variant_title) || findSize(line.title);\n    if (!photo && !canvasSize) continue; // not a paint by numbers product\n    const issues = [];\n    if (!photo) issues.push('missing photo upload');\n    if (!canvasSize) issues.push('missing or invalid canvas size');\n    lines.push({\n      ...base,\n      product: line.title,\n      photoUrl: photo ? photo.value : '',\n      canvasSize,\n      colors: findColors(prop(COLOR_PROPERTIES)) || findColors(line.variant_title) || DEFAULT_COLORS,\n      // chosen by the customer in the widget; \"auto\" follows the cropped photo, which already has the right shape\n      orientation: findOrientation(prop(ORIENTATION_PROPERTIES)) || findOrientation(line.variant_title) || 'auto',\n      customerEmail: data.email || '',\n      ready: issues.length === 0,\n      issues: issues.join(', '),\n    });\n  }\n  // one canvas per photo: suffix the order number when an order has several\n  lines.forEach((line, index) => out.push({ json: { ...line, orderId: lines.length > 1 ? `${orderId}-${index + 1}` : orderId } }));\n}\n\nreturn out;"
+        "jsCode": "// ===== Settings =====\nconst PBN_API_URL = 'http://127.0.0.1:3000'; // the API on the same machine as n8n\nconst PALETTE = 'darlart-v2';\nconst DIFFICULTY = 'medium'; // easy, medium or hard: the same level for every order\nconst DEFAULT_COLORS = 24;\nconst DEFAULT_FORMAT = 'a4'; // used when a digital order doesn't name its print format\n// Digital products: the customer prints the template, so the canvas IS the sheet of paper (A series, 1:V2)\nconst FORMATS = {\n  a4: { canvasSize: '21x29.7', paperSize: 'a4', label: 'A4' },\n  a3: { canvasSize: '29.7x42', paperSize: 'a3', label: 'A3' },\n  a2: { canvasSize: '42x59.4', paperSize: 'a2', label: 'A2' },\n};\n// Line item properties written by the Darl'Art crop widget (shopify/ folder), lowercase, matched with \"includes\"\nconst PHOTO_PROPERTIES = ['photo', 'image', 'upload', 'fichier'];\nconst SIZE_PROPERTIES = ['format', 'canvas size', 'taille', 'size'];\nconst ORIENTATION_PROPERTIES = ['orientation'];\nconst COLOR_PROPERTIES = ['colors', 'couleurs', 'color', 'couleur'];\n// ====================\n\nconst norm = (s) => String(s || '').trim().toLowerCase();\n// \"A3\" or \"Format A3 (29,7 x 42 cm)\" -> a3. Always tried BEFORE findSize, which would read \"29.7x42\" as \"29x42\".\nconst findFormat = (text) => { const m = String(text || '').match(/\\ba\\s*([234])\\b/i); return m ? `a${m[1]}` : ''; };\nconst findSize = (text) => { const m = String(text || '').match(/(\\d{2,3}(?:[.,]\\d+)?)\\s*[x×*]\\s*(\\d{2,3}(?:[.,]\\d+)?)/i); return m ? `${m[1].replace(',', '.')}x${m[2].replace(',', '.')}` : ''; };\nconst findColors = (text) => { const m = String(text || '').match(/\\b(12|24|36|48)\\b/); return m ? Number(m[1]) : 0; };\nconst findOrientation = (text) => { const t = norm(text); return /paysage|landscape/.test(t) ? 'landscape' : (/portrait/.test(t) ? 'portrait' : ''); };\n// the photo is already cropped by the customer: the API only trims the pixels that don't fit the exact ratio\nconst base = { apiUrl: PBN_API_URL, palette: PALETTE, difficulty: DIFFICULTY, cropMode: 'center' };\nconst out = [];\n\nfor (const item of $input.all()) {\n  // the webhook node wraps the payload in \"body\"\n  const data = item.json.body && item.json.body.orderId ? item.json.body : item.json;\n\n  // Generic payload: { orderId, paid, photoUrl (already cropped), format (\"A3\") or canvasSize, orientation, colors, customerEmail? }\n  if (data.orderId && !data.line_items) {\n    if (data.paid !== true && data.paid !== 'true') continue; // only paid orders\n    const format = FORMATS[findFormat(data.format || data.canvasSize)] || null;\n    const canvasSize = format ? format.canvasSize : findSize(data.canvasSize);\n    const issues = [];\n    if (!/^https?:\\/\\//i.test(data.photoUrl || '')) issues.push('missing photo URL');\n    if (!canvasSize) issues.push('missing or invalid print format');\n    out.push({ json: { ...base, orderId: String(data.orderId).replace(/^#/, ''), shopifyOrderId: '', photoUrl: data.photoUrl || '', canvasSize, paperSize: format ? format.paperSize : FORMATS[DEFAULT_FORMAT].paperSize, format: format ? format.label : canvasSize, colors: findColors(data.colors) || DEFAULT_COLORS, orientation: findOrientation(data.orientation) || 'auto', customerEmail: data.customerEmail || '', ready: issues.length === 0, issues: issues.join(', ') } });\n    continue;\n  }\n\n  // Shopify order (orders/paid)\n  if (data.financial_status !== 'paid') continue;\n  const orderId = String(data.name || data.order_number || data.id).replace(/^#/, '');\n  const lines = [];\n  for (const line of data.line_items || []) {\n    const props = (line.properties || []).map((p) => ({ name: norm(p.name), value: String(p.value || '') }));\n    const prop = (names) => { const p = props.find((x) => names.some((n) => x.name.includes(n)) && x.value); return p ? p.value : ''; };\n    const photo = props.find((x) => PHOTO_PROPERTIES.some((n) => x.name.includes(n)) && /^https?:\\/\\//i.test(x.value))\n      || props.find((x) => /^https?:\\/\\/\\S+\\.(jpe?g|png|webp)(\\?|$)/i.test(x.value));\n    // digital orders name a print format; older canvas orders still carry a size in cm\n    const format = FORMATS[findFormat(prop(SIZE_PROPERTIES)) || findFormat(line.variant_title) || findFormat(line.title)] || null;\n    const canvasSize = format ? format.canvasSize : (findSize(prop(SIZE_PROPERTIES)) || findSize(line.variant_title) || findSize(line.title));\n    if (!photo && !canvasSize) continue; // not a paint by numbers product\n    const issues = [];\n    if (!photo) issues.push('missing photo upload');\n    if (!canvasSize) issues.push('missing or invalid print format');\n    lines.push({\n      ...base,\n      product: line.title,\n      photoUrl: photo ? photo.value : '',\n      canvasSize,\n      paperSize: format ? format.paperSize : FORMATS[DEFAULT_FORMAT].paperSize,\n      format: format ? format.label : canvasSize,\n      colors: findColors(prop(COLOR_PROPERTIES)) || findColors(line.variant_title) || DEFAULT_COLORS,\n      // chosen by the customer in the widget; \"auto\" follows the cropped photo, which already has the right shape\n      orientation: findOrientation(prop(ORIENTATION_PROPERTIES)) || findOrientation(line.variant_title) || 'auto',\n      customerEmail: data.email || '',\n      shopifyOrderId: data.id ? String(data.id) : '',\n      ready: issues.length === 0,\n      issues: issues.join(', '),\n    });\n  }\n  // one template per photo: suffix the order number when an order has several\n  lines.forEach((line, index) => out.push({ json: { ...line, orderId: lines.length > 1 ? `${orderId}-${index + 1}` : orderId } }));\n}\n\nreturn out;\n"
       },
       "id": "a0b8f7c1-0003-4d6e-9c11-000000000003",
       "name": "Normalize order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "c1a1a1a1-0000-4000-8000-000000000001",
               "leftValue": "={{ $json.ready }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -56,15 +73,23 @@
       "name": "Ready to generate?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
-      "parameters": { "options": {} },
+      "parameters": {
+        "options": {}
+      },
       "id": "a0b8f7c1-0005-4d6e-9c11-000000000005",
       "name": "Loop over photos",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [680, 200]
+      "position": [
+        680,
+        200
+      ]
     },
     {
       "parameters": {
@@ -75,25 +100,38 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ imageUrl: $json.photoUrl, canvasSize: $json.canvasSize, orientation: $json.orientation, colors: $json.colors, difficulty: $json.difficulty, cropMode: $json.cropMode, paperSize: $json.paperSize, palette: $json.palette, orderId: $json.orderId, callbackUrl: $execution.resumeUrl }) }}",
-        "options": { "timeout": 120000 }
+        "options": {
+          "timeout": 120000
+        }
       },
       "id": "a0b8f7c1-0010-4d6e-9c11-000000000010",
       "name": "Create generation job",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [900, 180],
+      "position": [
+        900,
+        180
+      ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "c1a1a1a1-0000-4000-8000-000000000002",
               "leftValue": "={{ $json.jobId }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -104,7 +142,10 @@
       "name": "Job accepted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 180]
+      "position": [
+        1120,
+        180
+      ]
     },
     {
       "parameters": {
@@ -121,19 +162,29 @@
       "name": "Wait for job",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [1340, 80],
+      "position": [
+        1340,
+        80
+      ],
       "webhookId": "b7c3f5d2-3333-4a8e-8f00-darlart00003"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "c1a1a1a1-0000-4000-8000-000000000003",
               "leftValue": "={{ $json.body ? $json.body.status : '' }}",
               "rightValue": "completed",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -144,21 +195,35 @@
       "name": "Job completed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1560, 80]
+      "position": [
+        1560,
+        80
+      ]
     },
     {
       "parameters": {
         "resource": "folder",
         "name": "={{ $('Loop over photos').first().json.orderId }}",
-        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "mode": "id", "value": "REPLACE_WITH_ORDERS_FOLDER_ID" },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_ORDERS_FOLDER_ID"
+        },
         "options": {}
       },
       "id": "a0b8f7c1-0014-4d6e-9c11-000000000014",
       "name": "Create order folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1780, 0]
+      "position": [
+        1780,
+        0
+      ]
     },
     {
       "parameters": {
@@ -168,7 +233,10 @@
       "name": "List output files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, 0]
+      "position": [
+        2000,
+        0
+      ]
     },
     {
       "parameters": {
@@ -176,7 +244,12 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {
-          "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } },
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
           "timeout": 120000
         }
       },
@@ -184,41 +257,66 @@
       "name": "Download file",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2220, 0]
+      "position": [
+        2220,
+        0
+      ]
     },
     {
       "parameters": {
         "name": "={{ $('List output files').item.json.downloadName }}",
-        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "mode": "id", "value": "={{ $('List output files').item.json.folderId }}" },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('List output files').item.json.folderId }}"
+        },
         "options": {}
       },
       "id": "a0b8f7c1-0017-4d6e-9c11-000000000017",
       "name": "Upload to Google Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [2440, 0]
+      "position": [
+        2440,
+        0
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Flags customer photos with too few pixels for a detailed template\nconst MIN_SHORT_SIDE = 800;\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst source = (job.result && job.result.source) || {};\nconst shortSide = Math.min(source.width || 0, source.height || 0);\nconst warning = shortSide > 0 && shortSide < MIN_SHORT_SIDE\n  ? `the customer's cropped photo is small (${source.width}x${source.height} px), check that the template keeps enough detail`\n  : '';\nreturn [{ json: { orderId: order.orderId, warning, files: $input.all().length } }];"
+        "jsCode": "// Flags customer photos with too few pixels for a detailed template, and carries the order details for the alerts\nconst MIN_SHORT_SIDE = 1400; // keep in step with MIN_RECOMMENDED_SIDE in shopify/assets/darlart-canvas-crop.js\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst source = (job.result && job.result.source) || {};\nconst shortSide = Math.min(source.width || 0, source.height || 0);\nconst warning = shortSide > 0 && shortSide < MIN_SHORT_SIDE\n  ? `the customer's cropped photo is small (${source.width}x${source.height} px), check that the template keeps enough detail`\n  : '';\nreturn [{\n  json: {\n    orderId: order.orderId,\n    shopifyOrderId: order.shopifyOrderId || '',\n    customerEmail: order.customerEmail || '',\n    format: order.format || '',\n    colors: order.colors,\n    warning,\n    files: $input.all().length,\n  },\n}];\n"
       },
       "id": "a0b8f7c1-0018-4d6e-9c11-000000000018",
       "name": "Summarize order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2660, 0]
+      "position": [
+        2660,
+        0
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "c1a1a1a1-0000-4000-8000-000000000004",
               "leftValue": "={{ $json.warning }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -229,7 +327,10 @@
       "name": "Photo warning?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2880, 0]
+      "position": [
+        2880,
+        0
+      ]
     },
     {
       "parameters": {
@@ -244,7 +345,10 @@
       "name": "Notify: photo warning",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [3100, -100]
+      "position": [
+        3100,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -259,7 +363,10 @@
       "name": "Notify: generation failed",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1780, 300]
+      "position": [
+        1780,
+        300
+      ]
     },
     {
       "parameters": {
@@ -274,54 +381,357 @@
       "name": "Notify: order needs attention",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [680, 440]
+      "position": [
+        680,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collects what the customer receives: the printable PDF, the preview and the paint list (the SVG stays internal).\n// Nothing is ever shared publicly: when the files are too heavy to email, only the PDF goes out and the owner is alerted.\nconst MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024; // raw; base64 adds ~37%, and many SMTP relays stop at 20-25 MB\nconst WANTED = ['template.pdf', 'preview.png', 'palette.json'];\nconst ESSENTIAL = 'template.pdf';\n\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst listed = $('List output files').all().map((item) => item.json);\nconst downloads = $('Download file').all();\nconst folder = $('Create order folder').first().json;\n\nconst files = (job.result && job.result.files) || [];\nconst wanted = files.filter((file) => WANTED.includes(file.name));\nconst totalBytes = wanted.reduce((sum, file) => sum + (file.size || 0), 0);\nconst tooBig = totalBytes > MAX_ATTACHMENT_BYTES;\n// too heavy for one email: send the printable PDF alone, the owner sends the rest\nconst toAttach = tooBig ? wanted.filter((file) => file.name === ESSENTIAL) : wanted;\n\n// \"Download file\" runs once per listed file, so the binaries follow the order of \"List output files\"\nconst binary = {};\nconst attachments = [];\nconst missing = [];\nfor (const file of toAttach) {\n  const index = listed.findIndex((entry) => entry.downloadName === file.downloadName || entry.url === file.url);\n  const item = index >= 0 ? downloads[index] : null;\n  if (!item || !item.binary || !item.binary.data) {\n    missing.push(file.name);\n    continue;\n  }\n  const key = `attachment${attachments.length}`;\n  binary[key] = item.binary.data;\n  attachments.push(key);\n}\n\n// what the owner needs to know: nothing attached at all, files dropped, or an email that must be completed by hand\nconst problem = attachments.length === 0\n  ? `no file could be attached for order ${order.orderId} (${missing.join(', ') || 'no binary'})`\n  : (tooBig ? `the files for order ${order.orderId} weigh ${Math.round(totalBytes / 1024 / 1024)} MB: only the PDF was emailed, send the preview and the paint list by hand` : '');\n\nreturn [{\n  json: {\n    orderId: order.orderId,\n    shopifyOrderId: order.shopifyOrderId || '',\n    customerEmail: order.customerEmail || '',\n    format: order.format || '',\n    colors: order.colors,\n    totalBytes,\n    totalMb: Math.round((totalBytes / 1024 / 1024) * 10) / 10,\n    tooBig,\n    attachments: attachments.join(','),\n    attachedCount: attachments.length,\n    problem,\n    driveFolderId: folder.id || '',\n  },\n  binary,\n}];\n"
+      },
+      "id": "a0b8f7c1-0033-4d6e-9c11-000000000031",
+      "name": "Build customer email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "automation@example.com",
+        "toEmail": "={{ $json.customerEmail }}",
+        "subject": "=Vos fichiers à imprimer — commande {{ $json.orderId }}",
+        "emailFormat": "html",
+        "html": "=<p>Bonjour,</p><p>Merci pour votre commande {{ $json.orderId }} ! Vos fichiers sont prêts, ils sont joints à cet e-mail :</p><ul><li><b>Le modèle à imprimer (PDF)</b> : page 1 en couleurs, page 2 le contour numéroté, puis la légende des couleurs par famille.</li><li><b>L'aperçu (PNG)</b> : le rendu final de votre tableau.</li><li><b>La liste des couleurs (JSON)</b> : chaque numéro avec son code de peinture Darl'Art.</li></ul><p><b>Pour imprimer :</b> format {{ $json.format }}, à 100 % ou « taille réelle » (surtout pas « ajuster à la page »), sur un papier de 160 à 250 g. Votre imprimeur peut le faire pour vous.</p><p>Cette commande est numérique : il n'y a rien à livrer, vous avez déjà tout reçu ici.</p><p>Une question, ou un fichier qui ne s'ouvre pas ? Répondez simplement à cet e-mail.</p><p>Darl'Art</p>",
+        "options": {
+          "attachments": "={{ $json.attachments }}"
+        }
+      },
+      "id": "a0b8f7c1-0033-4d6e-9c11-000000000032",
+      "name": "Email: files to customer",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        -200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1a1a1a1-0000-4000-8000-000000000005",
+              "leftValue": "={{ $json.error ? 'the e-mail to the customer failed: ' + ($json.error.message || $json.error) : ($('Build customer email').first().json.problem || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a0b8f7c1-0033-4d6e-9c11-000000000033",
+      "name": "Delivery problem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "automation@example.com",
+        "toEmail": "you@example.com",
+        "subject": "=Darl'Art order {{ $('Build customer email').first().json.orderId }}: delivery needs attention",
+        "emailFormat": "text",
+        "text": "=The template was generated and saved to Drive, but the delivery to the customer needs a look.\n\nOrder: {{ $('Build customer email').first().json.orderId }}\nCustomer: {{ $('Build customer email').first().json.customerEmail }}\nFormat: {{ $('Build customer email').first().json.format }}, colors: {{ $('Build customer email').first().json.colors }}\nFiles: {{ $('Build customer email').first().json.attachedCount }} attached, {{ $('Build customer email').first().json.totalMb }} MB in total\nProblem: {{ $('Build customer email').first().json.problem }}\nError: {{ $json.error ? ($json.error.message || $json.error) : 'none' }}\nDrive folder: https://drive.google.com/drive/folders/{{ $('Build customer email').first().json.driveFolderId }}",
+        "options": {}
+      },
+      "id": "a0b8f7c1-0033-4d6e-9c11-000000000034",
+      "name": "Notify: delivery needs attention",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3320,
+        -200
+      ]
     }
   ],
   "connections": {
-    "Shopify: order paid": { "main": [[{ "node": "Normalize order", "type": "main", "index": 0 }]] },
-    "Webhook: order from another channel": { "main": [[{ "node": "Normalize order", "type": "main", "index": 0 }]] },
-    "Normalize order": { "main": [[{ "node": "Ready to generate?", "type": "main", "index": 0 }]] },
+    "Shopify: order paid": {
+      "main": [
+        [
+          {
+            "node": "Normalize order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: order from another channel": {
+      "main": [
+        [
+          {
+            "node": "Normalize order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize order": {
+      "main": [
+        [
+          {
+            "node": "Ready to generate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Ready to generate?": {
       "main": [
-        [{ "node": "Loop over photos", "type": "main", "index": 0 }],
-        [{ "node": "Notify: order needs attention", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Loop over photos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: order needs attention",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Loop over photos": {
       "main": [
         [],
-        [{ "node": "Create generation job", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Create generation job",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Create generation job": { "main": [[{ "node": "Job accepted?", "type": "main", "index": 0 }]] },
+    "Create generation job": {
+      "main": [
+        [
+          {
+            "node": "Job accepted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Job accepted?": {
       "main": [
-        [{ "node": "Wait for job", "type": "main", "index": 0 }],
-        [{ "node": "Notify: generation failed", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Wait for job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: generation failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Wait for job": { "main": [[{ "node": "Job completed?", "type": "main", "index": 0 }]] },
+    "Wait for job": {
+      "main": [
+        [
+          {
+            "node": "Job completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Job completed?": {
       "main": [
-        [{ "node": "Create order folder", "type": "main", "index": 0 }],
-        [{ "node": "Notify: generation failed", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Create order folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: generation failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Create order folder": { "main": [[{ "node": "List output files", "type": "main", "index": 0 }]] },
-    "List output files": { "main": [[{ "node": "Download file", "type": "main", "index": 0 }]] },
-    "Download file": { "main": [[{ "node": "Upload to Google Drive", "type": "main", "index": 0 }]] },
-    "Upload to Google Drive": { "main": [[{ "node": "Summarize order", "type": "main", "index": 0 }]] },
-    "Summarize order": { "main": [[{ "node": "Photo warning?", "type": "main", "index": 0 }]] },
+    "Create order folder": {
+      "main": [
+        [
+          {
+            "node": "List output files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List output files": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Summarize order",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build customer email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize order": {
+      "main": [
+        [
+          {
+            "node": "Photo warning?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Photo warning?": {
       "main": [
-        [{ "node": "Notify: photo warning", "type": "main", "index": 0 }],
-        [{ "node": "Loop over photos", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Notify: photo warning",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop over photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Notify: photo warning": { "main": [[{ "node": "Loop over photos", "type": "main", "index": 0 }]] },
-    "Notify: generation failed": { "main": [[{ "node": "Loop over photos", "type": "main", "index": 0 }]] }
+    "Notify: photo warning": {
+      "main": [
+        [
+          {
+            "node": "Loop over photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: generation failed": {
+      "main": [
+        [
+          {
+            "node": "Loop over photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build customer email": {
+      "main": [
+        [
+          {
+            "node": "Email: files to customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: files to customer": {
+      "main": [
+        [
+          {
+            "node": "Delivery problem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delivery problem?": {
+      "main": [
+        [
+          {
+            "node": "Notify: delivery needs attention",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {}
 }

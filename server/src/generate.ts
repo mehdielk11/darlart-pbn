@@ -6,7 +6,7 @@ import path from "path";
 import sharp from "sharp";
 import { jsPDF } from "jspdf";
 import { ComplexityMetrics, suggestDifficulty } from "../../src/core/complexity";
-import { PixelBox, RelativeBox, ResolvedCanvasSize } from "../../src/core/crop";
+import { PixelBox, printFormatForCanvas, RelativeBox, ResolvedCanvasSize } from "../../src/core/crop";
 import { buildPaletteEntries, groupPaletteEntries } from "../../src/core/palette";
 import { buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
@@ -123,7 +123,10 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
 
     report("output", 0);
     await fs.mkdir(request.outputDir, { recursive: true });
-    const downloadBaseName = safeFileName(`${request.orderId || "paintbynumbers"} ${request.colors} ${difficulty} ${prepared.canvas.label}`);
+    // digital orders are named by their print format ("1042 24 medium A3"), canvases by their size ("1042 24 medium 40x50")
+    const printFormat = printFormatForCanvas(prepared.canvas.label);
+    const sizeLabel = printFormat ? printFormat.label : prepared.canvas.label;
+    const downloadBaseName = safeFileName(`${request.orderId || "paintbynumbers"} ${request.colors} ${difficulty} ${sizeLabel}`);
     const files: OutputFile[] = [];
     const writeOutput = async (file: { name: string; contentType: string }, extension: string, data: Buffer | string) => {
         await fs.writeFile(path.join(request.outputDir, file.name), data);

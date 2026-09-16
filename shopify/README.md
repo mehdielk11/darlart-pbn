@@ -1,9 +1,10 @@
 # Shopify crop widget
 
 On the product page the customer:
-1. chooses the canvas size (e.g. 40 × 50 cm), the orientation (portrait / paysage) and, if enabled, the number of colors;
+1. chooses the print format (A4 / A3 / A2, or a canvas size in cm), the orientation (portrait / paysage) and, if enabled, the number of colors;
 2. uploads a photo;
-3. frames it by dragging and zooming inside a frame with the exact canvas proportions.
+3. frames it by dragging and zooming inside a frame with the exact canvas proportions;
+4. clicks "Valider le cadrage" and sees the result: the framed photo at the canvas proportions, with the size, orientation and number of colors under it. "Modifier le cadrage" reopens the editor, "Changer de photo" starts over. The result stays in step with the canvas: changing the size, orientation or colors re-frames the photo and updates the card.
 
 The cropped photo (JPEG, up to 3000 px) is attached to the product form as a file line item property. Shopify stores it with the order, so no extra server or app is needed. "Add to cart" is blocked until the photo is attached.
 
@@ -12,7 +13,7 @@ The order line gets these properties, which the n8n workflow reads:
 | Property | Example |
 |---|---|
 | `Photo` | `https://cdn.shopify.com/.../uploads/...jpg` (the cropped photo) |
-| `Taille` | `40x50 cm` (`50x40 cm` in landscape) |
+| `Format` | `A3 (29,7 × 42 cm)`, or `40x50 cm` (`50x40 cm` in landscape) for a canvas |
 | `Orientation` | `Portrait`, `Paysage` or `Carré` |
 | `Couleurs` | `24` (only when the color choice is shown) |
 
@@ -51,7 +52,13 @@ That section has no product form: its "Add to cart" button sends the cart with i
   The widget hides its own size buttons and follows the section's Size and Colors pickers.
 - "Add to cart" waits for `widget.dccGetProperties()`. Without a photo, nothing is added and the widget shows a message. With one, the kit line is sent as multipart form data (the photo file can't go in JSON), then any add-ons as JSON.
 
-The template `templates/product.custom-pbn.json` is a copy of `product.json` with the setting turned on. The product "Custom Paint by Numbers Kit" uses it (options `Size` 30x40 / 40x50 / 50x50 / 60x70 and `Colors` 12 / 24 / 36 / 48).
+The template `templates/product.custom-pbn.json` is a copy of `product.json` with the setting turned on.
+
+### Digital products
+
+A second setting, **Digital product (files by e-mail, nothing is shipped)** (`digital_mode`), turns the page into a digital one: it hides the canvas type step (and with it the canvas guide and the frame add-on), the size comparison, the "Canvas Dimensions", "Every Kit Includes" and "Shipping Details" blocks, the "What is Paint by Numbers?" block, and replaces the delivery date line with `digital_delivery_text`. Size values that are not `NNxNN` (like `A4`) no longer get " cm" appended.
+
+The digital product uses print formats instead of canvas sizes: option `Format` (A4 / A3 / A2) and `Colors` (12 / 24 / 36 / 48). The widget maps each format to its paper size in cm (A4 = 21 × 29,7), so the crop has exactly the proportions of the sheet the customer prints on, and the order carries `Format: "A3 (29,7 × 42 cm)"`.
 
 ## Test before going live
 

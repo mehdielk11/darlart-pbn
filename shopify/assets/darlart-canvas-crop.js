@@ -1,10 +1,10 @@
 /*
  * Darl'Art canvas crop widget (Shopify product page)
  *
- * The customer chooses the canvas size, the orientation (and optionally the number of colors), uploads a photo
- * and frames it with drag and zoom. The cropped photo is attached to the product form as a file line item property,
- * so Shopify stores it with the order, next to the size and orientation properties. The n8n workflow reads them
- * and sends the photo straight to the generator (cropMode "center").
+ * The customer chooses the print format (A4/A3/A2, or a canvas size in cm), the orientation (and optionally the
+ * number of colors), uploads a photo and frames it with drag and zoom. The cropped photo is attached to the product
+ * form as a file line item property, so Shopify stores it with the order, next to the format and orientation
+ * properties. The n8n workflow reads them and sends the photo straight to the generator (cropMode "center").
  *
  * Requires Cropper.js 1.6 (loaded by the snippet) and a browser that supports DataTransfer file assignment.
  */
@@ -12,21 +12,26 @@
   'use strict';
 
   const TEXT = {
-    size: 'Taille du tableau',
+    size: "Format d'impression",
     orientation: 'Orientation',
     portrait: 'Portrait',
     landscape: 'Paysage',
     square: 'Carré',
     colors: 'Nombre de couleurs',
     upload: 'Importer ma photo',
-    uploadHint: 'JPG ou PNG, de préférence en bonne qualité',
+    uploadHint: 'JPG ou PNG, la photo la plus nette possible pour un modèle détaillé',
     crop: 'Cadrage',
     cropHint: 'Déplacez et zoomez la photo pour choisir la partie à peindre.',
     change: 'Changer de photo',
+    validate: 'Valider le cadrage',
+    edit: 'Modifier le cadrage',
+    previewTitle: 'Votre modèle',
+    colorsUnit: 'couleurs',
+    previewAlt: 'Aperçu de votre modèle',
     zoom: 'Zoom',
     preparing: 'Préparation de la photo…',
-    ready: 'Votre photo cadrée sera jointe à la commande.',
-    lowResolution: 'Photo de faible résolution : le tableau risque de manquer de détails.',
+    ready: 'Votre photo cadrée servira à créer vos fichiers à imprimer.',
+    lowResolution: 'Photo de faible résolution : le modèle risque de manquer de détails.',
     missingPhoto: "Importez et cadrez votre photo avant d'ajouter au panier.",
     notImage: "Ce fichier n'est pas une image. Choisissez une photo JPG ou PNG.",
     tooLarge: 'Photo trop volumineuse (40 Mo maximum).',
@@ -35,10 +40,14 @@
   };
 
   // names of the line item properties read by the n8n workflow
-  const PROPERTIES = { photo: 'Photo', size: 'Taille', orientation: 'Orientation', colors: 'Couleurs' };
+  const PROPERTIES = { photo: 'Photo', size: 'Format', orientation: 'Orientation', colors: 'Couleurs' };
 
+  /** Print formats (A series, all 1:√2) in cm: the customer prints the template on that sheet */
+  const FORMAT_SIZES = { a4: { short: 21, long: 29.7 }, a3: { short: 29.7, long: 42 }, a2: { short: 42, long: 59.4 } };
+
+  // The template is vector, so the upload doesn't set print sharpness: it sets how much detail the tracer sees.
   const MAX_OUTPUT_SIDE = 3000; // longest side of the cropped photo sent with the order
-  const MIN_RECOMMENDED_SIDE = 800; // shorter crops get a low resolution notice
+  const MIN_RECOMMENDED_SIDE = 1400; // shorter crops get a low resolution notice (the generator works at 1024 px)
   const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
   const JPEG_QUALITY = 0.92;
   const MAX_ZOOM = 4;
@@ -46,19 +55,30 @@
   const ICONS = {
     portrait: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="3.5" width="11" height="17" rx="1.5"/></svg>',
     landscape: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="17" height="11" rx="1.5"/></svg>',
+    square: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>',
     upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 12.5 5 5 10-11"/></svg>',
+    crop: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 2.5v15h15M2.5 6.5h15v15"/></svg>',
   };
 
   const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  /** "40x50" / "40 x 50 cm" → { short: 40, long: 50 } */
+  /** "A3" → { short: 29.7, long: 42, format: 'A3' }; "40x50" / "40 x 50 cm" → { short: 40, long: 50 } */
   const parseSize = (text) => {
-    const match = /(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i.exec(String(text || ''));
+    const value = String(text || '');
+    const named = /\ba\s*([234])\b/i.exec(value);
+    if (named && FORMAT_SIZES[`a${named[1]}`]) {
+      const format = FORMAT_SIZES[`a${named[1]}`];
+      return { short: format.short, long: format.long, format: `A${named[1]}` };
+    }
+    const match = /(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/i.exec(value);
     if (!match) return null;
     const a = parseFloat(match[1].replace(',', '.'));
     const b = parseFloat(match[2].replace(',', '.'));
     return a > 0 && b > 0 ? { short: Math.min(a, b), long: Math.max(a, b) } : null;
   };
+
+  const frenchNumber = (value) => String(value).replace('.', ',');
 
   const canAttachFiles = () => {
     try {
@@ -95,6 +115,8 @@
       exporting: false,
       exportTimer: 0,
       exportToken: 0,
+      previewUrl: null,
+      lowResolution: false,
       afterExport: [], // callbacks waiting for the cropped photo, called with true once attached
     };
 
@@ -102,7 +124,7 @@
       <div class="dcc__group"${sizeGroup ? ' hidden' : ''}>
         <span class="dcc__label" id="${formId}-dcc-size">${TEXT.size}</span>
         <div class="dcc__options dcc-sizes" role="radiogroup" aria-labelledby="${formId}-dcc-size">
-          ${sizes.map((s) => `<button type="button" class="dcc__option" role="radio" data-size="${escapeHtml(s.key)}">${s.size.short} × ${s.size.long} cm</button>`).join('')}
+          ${sizes.map((s) => `<button type="button" class="dcc__option" role="radio" data-size="${escapeHtml(s.key)}">${s.size.format || `${s.size.short} × ${s.size.long} cm`}</button>`).join('')}
         </div>
       </div>
       <div class="dcc__group dcc-orientation-group">
@@ -110,6 +132,7 @@
         <div class="dcc__options dcc-orientations" role="radiogroup" aria-labelledby="${formId}-dcc-orientation">
           <button type="button" class="dcc__option dcc__option--icon" role="radio" data-orientation="portrait">${ICONS.portrait}<span>${TEXT.portrait}</span></button>
           <button type="button" class="dcc__option dcc__option--icon" role="radio" data-orientation="landscape">${ICONS.landscape}<span>${TEXT.landscape}</span></button>
+          <button type="button" class="dcc__option dcc__option--icon" role="radio" data-orientation="square" hidden>${ICONS.square}<span>${TEXT.square}</span></button>
         </div>
       </div>
       ${colorChoices.length ? `
@@ -135,6 +158,19 @@
           <input type="range" class="dcc-zoom" min="1" max="${MAX_ZOOM}" step="0.01" value="1">
         </label>
         <p class="dcc__status dcc-status" aria-live="polite"></p>
+        <button type="button" class="dcc__button dcc-validate">${ICONS.check}<span>${TEXT.validate}</span></button>
+      </div>
+      <div class="dcc__preview dcc-preview" hidden tabindex="-1" aria-labelledby="${formId}-dcc-preview-title">
+        <div class="dcc__preview-head">
+          <span class="dcc__label" id="${formId}-dcc-preview-title">${TEXT.previewTitle}</span>
+          <button type="button" class="dcc__link dcc-change-2">${TEXT.change}</button>
+        </div>
+        <figure class="dcc__preview-frame">
+          <img class="dcc__preview-image dcc-preview-image" alt="${TEXT.previewAlt}">
+        </figure>
+        <p class="dcc__preview-meta dcc-preview-meta"></p>
+        <p class="dcc__status dcc-preview-status" aria-live="polite"></p>
+        <button type="button" class="dcc__button dcc__button--ghost dcc-edit">${ICONS.crop}<span>${TEXT.edit}</span></button>
       </div>
       <p class="dcc__error dcc-error" role="alert" hidden></p>
       <input type="file" class="dcc-source" accept="image/*" hidden>
@@ -153,6 +189,13 @@
       image: $('.dcc-image'),
       zoom: $('.dcc-zoom'),
       status: $('.dcc-status'),
+      validate: $('.dcc-validate'),
+      preview: $('.dcc-preview'),
+      previewImage: $('.dcc-preview-image'),
+      previewMeta: $('.dcc-preview-meta'),
+      previewStatus: $('.dcc-preview-status'),
+      edit: $('.dcc-edit'),
+      change2: $('.dcc-change-2'),
       error: $('.dcc-error'),
       source: $('.dcc-source'),
     };
@@ -177,7 +220,17 @@
 
     const isSquare = () => state.size.short === state.size.long;
     const aspect = () => (isSquare() ? 1 : state.orientation === 'landscape' ? state.size.long / state.size.short : state.size.short / state.size.long);
-    const sizeLabel = () => (state.orientation === 'landscape' && !isSquare() ? `${state.size.long}x${state.size.short}` : `${state.size.short}x${state.size.long}`);
+    const isLandscape = () => state.orientation === 'landscape' && !isSquare();
+    /** short name used in file names: "A3", or "50x40" for a canvas in cm */
+    const sizeLabel = () => (state.size.format || (isLandscape() ? `${state.size.long}x${state.size.short}` : `${state.size.short}x${state.size.long}`));
+    /** what the order shows: "A3 (29,7 × 42 cm)", or "40x50 cm" for a canvas */
+    const sizeProperty = () => {
+      const width = isLandscape() ? state.size.long : state.size.short;
+      const height = isLandscape() ? state.size.short : state.size.long;
+      return state.size.format
+        ? `${state.size.format} (${frenchNumber(width)} × ${frenchNumber(height)} cm)`
+        : `${sizeLabel()} cm`;
+    };
 
     const showError = (message) => {
       ui.error.textContent = message || '';
@@ -191,20 +244,57 @@
     const setPressed = (container, attribute, value) => {
       if (!container) return;
       container.querySelectorAll('button').forEach((button) => {
+        if (button.hidden) return;
         const selected = button.getAttribute(attribute) === String(value);
         button.classList.toggle('is-selected', selected);
         button.setAttribute('aria-checked', selected ? 'true' : 'false');
       });
     };
 
+    /** The canvas sizes on offer: the theme's own size picker when it drives the widget, our buttons otherwise */
+    const sizeOptions = () => {
+      if (!sizeGroup) return sizes.map((s) => ({ value: s.key, size: s.size }));
+      const select = sizeGroup.querySelector('select');
+      if (select) return Array.from(select.options).map((o) => ({ value: o.value, size: parseSize(o.value) || parseSize(o.textContent) }));
+      return Array.from(sizeGroup.querySelectorAll('[data-option-value]')).map((el) => ({ value: el.getAttribute('data-option-value'), size: parseSize(el.getAttribute('data-option-value')), el }));
+    };
+    const squareOption = () => sizeOptions().find((o) => o.size && o.size.short === o.size.long) || null;
+    const rectangleOptions = () => sizeOptions().filter((o) => o.size && o.size.short !== o.size.long);
+    const lastRectangleOption = () => rectangleOptions().find((o) => o.value === state.lastRectangle) || rectangleOptions()[0] || null;
+
+    /** Switches the canvas to that size, through the theme's picker when there is one */
+    const selectSize = (option) => {
+      if (!option || !option.size) return;
+      if (!sizeGroup) {
+        state.size = option.size;
+        syncVariantOption();
+        applyCanvasShape();
+        return;
+      }
+      const select = sizeGroup.querySelector('select');
+      if (select) {
+        select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (option.el) {
+        option.el.click();
+      }
+    };
+
     const updateInputs = () => {
-      inputs.size.value = `${sizeLabel()} cm`;
+      inputs.size.value = sizeProperty();
       inputs.orientation.value = isSquare() ? TEXT.square : state.orientation === 'landscape' ? TEXT.landscape : TEXT.portrait;
       if (inputs.colors) inputs.colors.value = state.colors ? String(state.colors) : '';
       setPressed(ui.sizes, 'data-size', (sizes.find((s) => s.size.short === state.size.short && s.size.long === state.size.long) || {}).key);
-      setPressed(ui.orientations, 'data-orientation', state.orientation);
+      // "Carré" is offered whenever the product has a square canvas; choosing it switches the canvas to that size
+      const square = isSquare();
+      const hasSquare = square || !!squareOption();
+      const hasRectangle = !square || !!lastRectangleOption();
+      ui.orientations.querySelectorAll('button').forEach((button) => {
+        button.hidden = button.getAttribute('data-orientation') === 'square' ? !hasSquare : !hasRectangle;
+      });
+      setPressed(ui.orientations, 'data-orientation', square ? 'square' : state.orientation);
       setPressed(ui.colors, 'data-colors', state.colors);
-      ui.orientationGroup.hidden = isSquare();
+      if (!ui.preview.hidden) updatePreviewMeta();
     };
 
     /** Selects the product variant option matching the canvas size, when the product has one (best effort) */
@@ -254,6 +344,36 @@
       callbacks.forEach((callback) => callback(attached));
     };
 
+    /** The validated result: what the customer framed, shown at the canvas proportions */
+    const updatePreviewMeta = () => {
+      const parts = [inputs.size.value, inputs.orientation.value];
+      if (inputs.colors && inputs.colors.value) parts.push(`${inputs.colors.value} ${TEXT.colorsUnit}`);
+      ui.previewMeta.textContent = parts.join(' · ');
+      ui.previewStatus.textContent = state.lowResolution ? TEXT.lowResolution : TEXT.ready;
+      ui.previewStatus.classList.toggle('dcc__status--warning', state.lowResolution);
+    };
+
+    const setPreviewImage = (blob) => {
+      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = URL.createObjectURL(blob);
+      ui.previewImage.src = state.previewUrl;
+      updatePreviewMeta();
+    };
+
+    const showPreview = () => {
+      ui.upload.hidden = true;
+      ui.editor.hidden = true;
+      ui.preview.hidden = false;
+      updatePreviewMeta();
+      ui.preview.focus({ preventScroll: true });
+    };
+
+    const showEditor = () => {
+      ui.upload.hidden = true;
+      ui.preview.hidden = true;
+      ui.editor.hidden = false;
+    };
+
     const exportCrop = () => {
       const cropper = state.cropper;
       if (!cropper) return;
@@ -286,7 +406,9 @@
 
         const crop = cropper.getData(true); // crop size in pixels of the original photo
         const lowResolution = Math.min(crop.width, crop.height) < MIN_RECOMMENDED_SIDE;
+        state.lowResolution = lowResolution;
         setStatus(lowResolution ? TEXT.lowResolution : TEXT.ready, lowResolution);
+        setPreviewImage(blob);
         root.dispatchEvent(new CustomEvent('dcc:photo-ready', { bubbles: true, detail: { file, width: canvas.width, height: canvas.height, size: inputs.size.value, orientation: inputs.orientation.value } }));
         finishExport(true);
       }, 'image/jpeg', JPEG_QUALITY);
@@ -374,8 +496,7 @@
         }
         updateInputs();
         syncVariantOption();
-        ui.upload.hidden = true;
-        ui.editor.hidden = false;
+        showEditor();
         ui.zoom.value = '1';
 
         state.cropper = new window.Cropper(ui.image, {
@@ -428,7 +549,17 @@
     ui.orientations.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-orientation]');
       if (!button) return;
-      state.orientation = button.getAttribute('data-orientation');
+      const choice = button.getAttribute('data-orientation');
+      if (choice === 'square') {
+        if (!isSquare()) selectSize(squareOption());
+        return;
+      }
+      state.orientation = choice;
+      // leaving a square canvas: go back to the last rectangular size
+      if (isSquare()) {
+        selectSize(lastRectangleOption());
+        return;
+      }
       applyCanvasShape();
     });
     if (ui.colors) {
@@ -441,6 +572,13 @@
     }
     ui.pick.addEventListener('click', () => ui.source.click());
     ui.change.addEventListener('click', () => ui.source.click());
+    ui.change2.addEventListener('click', () => ui.source.click());
+    // "Valider le cadrage": show the framed result; "Modifier le cadrage": go back to the editor
+    ui.validate.addEventListener('click', () => whenPhotoAttached((ok) => ok && showPreview()));
+    ui.edit.addEventListener('click', () => {
+      showEditor();
+      ui.editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
     ui.source.addEventListener('change', () => {
       loadPhoto(ui.source.files && ui.source.files[0]);
       ui.source.value = '';
@@ -516,7 +654,9 @@
     };
     watchPicker(sizeGroup, (value) => {
       const size = parseSize(value);
-      if (!size || (size.short === state.size.short && size.long === state.size.long)) return;
+      if (!size) return;
+      if (size.short !== size.long) state.lastRectangle = value; // to come back to after a square canvas
+      if (size.short === state.size.short && size.long === state.size.long) return;
       state.size = size;
       applyCanvasShape();
     });

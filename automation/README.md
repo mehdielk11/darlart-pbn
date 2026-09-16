@@ -1,17 +1,18 @@
 # Darl'Art automation: customer photo → paint by numbers PDF
 
-The customer frames their photo on the product page. When the order is paid, n8n sends that photo and their choices to pbn-api, which generates the canvas. The files are saved to Google Drive. No AI service is used.
+The customer frames their photo on the product page. When the order is paid, n8n sends that photo and their choices to pbn-api, which generates the template. The files are e-mailed to the customer and saved to Google Drive. No AI service is used.
 
 The website, the API and the CLI all use the same code in `src/core/` (processing pipeline, family renumbering, SVG and PDF), so they produce the same template for the same photo and settings.
 
 ```
-Product page: customer picks size + orientation (+ colors), uploads and frames the photo   (shopify/ widget)
-      │  order line properties: Photo (cropped image URL), Taille, Orientation, Couleurs
+Product page: customer picks print format + orientation (+ colors), uploads and frames the photo   (shopify/ widget)
+      │  order line properties: Photo (cropped image URL), Format, Orientation, Couleurs
       ▼
 Shopify "orders/paid" ─┐
 Webhook (other channel) ┴─► Normalize order ─► Ready? ─► for each photo:
     POST /v1/jobs (cropMode "center", fixed difficulty) ─► Wait (API calls back)
-    ─► Drive folder "Orders/<order>" ─► download + upload files ─► email when something needs a look
+    ─► Drive folder "Orders/<order>" ─► download + upload files
+    ─► e-mail the customer the PDF, the preview and the paint list ─► e-mail you when something needs a look
 ```
 
 ## 1. Customer crop widget
@@ -164,7 +165,8 @@ Import `n8n-darlart-canvas-workflow.json` (Workflows → Import from file), then
    - `PBN_API_URL`: `http://127.0.0.1:3000` when n8n and the API run on the same machine.
    - `DIFFICULTY`: the level used for every order (`easy`, `medium` or `hard`).
    - `DEFAULT_COLORS`: used when the order has no color count.
-   - The property names already match the crop widget (`Photo`, `Taille`, `Orientation`, `Couleurs`).
+   - The property names already match the crop widget (`Photo`, `Format`, `Orientation`, `Couleurs`). `FORMATS` maps each print format to the paper it is printed on: A4 = `21x29.7` cm, A3 = `29.7x42`, A2 = `42x59.4`, so the template fills the sheet exactly. Orders that still carry a canvas size in cm keep working.
+   - **Email: files to customer** sends `template.pdf`, `preview.png` and `palette.json` (never the SVG) to `customerEmail`. Above 15 MB in total, only the PDF is sent and you get an alert to forward the rest — nothing is ever shared publicly. Set the SMTP credential and the `fromEmail` on that node, and set SPF/DKIM/DMARC on the sending domain, or the mail lands in spam.
 2. **Credentials**
    - *Header Auth* "pbn-api": name `x-api-key`, value = `API_KEY`. Use it on **Create generation job** and **Download file**.
    - *Header Auth* "pbn-callback": name `x-callback-secret`, value = `CALLBACK_SECRET`. Use it on **Wait for job**.
@@ -191,4 +193,5 @@ Other channels can POST an already cropped photo to the webhook:
 ## 5. Tuning
 
 - **Difficulty:** one fixed level set in **Normalize order**. The presets (facet sizes, border smoothing…) are in `src/core/settings.ts` (`DIFFICULTY_PRESETS`); the website and API both read them.
-- **Photo quality:** the widget warns the customer below 800 px (`MIN_RECOMMENDED_SIDE` in `shopify/assets/darlart-canvas-crop.js`), and so does **Summarize order** (`MIN_SHORT_SIDE`).
+- **Photo quality:** the widget warns the customer below 1400 px (`MIN_RECOMMENDED_SIDE` in `shopify/assets/darlart-canvas-crop.js`), and so does **Summarize order** (`MIN_SHORT_SIDE`). The PDF is vector, so the upload resolution doesn't set print sharpness: it sets how much detail the tracer sees (the pipeline works at 1024 px).
+- **Re-sending files:** the API deletes a job's files after `RETENTION_DAYS` (14 by default), so the Drive copy is the archive. Raise it to 30 in `/etc/pbn/api.env` if you want a longer window to re-send from the API itself.
