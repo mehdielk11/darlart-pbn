@@ -388,10 +388,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Collects what the customer receives: the printable PDF, the preview and the paint list (the SVG stays internal).\n// Nothing is ever shared publicly: when the files are too heavy to email, only the PDF goes out and the owner is alerted.\nconst MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024; // raw; base64 adds ~37%, and many SMTP relays stop at 20-25 MB\nconst WANTED = ['template.pdf', 'preview.png', 'palette.json'];\nconst ESSENTIAL = 'template.pdf';\n\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst listed = $('List output files').all().map((item) => item.json);\nconst downloads = $('Download file').all();\nconst folder = $('Create order folder').first().json;\n\nconst files = (job.result && job.result.files) || [];\nconst wanted = files.filter((file) => WANTED.includes(file.name));\nconst totalBytes = wanted.reduce((sum, file) => sum + (file.size || 0), 0);\nconst tooBig = totalBytes > MAX_ATTACHMENT_BYTES;\n// too heavy for one email: send the printable PDF alone, the owner sends the rest\nconst toAttach = tooBig ? wanted.filter((file) => file.name === ESSENTIAL) : wanted;\n\n// \"Download file\" runs once per listed file, so the binaries follow the order of \"List output files\"\nconst binary = {};\nconst attachments = [];\nconst missing = [];\nfor (const file of toAttach) {\n  const index = listed.findIndex((entry) => entry.downloadName === file.downloadName || entry.url === file.url);\n  const item = index >= 0 ? downloads[index] : null;\n  if (!item || !item.binary || !item.binary.data) {\n    missing.push(file.name);\n    continue;\n  }\n  const key = `attachment${attachments.length}`;\n  binary[key] = item.binary.data;\n  attachments.push(key);\n}\n\n// what the owner needs to know: nothing attached at all, files dropped, or an email that must be completed by hand\nconst problem = attachments.length === 0\n  ? `no file could be attached for order ${order.orderId} (${missing.join(', ') || 'no binary'})`\n  : (tooBig ? `the files for order ${order.orderId} weigh ${Math.round(totalBytes / 1024 / 1024)} MB: only the PDF was emailed, send the preview and the paint list by hand` : '');\n\nreturn [{\n  json: {\n    orderId: order.orderId,\n    shopifyOrderId: order.shopifyOrderId || '',\n    customerEmail: order.customerEmail || '',\n    format: order.format || '',\n    colors: order.colors,\n    totalBytes,\n    totalMb: Math.round((totalBytes / 1024 / 1024) * 10) / 10,\n    tooBig,\n    attachments: attachments.join(','),\n    attachedCount: attachments.length,\n    problem,\n    driveFolderId: folder.id || '',\n  },\n  binary,\n}];\n"
+        "jsCode": "// What the customer receives: a link to their order folder on Drive, sent by Shopify itself.\n// \"Share order folder\" shares that one folder with anyone holding the link, so a customer only ever\n// sees their own order: the parent \"Orders\" folder stays private.\nconst SHOP_DOMAIN = 't2sg7e-ud.myshopify.com';\nconst API_VERSION = '2026-07';\n\nconst order = $('Loop over photos').first().json;\nconst folder = $('Create order folder').first().json;\nconst job = $('Wait for job').first().json.body;\nconst files = (((job || {}).result || {}).files || []).map((file) => file.downloadName);\nconst folderId = folder.id || '';\n\nconst issues = [];\nif (!folderId) {\n  issues.push('no Drive folder, so there is no link to send');\n}\nif (!order.shopifyOrderId) {\n  issues.push('no Shopify order id (this order came from the webhook, not from Shopify), so Shopify cannot e-mail the customer');\n}\n\nreturn [{\n  json: {\n    orderId: order.orderId,\n    shopifyOrderId: order.shopifyOrderId || '',\n    orderGid: order.shopifyOrderId ? `gid://shopify/Order/${order.shopifyOrderId}` : '',\n    customerEmail: order.customerEmail || '',\n    format: order.format || '',\n    colors: order.colors,\n    files,\n    folderId,\n    driveFolderUrl: folderId ? `https://drive.google.com/drive/folders/${folderId}` : '',\n    graphqlUrl: `https://${SHOP_DOMAIN}/admin/api/${API_VERSION}/graphql.json`,\n    problem: issues.join(', '),\n  },\n}];\n"
       },
       "id": "a0b8f7c1-0033-4d6e-9c11-000000000031",
-      "name": "Build customer email",
+      "name": "Prepare delivery",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -415,10 +415,11 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2880,
-        -200
+        2660,
+        -380
       ],
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "disabled": true
     },
     {
       "parameters": {
@@ -431,7 +432,7 @@
           "conditions": [
             {
               "id": "c1a1a1a1-0000-4000-8000-000000000005",
-              "leftValue": "={{ $json.error ? 'the e-mail to the customer failed: ' + ($json.error.message || $json.error) : ($('Build customer email').first().json.problem || '') }}",
+              "leftValue": "={{ $json.problem }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -449,17 +450,17 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3100,
-        -200
+        4200,
+        -280
       ]
     },
     {
       "parameters": {
         "fromEmail": "automation@example.com",
         "toEmail": "you@example.com",
-        "subject": "=Darl'Art order {{ $('Build customer email').first().json.orderId }}: delivery needs attention",
+        "subject": "=Darl'Art order {{ $json.orderId }}: the customer was not notified",
         "emailFormat": "text",
-        "text": "=The template was generated and saved to Drive, but the delivery to the customer needs a look.\n\nOrder: {{ $('Build customer email').first().json.orderId }}\nCustomer: {{ $('Build customer email').first().json.customerEmail }}\nFormat: {{ $('Build customer email').first().json.format }}, colors: {{ $('Build customer email').first().json.colors }}\nFiles: {{ $('Build customer email').first().json.attachedCount }} attached, {{ $('Build customer email').first().json.totalMb }} MB in total\nProblem: {{ $('Build customer email').first().json.problem }}\nError: {{ $json.error ? ($json.error.message || $json.error) : 'none' }}\nDrive folder: https://drive.google.com/drive/folders/{{ $('Build customer email').first().json.driveFolderId }}",
+        "text": "=The template was generated and saved to Drive, but Shopify did not e-mail the customer.\n\nOrder: {{ $json.orderId }}\nCustomer: {{ $json.customerEmail }}\nFormat: {{ $json.format }}, colors: {{ $json.colors }}\nFiles: {{ ($json.files || []).join(', ') }}\nDrive folder: {{ $json.driveFolderUrl }}\nProblem: {{ $json.problem }}\n\nSend the folder link to the customer by hand, or fulfil the order in the admin with that link as the tracking URL.",
         "options": {}
       },
       "id": "a0b8f7c1-0033-4d6e-9c11-000000000034",
@@ -467,9 +468,137 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
+        4420,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.graphqlUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'query OrderFulfillmentOrders($id: ID!) { order(id: $id) { id name fulfillmentOrders(first: 5) { nodes { id status } } } }', variables: { id: $json.orderGid } }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a0b8f7c1-0044-4d6e-9c11-000000000041",
+      "name": "Find fulfillment order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3100,
+        -200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds the fulfillmentCreate request: fulfilling the order is what makes Shopify e-mail the customer,\n// and the Drive link travels as the tracking URL, which Shopify shows in that e-mail.\nconst prepared = $('Prepare delivery').first().json;\nconst response = $input.first().json;\n\nconst graphqlErrors = ((response || {}).errors || []).map((error) => error.message);\nconst fulfillmentOrders = ((((response || {}).data || {}).order || {}).fulfillmentOrders || {}).nodes || [];\nconst open = fulfillmentOrders.find((node) => node.status === 'OPEN' || node.status === 'IN_PROGRESS');\n\nif (prepared.problem || graphqlErrors.length || !open) {\n  const problem = prepared.problem\n    || graphqlErrors.join('; ')\n    || `no open fulfillment order for ${prepared.orderId}: the order may already be fulfilled, or the app is missing the fulfillment scopes`;\n  return [{ json: { ...prepared, skip: true, problem } }];\n}\n\nconst mutation = 'mutation FulfillDigitalOrder($fulfillment: FulfillmentInput!) { fulfillmentCreate(fulfillment: $fulfillment) { fulfillment { id status trackingInfo { url } } userErrors { field message } } }';\n\nreturn [{\n  json: {\n    ...prepared,\n    skip: false,\n    body: {\n      query: mutation,\n      variables: {\n        fulfillment: {\n          notifyCustomer: true,\n          trackingInfo: {\n            company: \"Darl'Art\",\n            number: prepared.orderId,\n            url: prepared.driveFolderUrl,\n          },\n          lineItemsByFulfillmentOrder: [{ fulfillmentOrderId: open.id }],\n        },\n      },\n    },\n  },\n}];\n"
+      },
+      "id": "a0b8f7c1-0044-4d6e-9c11-000000000042",
+      "name": "Build fulfillment request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
         3320,
         -200
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1a1a1a1-0000-4000-8000-000000000006",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a0b8f7c1-0044-4d6e-9c11-000000000043",
+      "name": "Can notify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3540,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.graphqlUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a0b8f7c1-0044-4d6e-9c11-000000000044",
+      "name": "Notify customer (Shopify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3760,
+        -280
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Did Shopify accept the fulfillment (and therefore e-mail the customer)?\nconst prepared = $('Prepare delivery').first().json;\nconst response = $input.first().json;\n\nconst result = (((response || {}).data || {}).fulfillmentCreate) || {};\nconst graphqlErrors = ((response || {}).errors || []).map((error) => error.message);\nconst userErrors = (result.userErrors || []).map((error) => `${(error.field || []).join('.')}: ${error.message}`);\nconst problem = [...graphqlErrors, ...userErrors].join('; ');\nconst fulfillment = result.fulfillment || {};\n\nreturn [{\n  json: {\n    orderId: prepared.orderId,\n    customerEmail: prepared.customerEmail,\n    format: prepared.format,\n    colors: prepared.colors,\n    files: prepared.files,\n    driveFolderUrl: prepared.driveFolderUrl,\n    fulfillmentId: fulfillment.id || '',\n    notified: !!fulfillment.id && !problem,\n    problem,\n  },\n}];\n"
+      },
+      "id": "a0b8f7c1-0044-4d6e-9c11-000000000045",
+      "name": "Check delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3980,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.folderId }}/permissions?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ role: \"reader\", type: \"anyone\" }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a0b8f7c1-0055-4d6e-9c11-000000000051",
+      "name": "Share order folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        -200
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -636,7 +765,7 @@
             "index": 0
           },
           {
-            "node": "Build customer email",
+            "node": "Prepare delivery",
             "type": "main",
             "index": 0
           }
@@ -694,28 +823,6 @@
         ]
       ]
     },
-    "Build customer email": {
-      "main": [
-        [
-          {
-            "node": "Email: files to customer",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Email: files to customer": {
-      "main": [
-        [
-          {
-            "node": "Delivery problem?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Delivery problem?": {
       "main": [
         [
@@ -726,6 +833,90 @@
           }
         ],
         []
+      ]
+    },
+    "Prepare delivery": {
+      "main": [
+        [
+          {
+            "node": "Share order folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find fulfillment order": {
+      "main": [
+        [
+          {
+            "node": "Build fulfillment request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build fulfillment request": {
+      "main": [
+        [
+          {
+            "node": "Can notify?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can notify?": {
+      "main": [
+        [
+          {
+            "node": "Notify customer (Shopify)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: delivery needs attention",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify customer (Shopify)": {
+      "main": [
+        [
+          {
+            "node": "Check delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check delivery": {
+      "main": [
+        [
+          {
+            "node": "Delivery problem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share order folder": {
+      "main": [
+        [
+          {
+            "node": "Find fulfillment order",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },

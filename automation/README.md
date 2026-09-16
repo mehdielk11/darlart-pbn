@@ -12,7 +12,7 @@ Shopify "orders/paid" ─┐
 Webhook (other channel) ┴─► Normalize order ─► Ready? ─► for each photo:
     POST /v1/jobs (cropMode "center", fixed difficulty) ─► Wait (API calls back)
     ─► Drive folder "Orders/<order>" ─► download + upload files
-    ─► e-mail the customer the PDF, the preview and the paint list ─► e-mail you when something needs a look
+    ─► fulfil the order so Shopify e-mails the customer the link ─► e-mail you when something needs a look
 ```
 
 ## 1. Customer crop widget
@@ -166,7 +166,12 @@ Import `n8n-darlart-canvas-workflow.json` (Workflows → Import from file), then
    - `DIFFICULTY`: the level used for every order (`easy`, `medium` or `hard`).
    - `DEFAULT_COLORS`: used when the order has no color count.
    - The property names already match the crop widget (`Photo`, `Format`, `Orientation`, `Couleurs`). `FORMATS` maps each print format to the paper it is printed on: A4 = `21x29.7` cm, A3 = `29.7x42`, A2 = `42x59.4`, so the template fills the sheet exactly. Orders that still carry a canvas size in cm keep working.
-   - **Email: files to customer** sends `template.pdf`, `preview.png` and `palette.json` (never the SVG) to `customerEmail`. Above 15 MB in total, only the PDF is sent and you get an alert to forward the rest — nothing is ever shared publicly. Set the SMTP credential and the `fromEmail` on that node, and set SPF/DKIM/DMARC on the sending domain, or the mail lands in spam.
+2. **Delivery to the customer is sent by Shopify**, not by your SMTP: the workflow fulfils the order with the Drive folder as the tracking URL, and Shopify e-mails the customer from your store's sender. That's the part with the good deliverability, so nothing lands in spam.
+   - **Prepare delivery** builds the link `https://drive.google.com/drive/folders/<order folder>`. Set `SHOP_DOMAIN` at the top of that node.
+   - **Find fulfillment order** and **Notify customer (Shopify)** call the Admin API. Give them your Shopify credential (n8n predefined type "Shopify Access Token API"); the app needs the fulfillment scopes (`write_merchant_managed_fulfillment_orders`, `read_orders`).
+   - **Share order folder** shares that one folder with "anyone with the link can view", through the Drive API with your Google credential. The parent "Orders" folder is never shared, so one customer's link can't reach another customer's order.
+   - In the admin, edit **Settings → Notifications → Shipping confirmation**: that's the e-mail the customer receives, so replace the shipping wording with "your files are ready" and label the tracking link "Open my files".
+   - **Email: files to customer** is still in the workflow but disabled: enable it if you ever want the files attached over SMTP instead.
 2. **Credentials**
    - *Header Auth* "pbn-api": name `x-api-key`, value = `API_KEY`. Use it on **Create generation job** and **Download file**.
    - *Header Auth* "pbn-callback": name `x-callback-secret`, value = `CALLBACK_SECRET`. Use it on **Wait for job**.

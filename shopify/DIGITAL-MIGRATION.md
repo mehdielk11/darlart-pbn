@@ -10,7 +10,7 @@ The store sells printable paint-by-numbers files: the customer frames a photo, p
 - **Home page** (`templates/index.json`): same shipping section and FAQ rewrite, mystery-kit block off.
 - **Header**: the top bar now reads "INSTANT DOWNLOAD · YOUR FILES BY E-MAIL IN MINUTES".
 - **Footer**: the tagline now reads "Printable Paint by Numbers, made from your photo".
-- **Automation**: n8n e-mails the customer their files when the order is paid, keeps your Drive copy, and alerts you if a delivery needs a human.
+- **Automation**: when the order is paid, n8n generates the files into a Drive folder for that order, then fulfils the order with that folder as the tracking link — so **Shopify** e-mails the customer from your store's sender, which is far better for deliverability than Gmail. You get an alert if anything fails.
 - **New product** (draft): "Custom Printable Paint by Numbers", options Format (A4/A3/A2) × Colors (12/24/36/48), 12 variants, all marked as not requiring shipping.
 
 ## Only you can do these
@@ -19,9 +19,16 @@ The store sells printable paint-by-numbers files: the customer frames a photo, p
 
 1. **Prices** on the 12 variants of the new draft product, plus photos and a description.
 2. **Turn off cash on delivery** and keep online payment only. A digital order must be paid before the files are sent.
-3. **Publish "Copy of Darl'Art"**. Until then, customers still see the physical theme.
-4. **Set the product to Active** and tick the Online Store sales channel.
-5. **Archive or redirect** the old "Custom Paint by Numbers Kit" (it still offers canvas sizes in cm).
+3. **Drive sharing: nothing to do.** The workflow shares each order folder on its own ("anyone with the link can view"), so a customer only ever reaches their own order and the parent "Orders" folder stays private. Just make sure the Google account behind the n8n credential owns that folder and is allowed to share.
+4. **Give n8n a Shopify credential** with the fulfillment scopes (`write_merchant_managed_fulfillment_orders`, `read_orders`) and select it on the two "…fulfillment…" HTTP nodes. Without it, the files are generated and saved but the customer is never notified.
+5. **Rewrite the e-mail the customer receives**: Settings → Notifications → **Shipping confirmation**. It is sent by Shopify when the workflow fulfils the order, so it must not talk about shipping. Suggested wording:
+   - Subject: `Your paint by numbers files are ready — order {{ order.name }}`
+   - Body: "Your files are ready. Open the link below to download your printable template (PDF), the preview and the paint list. Print at 100 % — not 'fit to page' — on 160–250 g paper. Nothing is being shipped: everything is in that folder."
+   - Relabel the tracking button "Open my files".
+6. **Authenticate your sending domain** in Settings → Notifications (Shopify shows the DNS records). This is what keeps the mail out of spam, and it replaces Gmail for customer mail — your SMTP is now only used for alerts to you.
+7. **Publish "Copy of Darl'Art"**. Until then, customers still see the physical theme.
+8. **Set the product to Active** and tick the Online Store sales channel.
+9. **Archive or redirect** the old "Custom Paint by Numbers Kit" (it still offers canvas sizes in cm).
 
 **Shared with the live theme — I did not touch these**
 
@@ -42,8 +49,8 @@ These live in the store, not in the theme, so changing them changes the live sto
 **On the server**
 
 - `git pull && npm ci && npm run build:server && sudo systemctl restart pbn-api` so the API knows the print formats.
-- Optionally raise `RETENTION_DAYS` to 30 in `/etc/pbn/api.env` so files can be re-sent for a month.
-- Set SPF, DKIM and DMARC on the sending domain, otherwise the delivery e-mail lands in spam.
+- Optionally raise `RETENTION_DAYS` to 30 in `/etc/pbn/api.env`. The Drive folder is the customer's copy, so this only affects re-generating from the API.
+- Your SMTP (Gmail) now only sends alerts to you, so its limits and spam reputation no longer affect customers.
 
 ## Test before going live
 
