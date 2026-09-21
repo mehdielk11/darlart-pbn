@@ -31,6 +31,7 @@
     const paperSizeSelect = document.getElementById('paperSize');
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
+    const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
     const downloadPaletteBtn = document.getElementById('btnDownloadPalette');
     const toggleColorRestrictionsBtn = document.getElementById('toggleColorRestrictions');
@@ -1154,6 +1155,14 @@
                 if (hiddenPngBtn) {
                     hiddenPngBtn.click();
                 }
+            }
+        });
+
+        // pre-printed canvas look: faint colors with grey outlines and numbers
+        if (downloadCanvasBtn) downloadCanvasBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('png').replace(/\.png$/i, '-canvas.png');
+            if (typeof window.downloadCanvasPNG === 'function') {
+                window.downloadCanvasPNG(filename);
             }
         });
 

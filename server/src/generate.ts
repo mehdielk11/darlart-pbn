@@ -11,7 +11,7 @@ import { buildPaletteEntries, groupPaletteEntries } from "../../src/core/palette
 import { buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
 import { buildSettings, Difficulty } from "../../src/core/settings";
-import { buildSvgString } from "../../src/core/svg";
+import { buildFadedSvgString, buildSvgString } from "../../src/core/svg";
 import { CropMethod, CropMode, prepareImage } from "./image";
 
 export interface GenerateRequest {
@@ -83,6 +83,7 @@ export const OUTPUT_FILES = {
     pdf: { name: "template.pdf", contentType: "application/pdf" },
     svg: { name: "template.svg", contentType: "image/svg+xml" },
     preview: { name: "preview.png", contentType: "image/png" },
+    canvas: { name: "canvas.png", contentType: "image/png" },
     palette: { name: "palette.json", contentType: "application/json" },
 };
 
@@ -147,7 +148,21 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     const previewSvg = buildSvgString(result.facetResult, result.colorsByIndex, { fill: true, stroke: false, labels: false, sizeMultiplier: 2 });
     const preview = await sharp(Buffer.from(previewSvg)).resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).png().toBuffer();
     await writeOutput(OUTPUT_FILES.preview, "-preview.png", preview);
-    report("output", 0.8);
+    report("output", 0.75);
+
+    // Canvas: faintly tinted regions with grey outlines and numbers, the look of a pre-printed canvas.
+    // Up to 3508 px on the long side, which is A4 at 300 dpi; the fonts fall back where Tahoma isn't installed.
+    const canvasSvg = buildFadedSvgString(result.facetResult, result.colorsByIndex, {
+        sizeMultiplier: 4,
+        strokeWidth: 1.5,
+        fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+    });
+    const canvasPng = await sharp(Buffer.from(canvasSvg))
+        .resize({ width: 3508, height: 3508, fit: "inside", withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+    await writeOutput(OUTPUT_FILES.canvas, "-canvas.png", canvasPng);
+    report("output", 0.85);
 
     // Palette with paint codes, families and area share
     const pointsByColor = new Array(result.colorsByIndex.length).fill(0);

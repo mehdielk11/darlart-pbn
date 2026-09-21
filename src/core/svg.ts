@@ -13,7 +13,22 @@ export interface SvgOptions {
     fontSize?: number;
     fontColor?: string;
     strokeColor?: string;
+    /** Outline width in output pixels (default 1) */
+    strokeWidth?: number;
+    /** Label font (default Tahoma); add fallbacks when rendering where Tahoma isn't installed */
+    fontFamily?: string;
+    /** Color painted behind the facets (default: none, transparent) */
+    background?: string;
 }
+
+/** The faded "pre-printed canvas" look: pale colors with grey outlines and grey numbers */
+export const FADED_CANVAS_STYLE = {
+    /** Share of each color that is kept, the rest being white: 1 keeps the color, 0 turns it white */
+    colorStrength: 0.22,
+    strokeColor: "#a2a7ad",
+    fontColor: "#868b92",
+    background: "#ffffff",
+};
 
 /** Closed outline of a facet built from its (smoothed) border segments, in image pixel coordinates */
 export function getFacetOutline(f: Facet): Point[] {
@@ -53,9 +68,14 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
     const fontSize = options.fontSize !== undefined ? options.fontSize : 50;
     const fontColor = options.fontColor || "#000";
     const strokeColor = options.strokeColor || "#000";
+    const strokeWidth = options.strokeWidth !== undefined ? options.strokeWidth : 1;
+    const fontFamily = (options.fontFamily || "Tahoma").replace(/"/g, "'");
 
     const parts: string[] = [];
     parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height}">`);
+    if (options.background) {
+        parts.push(`<rect width="100%" height="100%" fill="${options.background}"></rect>`);
+    }
 
     for (const f of facetResult.facets) {
         if (f == null || f.borderSegments.length === 0) {
@@ -71,18 +91,46 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
             // make the border the same color as the fill color if there is no border stroke to not have gaps in between facets
             style += `stroke: ${color}; `;
         }
-        style += "stroke-width: 1px; ";
+        style += `stroke-width: ${strokeWidth}px; `;
         style += `fill: ${fill ? color : "none"};`;
         parts.push(`<path data-facetId="${f.id}" d="${buildFacetPathData(outline, sizeMultiplier)}" style="${style}"></path>`);
 
         if (labels) {
             parts.push(`<g class="label" transform="translate(${f.labelBounds.minX * sizeMultiplier},${f.labelBounds.minY * sizeMultiplier})">` +
                 `<svg width="${f.labelBounds.width * sizeMultiplier}" height="${f.labelBounds.height * sizeMultiplier}" overflow="visible" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet">` +
-                `<text font-family="Tahoma" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${fontColor}">${f.color + 1}</text>` +
+                `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${fontColor}">${f.color + 1}</text>` +
                 `</svg></g>`);
         }
     }
 
     parts.push("</svg>");
     return parts.join("");
+}
+
+/** Mixes each color toward white, keeping `strength` of the original (0 = white, 1 = unchanged) */
+export function fadeColors(colorsByIndex: RGB[], strength: number): RGB[] {
+    const kept = Math.max(0, Math.min(1, strength));
+    return colorsByIndex.map((color) => color.map((channel, i) => (i < 3 ? Math.round(255 - (255 - channel) * kept) : channel)));
+}
+
+/**
+ * The template as a pre-printed canvas: every region faintly tinted with its color, with grey outlines and
+ * numbers on white. Painters see where each color goes while the numbers stay readable.
+ */
+export function buildFadedSvgString(facetResult: FacetResult, colorsByIndex: RGB[], options: SvgOptions & { colorStrength?: number } = {}): string {
+    const strength = options.colorStrength !== undefined ? options.colorStrength : FADED_CANVAS_STYLE.colorStrength;
+    const svgOptions: SvgOptions = {
+        strokeColor: FADED_CANVAS_STYLE.strokeColor,
+        fontColor: FADED_CANVAS_STYLE.fontColor,
+        background: FADED_CANVAS_STYLE.background,
+    };
+    for (const key of Object.keys(options) as (keyof SvgOptions)[]) {
+        if (key !== ("colorStrength" as string) && options[key] !== undefined) {
+            (svgOptions as any)[key] = options[key];
+        }
+    }
+    svgOptions.fill = true;
+    svgOptions.stroke = true;
+    svgOptions.labels = true;
+    return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
 }

@@ -11,6 +11,7 @@ const { parseCustomColors, buildSettings, DEFAULT_RANDOM_SEED } = require(path.j
 const { reorderColorsByFamily, buildPaletteEntries, groupPaletteEntries } = require(path.join(dist, "src/core/palette"));
 const { fitCropToAspect, resolveCanvasSize, PRINT_FORMATS, PRINT_FORMAT_IDS, parsePrintFormat, printFormatForCanvas } = require(path.join(dist, "src/core/crop"));
 const { suggestDifficulty } = require(path.join(dist, "src/core/complexity"));
+const { fadeColors } = require(path.join(dist, "src/core/svg"));
 const { findPaletteFamily } = require(path.join(dist, "src/palettefamilies"));
 const { decodeImage } = require(path.join(dist, "server/src/image"));
 const { generate } = require(path.join(dist, "server/src/generate"));
@@ -99,6 +100,12 @@ test("print formats keep the A series shape and are recognised by name", () => {
     assert.equal(printFormatForCanvas("30x40"), null);
 });
 
+test("fadeColors mixes each color toward white", () => {
+    assert.deepEqual(fadeColors([[255, 255, 255], [0, 0, 0], [200, 100, 50]], 0.35), [[255, 255, 255], [166, 166, 166], [236, 201, 183]]);
+    assert.deepEqual(fadeColors([[10, 20, 30]], 1), [[10, 20, 30]]);
+    assert.deepEqual(fadeColors([[10, 20, 30]], 0), [[255, 255, 255]]);
+});
+
 test("fitCropToAspect always returns a box with the right aspect inside the image", () => {
     const centered = fitCropToAspect(null, 0.75, 1000, 500);
     assert.deepEqual(centered, { left: 313, top: 0, width: 375, height: 500 });
@@ -160,7 +167,14 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             orderId: "#1001",
         });
 
-        assert.deepEqual(result.files.map((f) => f.name).sort(), ["palette.json", "preview.png", "template.pdf", "template.svg"]);
+        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "palette.json", "preview.png", "template.pdf", "template.svg"]);
+
+        // the pre-printed canvas look: a real PNG, on white, carrying the numbers
+        const canvasPng = fs.readFileSync(path.join(outputDir, "canvas.png"));
+        assert.equal(canvasPng.subarray(1, 4).toString("latin1"), "PNG");
+        const sharp = require("sharp");
+        const canvasMeta = await sharp(canvasPng).metadata();
+        assert.ok(Math.max(canvasMeta.width, canvasMeta.height) > 1000, `canvas.png is ${canvasMeta.width}x${canvasMeta.height}`);
         assert.ok(Math.abs(result.canvas.aspect - result.crop.width / result.crop.height) < 0.01);
         assert.ok(result.colorsUsed > 0 && result.colorsUsed <= 12);
 

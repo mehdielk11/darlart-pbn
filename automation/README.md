@@ -143,6 +143,7 @@ Downloads one file:
 - `template.pdf`: page 1 colored, page 2 numbered outline, page 3+ legend by family;
 - `template.svg`: colored template with numbers;
 - `preview.png`: colored template without numbers;
+- `canvas.png`: the pre-printed canvas look, with every region faintly tinted and grey outlines and numbers on white, up to 3508 px (A4 at 300 dpi);
 - `palette.json`: the palette with codes, families and area percentages.
 
 ### Other endpoints

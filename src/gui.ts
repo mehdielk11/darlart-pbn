@@ -6,11 +6,12 @@ import { CancellationToken, IMap, RGB } from "./common";
 import { getColorCode } from "./core/palette";
 import { buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
 import { buildSettings, Difficulty } from "./core/settings";
+import { buildFadedSvgString } from "./core/svg";
 import { GUIProcessManager, ProcessResult } from "./guiprocessmanager";
 import { findPaletteFamily } from "./palettefamilies";
 import { Settings } from "./settings";
 
-declare function saveSvgAsPng(el: Node, filename: string): void;
+declare function saveSvgAsPng(el: Node, filename: string, options?: { backgroundColor?: string; scale?: number }): void;
 
 let processResult: ProcessResult | null = null;
 let cancellationToken: CancellationToken = new CancellationToken();
@@ -203,6 +204,19 @@ export function downloadPNG(filename?: string) {
     }
 }
 
+/** The template as a pre-printed canvas: faint colors, grey outlines and numbers (same look as the API's canvas.png) */
+export function downloadCanvasPNG(filename?: string) {
+    if (processResult == null) {
+        return;
+    }
+    const svgString = buildFadedSvgString(processResult.facetResult, processResult.colorsByIndex, { sizeMultiplier: 3, strokeWidth: 1.2 });
+    const svg = document.importNode(new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement, true);
+    const defaultName = (typeof (window as any).getOutputFilename === "function")
+        ? String((window as any).getOutputFilename("png")).replace(/\.png$/i, "-canvas.png")
+        : "paintbynumbers-canvas.png";
+    saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
+}
+
 export function downloadSVG(filename?: string) {
     if ($("#svgContainer svg").length > 0) {
         const svgEl = $("#svgContainer svg").get(0) as any;
@@ -260,6 +274,7 @@ export function buildTemplatePdf(paperSize: string = "a4") {
 try {
     (window as any).downloadSVG = downloadSVG;
     (window as any).downloadPNG = downloadPNG;
+    (window as any).downloadCanvasPNG = downloadCanvasPNG;
     (window as any).findPaletteFamily = findPaletteFamily;
     (window as any).downloadPalettePng = downloadPalettePng;
     (window as any).buildTemplatePdf = buildTemplatePdf;
