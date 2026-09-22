@@ -53,7 +53,12 @@ if (fs.cpSync) {
   copyDir('./styles', './dist/styles');
   copyDir('./scripts/lib', './dist/scripts/lib');
 }
-console.log('Copied styles and scripts/lib to dist/');
+// Kit layers for the "Download mockup" button (the scripts made by server/scripts/prepare-mockups.js)
+fs.mkdirSync('./dist/mockups', { recursive: true });
+for (const file of fs.readdirSync('./mockups')) {
+  if (/\.js$/.test(file)) fs.copyFileSync(`./mockups/${file}`, `./dist/mockups/${file}`);
+}
+console.log('Copied styles, scripts/lib and mockups to dist/');
 
 // Write the obfuscated file
 const outputFilename = `main.${hash}.js`;

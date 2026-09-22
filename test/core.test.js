@@ -167,7 +167,11 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             orderId: "#1001",
         });
 
-        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "palette.json", "preview.png", "template.pdf", "template.svg"]);
+        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "mockup.png", "palette.json", "preview.png", "template.pdf", "template.svg"]);
+
+        // the kit mockup keeps the kit photo's size
+        const mockupMeta = await require("sharp")(path.join(outputDir, "mockup.png")).metadata();
+        assert.deepEqual([mockupMeta.width, mockupMeta.height], [1254, 1254]);
 
         // the pre-printed canvas look: a real PNG, on white, carrying the numbers
         const canvasPng = fs.readFileSync(path.join(outputDir, "canvas.png"));

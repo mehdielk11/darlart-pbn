@@ -12,7 +12,8 @@
     "vercel-build": "npm run build:frontend && npm run build",
     "build:server": "tsc -p server",
     "start:server": "node server/dist/server/src/index.js",
-    "test": "npm run build:server && node --test test/core.test.js"
+    "test": "npm run build:server && node --test test/core.test.js",
+    "prepare:mockups": "npm run build:server && node server/scripts/prepare-mockups.js"
   },
   "author": "drake7707",
   "devDependencies": {

@@ -227,7 +227,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// One item per generated file (PDF, SVG, preview, palette)\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst folderId = $input.first().json.id;\nreturn job.result.files.map((file) => ({\n  json: {\n    url: file.url,\n    downloadName: file.downloadName,\n    folderId,\n    orderId: order.orderId,\n  },\n}));"
+        "jsCode": "// One item per generated file (PDF, SVG, preview, canvas, mockup, palette)\nconst job = $('Wait for job').first().json.body;\nconst order = $('Loop over photos').first().json;\nconst folderId = $input.first().json.id;\nreturn job.result.files.map((file) => ({\n  json: {\n    url: file.url,\n    downloadName: file.downloadName,\n    folderId,\n    orderId: order.orderId,\n  },\n}));"
       },
       "id": "a0b8f7c1-0015-4d6e-9c11-000000000015",
       "name": "List output files",

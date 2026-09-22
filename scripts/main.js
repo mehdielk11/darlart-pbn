@@ -3316,6 +3316,112 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
         }
     }
 });
+/**
+ * Product mockup geometry, shared by the website and the API: the "perfect kit" photos and where the canvas,
+ * the image card and the reference sheet sit on them.
+ *
+ * The kit photos are flat lays shot from above, so every placeholder is an upright or rotated rectangle: the
+ * mockup only needs resizing, one rotation and masking. The costly part (erasing the drawing printed on the
+ * template's sheet, cutting out the brushes lying on it) is done once by server/scripts/prepare-mockups.js,
+ * which writes the "-blank" and "-overlay" images next to the kit photos in /mockups, and a script embedding
+ * both for the website.
+ */
+define("core/mockup", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.MOCKUP_KITS_GLOBAL = exports.MOCKUP_STYLE = exports.MOCKUP_TEMPLATES = void 0;
+    exports.pickMockupTemplate = pickMockupTemplate;
+    exports.insetBox = insetBox;
+    exports.sheetGeometry = sheetGeometry;
+    exports.darkenForSheet = darkenForSheet;
+    exports.coverSource = coverSource;
+    exports.containBox = containBox;
+    /** Placeholder positions, measured on the 1254 x 1254 kit photos */
+    exports.MOCKUP_TEMPLATES = {
+        landscape: {
+            name: "landscape",
+            source: "kit-landscape.webp",
+            blank: "kit-landscape-blank.webp",
+            overlay: "kit-landscape-overlay.png",
+            script: "kit-landscape.js",
+            size: 1254,
+            canvas: { left: 288, top: 321, width: 683, height: 534 },
+            card: { left: 53, top: 324, width: 184, height: 183 },
+            sheet: [[628, 189], [1213, 330], [1083.4, 868.5], [498.4, 727.5]],
+        },
+        portrait: {
+            name: "portrait",
+            source: "kit-portrait.webp",
+            blank: "kit-portrait-blank.webp",
+            overlay: "kit-portrait-overlay.png",
+            script: "kit-portrait.js",
+            size: 1254,
+            canvas: { left: 313, top: 172, width: 629, height: 752 },
+            card: { left: 68, top: 356, width: 172, height: 187 },
+            sheet: [[784.1, 184.4], [1167, 357], [884.4, 886.3], [501.5, 713.6]],
+        },
+    };
+    exports.MOCKUP_STYLE = {
+        /** The art covers the canvas face exactly: its box is measured on the face, bevel included */
+        canvasEdge: 0,
+        /** Pixels kept free along the image card's border, so its edge and shadow stay visible */
+        cardEdge: 2,
+        /** The reference sheet print is darker than the canvas: 1 keeps the tone, higher is darker (white stays white) */
+        sheetDarken: 1.15,
+        /** White margin around the print on the reference sheet, as a share of the sheet's shorter side */
+        sheetMargin: 0.035,
+    };
+    /** The kit whose canvas shape is closest to the painting's (width / height) */
+    function pickMockupTemplate(aspect) {
+        const distance = (t) => Math.abs(Math.log((t.canvas.width / t.canvas.height) / aspect));
+        return distance(exports.MOCKUP_TEMPLATES.landscape) <= distance(exports.MOCKUP_TEMPLATES.portrait) ? exports.MOCKUP_TEMPLATES.landscape : exports.MOCKUP_TEMPLATES.portrait;
+    }
+    function insetBox(box, by) {
+        return { left: box.left + by, top: box.top + by, width: box.width - 2 * by, height: box.height - 2 * by };
+    }
+    /**
+     * The reference sheet as an upright rectangle (width x height, with the print's margin) and the affine
+     * matrix [a, b, c, d, e, f] that maps it onto the rotated sheet in the photo.
+     */
+    function sheetGeometry(template) {
+        const [topLeft, topRight, , bottomLeft] = template.sheet;
+        const width = Math.round(Math.hypot(topRight[0] - topLeft[0], topRight[1] - topLeft[1]));
+        const height = Math.round(Math.hypot(bottomLeft[0] - topLeft[0], bottomLeft[1] - topLeft[1]));
+        return {
+            width,
+            height,
+            margin: Math.round(Math.min(width, height) * exports.MOCKUP_STYLE.sheetMargin),
+            matrix: [
+                (topRight[0] - topLeft[0]) / width,
+                (topRight[1] - topLeft[1]) / width,
+                (bottomLeft[0] - topLeft[0]) / height,
+                (bottomLeft[1] - topLeft[1]) / height,
+                topLeft[0],
+                topLeft[1],
+            ],
+        };
+    }
+    /** Darkens a grey value for the reference sheet print, keeping white white */
+    function darkenForSheet(value) {
+        return Math.max(0, Math.min(255, 255 - (255 - value) * exports.MOCKUP_STYLE.sheetDarken));
+    }
+    /** The source rectangle to draw so that an image fills a box without distortion (CSS "cover", centred) */
+    function coverSource(sourceWidth, sourceHeight, boxWidth, boxHeight) {
+        const scale = Math.max(boxWidth / sourceWidth, boxHeight / sourceHeight);
+        const width = boxWidth / scale;
+        const height = boxHeight / scale;
+        return { left: (sourceWidth - width) / 2, top: (sourceHeight - height) / 2, width, height };
+    }
+    /** Where a kit's script (see MockupTemplate.script) puts its layers, as data URLs */
+    exports.MOCKUP_KITS_GLOBAL = "DARLART_MOCKUP_KITS";
+    /** Where to draw an image so it fits whole in a box, keeping its ratio (CSS "contain", centred), in whole pixels */
+    function containBox(sourceWidth, sourceHeight, box) {
+        const scale = Math.min(box.width / sourceWidth, box.height / sourceHeight);
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        return { left: box.left + Math.round((box.width - width) / 2), top: box.top + Math.round((box.height - height) / 2), width, height };
+    }
+});
 define("core/settings", ["require", "exports", "settings"], function (require, exports, settings_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -3842,7 +3948,7 @@ define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", 
 /**
  * Module that provides function the GUI uses and updates the DOM accordingly
  */
-define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, settings_3, svg_3, guiprocessmanager_1, palettefamilies_2) {
+define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/mockup", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, mockup_1, settings_3, svg_3, guiprocessmanager_1, palettefamilies_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.time = time;
@@ -3854,10 +3960,14 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
     exports.downloadPalettePng = downloadPalettePng;
     exports.downloadPNG = downloadPNG;
     exports.downloadCanvasPNG = downloadCanvasPNG;
+    exports.buildMockupCanvas = buildMockupCanvas;
+    exports.downloadMockupPNG = downloadMockupPNG;
     exports.downloadSVG = downloadSVG;
     exports.loadExample = loadExample;
     exports.buildTemplatePdf = buildTemplatePdf;
     let processResult = null;
+    /** The (cropped) photo that processResult was made from, for the mockup's image card */
+    let processedPhoto = null;
     let cancellationToken = new common_7.CancellationToken();
     const timers = {};
     function time(name) {
@@ -3890,7 +4000,9 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
                 // cancel old process & create new
                 cancellationToken.isCancelled = true;
                 cancellationToken = new common_7.CancellationToken();
+                const photo = snapshotCanvas(document.getElementById("canvas"));
                 processResult = yield guiprocessmanager_1.GUIProcessManager.process(settings, cancellationToken);
+                processedPhoto = photo;
                 yield updateOutput();
                 const tabsOutput = M.Tabs.getInstance(document.getElementById("tabsOutput"));
                 tabsOutput.select("output-pane");
@@ -4043,6 +4155,131 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
             : "paintbynumbers-canvas.png";
         saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
     }
+    function snapshotCanvas(source) {
+        const copy = document.createElement("canvas");
+        copy.width = source.width;
+        copy.height = source.height;
+        copy.getContext("2d").drawImage(source, 0, 0);
+        return copy;
+    }
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("Could not load " + src));
+            img.src = src;
+        });
+    }
+    /** A kit's layers, from its script (loaded once): data URLs keep the canvas exportable even from a page opened as a file */
+    function loadMockupKit(template) {
+        const kits = () => window[mockup_1.MOCKUP_KITS_GLOBAL] || {};
+        if (kits()[template.name]) {
+            return Promise.resolve(kits()[template.name]);
+        }
+        return new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "mockups/" + template.script;
+            script.onload = () => kits()[template.name] ? resolve(kits()[template.name]) : reject(new Error("Empty " + template.script));
+            script.onerror = () => reject(new Error("Could not load " + script.src));
+            document.head.appendChild(script);
+        });
+    }
+    function drawCover(ctx, image, box) {
+        const source = (0, mockup_1.coverSource)(image.width, image.height, box.width, box.height);
+        ctx.drawImage(image, source.left, source.top, source.width, source.height, box.left, box.top, box.width, box.height);
+    }
+    /**
+     * The "perfect kit" product photo for the last result, drawn the same way as the API's mockup.png: the faded
+     * canvas on the canvas, a darker grey print of it on the reference sheet and the photo on the image card.
+     */
+    function buildMockupCanvas() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (processResult == null || processedPhoto == null) {
+                return null;
+            }
+            const facets = processResult.facetResult;
+            const template = (0, mockup_1.pickMockupTemplate)(facets.width / facets.height);
+            const svgString = (0, svg_3.buildFadedSvgString)(facets, processResult.colorsByIndex, { sizeMultiplier: 2, strokeWidth: 1, background: "#ffffff" });
+            // a data URL, not a blob: URL, which would block the export when the page is opened as a file
+            const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+            const kit = yield loadMockupKit(template);
+            const [blank, overlay, faded] = yield Promise.all([loadImage(kit.blank), loadImage(kit.overlay), loadImage(svgUrl)]);
+            // the SVG as pixels, so it's rasterised once
+            const art = document.createElement("canvas");
+            art.width = faded.naturalWidth || facets.width * 2;
+            art.height = faded.naturalHeight || facets.height * 2;
+            const artCtx = art.getContext("2d");
+            artCtx.fillStyle = "#ffffff";
+            artCtx.fillRect(0, 0, art.width, art.height);
+            artCtx.drawImage(faded, 0, 0, art.width, art.height);
+            // the reference sheet print: grey, darker, with a white margin
+            const sheet = (0, mockup_1.sheetGeometry)(template);
+            const print = document.createElement("canvas");
+            print.width = sheet.width;
+            print.height = sheet.height;
+            const printCtx = print.getContext("2d");
+            printCtx.fillStyle = "#ffffff";
+            printCtx.fillRect(0, 0, sheet.width, sheet.height);
+            drawCover(printCtx, art, { left: sheet.margin, top: sheet.margin, width: sheet.width - 2 * sheet.margin, height: sheet.height - 2 * sheet.margin });
+            const pixels = printCtx.getImageData(0, 0, sheet.width, sheet.height);
+            const data = pixels.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const grey = (0, mockup_1.darkenForSheet)(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]);
+                data[i] = data[i + 1] = data[i + 2] = grey;
+            }
+            printCtx.putImageData(pixels, 0, 0);
+            const out = document.createElement("canvas");
+            out.width = template.size;
+            out.height = template.size;
+            const ctx = out.getContext("2d");
+            ctx.drawImage(blank, 0, 0, template.size, template.size);
+            ctx.save();
+            ctx.beginPath();
+            template.sheet.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+            ctx.closePath();
+            ctx.clip();
+            ctx.globalCompositeOperation = "multiply";
+            const [a, b, c, d, e, f] = sheet.matrix;
+            ctx.setTransform(a, b, c, d, e, f);
+            ctx.drawImage(print, 0, 0);
+            ctx.restore();
+            // the canvas lies on top of the sheet, and the brushes and callout arcs on top of both
+            const cv = template.canvas;
+            ctx.drawImage(blank, cv.left, cv.top, cv.width, cv.height, cv.left, cv.top, cv.width, cv.height);
+            ctx.drawImage(overlay, 0, 0, template.size, template.size);
+            // the canvas covered edge to edge, the card with the whole photo at its own ratio; multiplied, so the
+            // canvas weave and the card's edges still show through
+            ctx.globalCompositeOperation = "multiply";
+            drawCover(ctx, art, (0, mockup_1.insetBox)(template.canvas, mockup_1.MOCKUP_STYLE.canvasEdge));
+            const card = (0, mockup_1.containBox)(processedPhoto.width, processedPhoto.height, (0, mockup_1.insetBox)(template.card, mockup_1.MOCKUP_STYLE.cardEdge));
+            ctx.drawImage(processedPhoto, card.left, card.top, card.width, card.height);
+            ctx.globalCompositeOperation = "source-over";
+            return out;
+        });
+    }
+    function downloadMockupPNG(filename) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const canvas = yield buildMockupCanvas();
+            if (canvas == null) {
+                return;
+            }
+            const defaultName = (typeof window.getOutputFilename === "function")
+                ? String(window.getOutputFilename("png")).replace(/\.png$/i, "-mockup.png")
+                : "paintbynumbers-mockup.png";
+            const blob = yield new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+            if (blob == null) {
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename || defaultName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+    }
     function downloadSVG(filename) {
         if ($("#svgContainer svg").length > 0) {
             const svgEl = $("#svgContainer svg").get(0);
@@ -4096,6 +4333,8 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         window.downloadSVG = downloadSVG;
         window.downloadPNG = downloadPNG;
         window.downloadCanvasPNG = downloadCanvasPNG;
+        window.buildMockupCanvas = buildMockupCanvas;
+        window.downloadMockupPNG = downloadMockupPNG;
         window.findPaletteFamily = palettefamilies_2.findPaletteFamily;
         window.downloadPalettePng = downloadPalettePng;
         window.buildTemplatePdf = buildTemplatePdf;

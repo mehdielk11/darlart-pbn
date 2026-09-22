@@ -32,6 +32,7 @@
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
     const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
+    const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
     const downloadPaletteBtn = document.getElementById('btnDownloadPalette');
     const toggleColorRestrictionsBtn = document.getElementById('toggleColorRestrictions');
@@ -1163,6 +1164,13 @@
             const filename = getOutputFilename('png').replace(/\.png$/i, '-canvas.png');
             if (typeof window.downloadCanvasPNG === 'function') {
                 window.downloadCanvasPNG(filename);
+            }
+        });
+
+        if (downloadMockupBtn) downloadMockupBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('png').replace(/.png$/i, '-mockup.png');
+            if (typeof window.downloadMockupPNG === 'function') {
+                window.downloadMockupPNG(filename).catch((e) => console.error('Mockup failed', e));
             }
         });
 

@@ -17,6 +17,7 @@ export const config = {
     publicBaseUrl: (process.env.PUBLIC_BASE_URL || `http://localhost:${port}`).replace(/\/+$/, ""),
     dataDir: process.env.DATA_DIR || path.join(process.cwd(), "data"),
     palettesDir: process.env.PALETTES_DIR || path.join(__dirname, "../../../palettes"),
+    mockupsDir: process.env.MOCKUPS_DIR || path.join(__dirname, "../../../../mockups"),
     defaultPalette: process.env.DEFAULT_PALETTE || "darlart-v2",
     concurrency: Math.max(1, int(process.env.CONCURRENCY, Math.max(1, os.cpus().length - 1))),
     jobTimeoutMs: int(process.env.JOB_TIMEOUT_MS, 10 * 60 * 1000),

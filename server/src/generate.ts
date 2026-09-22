@@ -13,6 +13,7 @@ import { PipelineStep, runPipeline } from "../../src/core/pipeline";
 import { buildSettings, Difficulty } from "../../src/core/settings";
 import { buildFadedSvgString, buildSvgString } from "../../src/core/svg";
 import { CropMethod, CropMode, prepareImage } from "./image";
+import { buildMockup } from "./mockup";
 
 export interface GenerateRequest {
     inputPath: string;
@@ -84,6 +85,7 @@ export const OUTPUT_FILES = {
     svg: { name: "template.svg", contentType: "image/svg+xml" },
     preview: { name: "preview.png", contentType: "image/png" },
     canvas: { name: "canvas.png", contentType: "image/png" },
+    mockup: { name: "mockup.png", contentType: "image/png" },
     palette: { name: "palette.json", contentType: "application/json" },
 };
 
@@ -163,6 +165,13 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
         .toBuffer();
     await writeOutput(OUTPUT_FILES.canvas, "-canvas.png", canvasPng);
     report("output", 0.85);
+
+    // Mockup: the kit photo with this canvas on it, its grey print on the reference sheet and the photo on the card
+    // the card shows the photo as received, at its own ratio (not trimmed to the canvas shape)
+    const photo = await sharp(input).rotate().resize(1024, 1024, { fit: "inside", withoutEnlargement: true }).toBuffer();
+    const mockup = await buildMockup({ canvasPng, photo, aspect: prepared.canvas.aspect });
+    await writeOutput(OUTPUT_FILES.mockup, "-mockup.png", mockup);
+    report("output", 0.9);
 
     // Palette with paint codes, families and area share
     const pointsByColor = new Array(result.colorsByIndex.length).fill(0);

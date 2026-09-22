@@ -5,6 +5,7 @@
 import { CancellationToken, IMap, RGB } from "./common";
 import { getColorCode } from "./core/palette";
 import { buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
+import { containBox, coverSource, darkenForSheet, insetBox, MOCKUP_KITS_GLOBAL, MOCKUP_STYLE, MockupBox, MockupTemplate, pickMockupTemplate, sheetGeometry } from "./core/mockup";
 import { buildSettings, Difficulty } from "./core/settings";
 import { buildFadedSvgString } from "./core/svg";
 import { GUIProcessManager, ProcessResult } from "./guiprocessmanager";
@@ -14,6 +15,8 @@ import { Settings } from "./settings";
 declare function saveSvgAsPng(el: Node, filename: string, options?: { backgroundColor?: string; scale?: number }): void;
 
 let processResult: ProcessResult | null = null;
+/** The (cropped) photo that processResult was made from, for the mockup's image card */
+let processedPhoto: HTMLCanvasElement | null = null;
 let cancellationToken: CancellationToken = new CancellationToken();
 
 const timers: IMap<Date> = {};
@@ -50,7 +53,9 @@ export async function process() {
         // cancel old process & create new
         cancellationToken.isCancelled = true;
         cancellationToken = new CancellationToken();
+        const photo = snapshotCanvas(document.getElementById("canvas") as HTMLCanvasElement);
         processResult = await GUIProcessManager.process(settings, cancellationToken);
+        processedPhoto = photo;
         await updateOutput();
         const tabsOutput = M.Tabs.getInstance(document.getElementById("tabsOutput")!);
         tabsOutput.select("output-pane");
@@ -217,6 +222,138 @@ export function downloadCanvasPNG(filename?: string) {
     saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
 }
 
+function snapshotCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
+    const copy = document.createElement("canvas");
+    copy.width = source.width;
+    copy.height = source.height;
+    copy.getContext("2d")!.drawImage(source, 0, 0);
+    return copy;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Could not load " + src));
+        img.src = src;
+    });
+}
+
+/** A kit's layers, from its script (loaded once): data URLs keep the canvas exportable even from a page opened as a file */
+function loadMockupKit(template: MockupTemplate): Promise<{ blank: string; overlay: string }> {
+    const kits = () => (window as any)[MOCKUP_KITS_GLOBAL] || {};
+    if (kits()[template.name]) {
+        return Promise.resolve(kits()[template.name]);
+    }
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "mockups/" + template.script;
+        script.onload = () => kits()[template.name] ? resolve(kits()[template.name]) : reject(new Error("Empty " + template.script));
+        script.onerror = () => reject(new Error("Could not load " + script.src));
+        document.head.appendChild(script);
+    });
+}
+
+function drawCover(ctx: CanvasRenderingContext2D, image: CanvasImageSource & { width: number; height: number }, box: MockupBox) {
+    const source = coverSource(image.width, image.height, box.width, box.height);
+    ctx.drawImage(image, source.left, source.top, source.width, source.height, box.left, box.top, box.width, box.height);
+}
+
+/**
+ * The "perfect kit" product photo for the last result, drawn the same way as the API's mockup.png: the faded
+ * canvas on the canvas, a darker grey print of it on the reference sheet and the photo on the image card.
+ */
+export async function buildMockupCanvas(): Promise<HTMLCanvasElement | null> {
+    if (processResult == null || processedPhoto == null) {
+        return null;
+    }
+    const facets = processResult.facetResult;
+    const template = pickMockupTemplate(facets.width / facets.height);
+    const svgString = buildFadedSvgString(facets, processResult.colorsByIndex, { sizeMultiplier: 2, strokeWidth: 1, background: "#ffffff" });
+    // a data URL, not a blob: URL, which would block the export when the page is opened as a file
+    const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+    const kit = await loadMockupKit(template);
+    const [blank, overlay, faded] = await Promise.all([loadImage(kit.blank), loadImage(kit.overlay), loadImage(svgUrl)]);
+    // the SVG as pixels, so it's rasterised once
+    const art = document.createElement("canvas");
+    art.width = faded.naturalWidth || facets.width * 2;
+    art.height = faded.naturalHeight || facets.height * 2;
+    const artCtx = art.getContext("2d")!;
+    artCtx.fillStyle = "#ffffff";
+    artCtx.fillRect(0, 0, art.width, art.height);
+    artCtx.drawImage(faded, 0, 0, art.width, art.height);
+
+    // the reference sheet print: grey, darker, with a white margin
+    const sheet = sheetGeometry(template);
+    const print = document.createElement("canvas");
+    print.width = sheet.width;
+    print.height = sheet.height;
+    const printCtx = print.getContext("2d")!;
+    printCtx.fillStyle = "#ffffff";
+    printCtx.fillRect(0, 0, sheet.width, sheet.height);
+    drawCover(printCtx, art, { left: sheet.margin, top: sheet.margin, width: sheet.width - 2 * sheet.margin, height: sheet.height - 2 * sheet.margin });
+    const pixels = printCtx.getImageData(0, 0, sheet.width, sheet.height);
+    const data = pixels.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const grey = darkenForSheet(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]);
+        data[i] = data[i + 1] = data[i + 2] = grey;
+    }
+    printCtx.putImageData(pixels, 0, 0);
+
+    const out = document.createElement("canvas");
+    out.width = template.size;
+    out.height = template.size;
+    const ctx = out.getContext("2d")!;
+    ctx.drawImage(blank, 0, 0, template.size, template.size);
+
+    ctx.save();
+    ctx.beginPath();
+    template.sheet.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+    ctx.closePath();
+    ctx.clip();
+    ctx.globalCompositeOperation = "multiply";
+    const [a, b, c, d, e, f] = sheet.matrix;
+    ctx.setTransform(a, b, c, d, e, f);
+    ctx.drawImage(print, 0, 0);
+    ctx.restore();
+
+    // the canvas lies on top of the sheet, and the brushes and callout arcs on top of both
+    const cv = template.canvas;
+    ctx.drawImage(blank, cv.left, cv.top, cv.width, cv.height, cv.left, cv.top, cv.width, cv.height);
+    ctx.drawImage(overlay, 0, 0, template.size, template.size);
+
+    // the canvas covered edge to edge, the card with the whole photo at its own ratio; multiplied, so the
+    // canvas weave and the card's edges still show through
+    ctx.globalCompositeOperation = "multiply";
+    drawCover(ctx, art, insetBox(template.canvas, MOCKUP_STYLE.canvasEdge));
+    const card = containBox(processedPhoto.width, processedPhoto.height, insetBox(template.card, MOCKUP_STYLE.cardEdge));
+    ctx.drawImage(processedPhoto, card.left, card.top, card.width, card.height);
+    ctx.globalCompositeOperation = "source-over";
+    return out;
+}
+
+export async function downloadMockupPNG(filename?: string) {
+    const canvas = await buildMockupCanvas();
+    if (canvas == null) {
+        return;
+    }
+    const defaultName = (typeof (window as any).getOutputFilename === "function")
+        ? String((window as any).getOutputFilename("png")).replace(/\.png$/i, "-mockup.png")
+        : "paintbynumbers-mockup.png";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (blob == null) {
+        return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename || defaultName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function downloadSVG(filename?: string) {
     if ($("#svgContainer svg").length > 0) {
         const svgEl = $("#svgContainer svg").get(0) as any;
@@ -275,6 +412,8 @@ try {
     (window as any).downloadSVG = downloadSVG;
     (window as any).downloadPNG = downloadPNG;
     (window as any).downloadCanvasPNG = downloadCanvasPNG;
+    (window as any).buildMockupCanvas = buildMockupCanvas;
+    (window as any).downloadMockupPNG = downloadMockupPNG;
     (window as any).findPaletteFamily = findPaletteFamily;
     (window as any).downloadPalettePng = downloadPalettePng;
     (window as any).buildTemplatePdf = buildTemplatePdf;
