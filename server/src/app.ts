@@ -5,6 +5,7 @@
  * GET  /v1/jobs/:id                job status, progress, result and file links
  * GET  /v1/jobs/:id/files/:name    download template.pdf, template.svg, preview.png or palette.json
  * POST /v1/analyze                 photo complexity, suggested difficulty and a crop suggestion
+ * POST /v1/recolor                 repaint an image with exactly N palette colors (PNG as base64 + the colors used)
  * GET  /v1/palettes                available palettes
  * GET  /health                     liveness check (no API key)
  */
@@ -22,6 +23,7 @@ import { OUTPUT_FILES } from "./generate";
 import { assertReadableImage, attentionCrop, CROP_MODES, CropMode, loadForAnalysis } from "./image";
 import { JobManager, JobOptions, publicJob } from "./jobs";
 import { isValidPaletteId, listPalettes, loadPalette, NO_PALETTE } from "./palettes";
+import { recolorToPalette } from "./recolor";
 
 class HttpError extends Error {
     constructor(public statusCode: number, message: string, public details?: string[]) {
@@ -321,6 +323,53 @@ export async function buildApp(jobs: JobManager) {
             suggestedDifficulty: suggestion.difficulty,
             complexity: suggestion.metrics,
             cropSuggestion,
+        };
+    });
+
+    app.post("/v1/recolor", async (request) => {
+        const { fields, image } = await readInput(request);
+        const errors: string[] = [];
+        const colors = Number(asString(fields.colors) || "48");
+        if (!Number.isInteger(colors) || colors < 2 || colors > 64) {
+            errors.push("colors must be an integer between 2 and 64");
+        }
+        const maxSide = Number(asString(fields.maxSide) || "2048");
+        if (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096) {
+            errors.push("maxSide must be an integer between 64 and 4096");
+        }
+        const smooth = Number(asString(fields.smooth) || "3");
+        if (![0, 1, 3, 5].includes(smooth)) {
+            errors.push("smooth must be 0, 1, 3 or 5");
+        }
+        const paletteId = asString(fields.palette) || config.defaultPalette;
+        if (paletteId === NO_PALETTE || !isValidPaletteId(paletteId)) {
+            errors.push("palette must name a palette from /v1/palettes");
+        }
+        if (errors.length) {
+            throw new HttpError(400, "Invalid request", errors);
+        }
+        let palette: string;
+        try {
+            palette = loadPalette(paletteId);
+        } catch (e) {
+            throw new HttpError(400, e instanceof Error ? e.message : String(e));
+        }
+        const exclude = (asString(fields.exclude) || "").split(/[\s,;]+/).filter((code) => code);
+        const resolved = await resolveImage(fields, image);
+        let result;
+        try {
+            result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth });
+        } catch (e) {
+            throw new HttpError(422, e instanceof Error ? e.message : String(e));
+        }
+        return {
+            palette: paletteId,
+            requestedColors: colors,
+            colorCount: result.colors.length,
+            width: result.width,
+            height: result.height,
+            colors: result.colors,
+            image: result.png.toString("base64"),
         };
     });
 

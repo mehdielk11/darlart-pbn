@@ -15,6 +15,7 @@ const { fadeColors } = require(path.join(dist, "src/core/svg"));
 const { findPaletteFamily } = require(path.join(dist, "src/palettefamilies"));
 const { decodeImage } = require(path.join(dist, "server/src/image"));
 const { generate } = require(path.join(dist, "server/src/generate"));
+const { recolorToPalette } = require(path.join(dist, "server/src/recolor"));
 
 const paletteText = fs.readFileSync(path.join(root, "server/palettes/darlart-v2.json"), "utf8");
 const simpleImage = path.join(root, "src-cli/testinput.png");
@@ -119,6 +120,26 @@ test("print formats keep the A series shape and are recognised by name", () => {
     assert.equal(printFormatForCanvas("29.7x42").label, "A3");
     assert.equal(printFormatForCanvas("59.4x42").label, "A2"); // landscape
     assert.equal(printFormatForCanvas("30x40"), null);
+});
+
+test("recolorToPalette paints a photo with exactly N palette colors, never an excluded one", { timeout: 60000 }, async () => {
+    const sharp = require("sharp");
+    const v3Text = fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8");
+    const v3 = JSON.parse(v3Text);
+    const result = await recolorToPalette(fs.readFileSync(photoImage), { colors: 48, palette: v3Text, exclude: ["3801", "3811"], maxSide: 1024, smooth: 3 });
+    assert.equal(result.colors.length, 48);
+    const listed = new Set(result.colors.map((c) => c.hex));
+    for (const color of result.colors) {
+        assert.equal(v3[color.hex].code, color.code);
+        assert.ok(!["3801", "3811"].includes(color.code));
+    }
+    const { data, info } = await sharp(result.png).raw().toBuffer({ resolveWithObject: true });
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += info.channels) {
+        seen.add("#" + [data[i], data[i + 1], data[i + 2]].map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase());
+    }
+    assert.deepEqual([...seen].sort(), [...listed].sort());
+    assert.equal(Math.round(result.colors.reduce((sum, c) => sum + c.percent, 0)), 100);
 });
 
 test("fadeColors mixes each color toward white", () => {
