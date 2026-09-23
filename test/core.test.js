@@ -30,6 +30,27 @@ test("parseCustomColors reads the Darl'Art JSON palette with its codes", () => {
     assert.equal(parsed.codes["#C76C98"], "3201");
 });
 
+test("parseCustomColors reads palettes whose values are objects", () => {
+    // { "#HEX": { rgb, code } } as exported by the palette tool
+    const parsed = parseCustomColors(JSON.stringify({
+        "#FFBBE4": { rgb: [255, 187, 228], code: "0101" },
+        "#FC6286": { rgb: [252, 98, 134], code: "0105" },
+    }));
+    assert.deepEqual(parsed.restrictions, [[255, 187, 228], [252, 98, 134]]);
+    assert.equal(parsed.codes["#FFBBE4"], "0101");
+    assert.equal(parsed.codes["255,187,228"], "0101");
+    assert.equal(parsed.codes["#FC6286"], "0105");
+    // the color can also be in the value, keyed by its code or name
+    const byCode = parseCustomColors(JSON.stringify({ "0101": { rgb: [255, 187, 228] }, blush: { hex: "#FC6286", code: "0105" } }));
+    assert.deepEqual(byCode.restrictions, [[255, 187, 228], [252, 98, 134]]);
+    assert.equal(byCode.codes["#FFBBE4"], "0101");
+    assert.equal(byCode.codes["#FC6286"], "0105");
+    // a list of objects keeps working
+    const list = parseCustomColors(JSON.stringify([{ color: "#FFBBE4", code: "0101" }, { rgb: [252, 98, 134], id: "0105" }]));
+    assert.deepEqual(list.restrictions, [[255, 187, 228], [252, 98, 134]]);
+    assert.equal(list.codes["#FC6286"], "0105");
+});
+
 test("parseCustomColors reads hex and rgb lines with optional codes and comments", () => {
     const parsed = parseCustomColors("#FC6286, 0101\n// ignored\n255,255,255\n128,64,32: 0305\n#abc");
     assert.deepEqual(parsed.restrictions, [[252, 98, 134], [255, 255, 255], [128, 64, 32], [170, 187, 204]]);

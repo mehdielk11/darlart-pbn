@@ -121,7 +121,27 @@ export function parseCustomColors(text: string): ParsedCustomColors {
         }
     }
 
-    // 1. JSON, e.g. { "#FC6286": "0101", ... } or [ { "color": "#FC6286", "code": "0101" } ]
+    /** The paint code of a JSON value: "0101", { code: "0101" }, { id: … } or { name: … } */
+    function codeFromValue(value: any): string | undefined {
+        if (value === undefined || value === null) { return undefined; }
+        if (typeof value === "object") {
+            const code = value.code !== undefined ? value.code : (value.id !== undefined ? value.id : value.name);
+            return code === undefined || code === null ? undefined : String(code);
+        }
+        return String(value);
+    }
+
+    /** The color of a JSON value when the key isn't one: { rgb: [r, g, b] } or { hex: "#…" } */
+    function rgbFromValue(value: any): number[] | null {
+        if (!value || typeof value !== "object") { return null; }
+        if (Array.isArray(value.rgb) && value.rgb.length >= 3) {
+            return [Number(value.rgb[0]), Number(value.rgb[1]), Number(value.rgb[2])];
+        }
+        return parseHexToRgb(value.hex || value.color || "");
+    }
+
+    // 1. JSON: { "#FC6286": "0101" }, { "#FC6286": { "code": "0101", "rgb": [252,98,134] } }
+    //    or [ { "color": "#FC6286", "code": "0101" } ]
     let jsonParsed = false;
     if (rawTrimmed.startsWith("{") || rawTrimmed.startsWith("[")) {
         try {
@@ -133,18 +153,16 @@ export function parseCustomColors(text: string): ParsedCustomColors {
                             const rgb = parseHexToRgb(item);
                             if (rgb) { addColor(rgb[0], rgb[1], rgb[2]); }
                         } else if (typeof item === "object" && item !== null) {
-                            const colStr = item.color || item.hex || item.rgb || "";
-                            const codeVal = item.code || item.id || item.name || "";
-                            const rgb = parseHexToRgb(colStr);
+                            const rgb = parseHexToRgb(item.color || item.hex || "") || rgbFromValue(item);
                             if (rgb) {
-                                addColor(rgb[0], rgb[1], rgb[2], codeVal ? String(codeVal) : undefined);
+                                addColor(rgb[0], rgb[1], rgb[2], codeFromValue(item));
                             }
                         }
                     }
                 } else {
                     for (const key of Object.keys(parsed)) {
                         const val = (parsed as any)[key];
-                        const codeVal = (val !== undefined && val !== null) ? String(val) : undefined;
+                        const codeVal = codeFromValue(val);
                         if (key.startsWith("#")) {
                             const rgb = parseHexToRgb(key);
                             if (rgb) { addColor(rgb[0], rgb[1], rgb[2], codeVal); }
@@ -153,6 +171,10 @@ export function parseCustomColors(text: string): ParsedCustomColors {
                             if (parts.length === 3) {
                                 addColor(parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2]), codeVal);
                             }
+                        } else {
+                            // the key is a name or a code: the color itself is in the value
+                            const rgb = rgbFromValue(val);
+                            if (rgb) { addColor(rgb[0], rgb[1], rgb[2], codeVal || key); }
                         }
                     }
                 }

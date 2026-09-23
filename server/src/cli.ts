@@ -3,7 +3,7 @@
  *
  *   node server/dist/server/src/cli.js -i photo.jpg -o out/ --size 40x50
  *        [--colors 24] [--difficulty auto|easy|medium|hard] [--orientation auto|portrait|landscape]
- *        [--palette darlart-v2|none] [--paper a4] [--crop x,y,w,h] [--order 1001] [--seed 7707]
+ *        [--palette darlart-v3|none] [--paper a4] [--crop x,y,w,h] [--order 1001] [--seed 7707]
  */
 import minimist from "minimist";
 import path from "path";
@@ -16,7 +16,7 @@ import { CROP_MODES, CropMode } from "./image";
 import { loadPalette } from "./palettes";
 
 const USAGE = "Usage: node server/dist/server/src/cli.js -i <photo> -o <output dir> --size <e.g. 40x50> [--colors 24] [--difficulty auto] "
-    + "[--orientation auto] [--palette darlart-v2|none] [--paper a4] [--crop x,y,w,h] [--order <id>] [--seed <n>]";
+    + "[--orientation auto] [--palette darlart-v3|none] [--paper a4] [--crop x,y,w,h] [--order <id>] [--seed <n>]";
 
 function fail(message: string): never {
     console.error(message);

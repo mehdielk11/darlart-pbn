@@ -95,9 +95,11 @@ n8n then reaches the API at `http://pbn-api:3000`. Set that address in **Normali
 | `RETENTION_DAYS` | 14 | Finished jobs and their files are deleted after this. |
 | `MAX_IMAGE_BYTES` | 30 MB | Largest photo accepted. |
 | `DATA_DIR` | `./data` | Job files. |
-| `DEFAULT_PALETTE` | `darlart-v2` | Palette used when a job doesn't name one. |
+| `DEFAULT_PALETTE` | `darlart-v3` | Palette used when a job doesn't name one. |
 
-Palettes live in `server/palettes/<id>.json` (same format as the website's custom colors). `darlart-v2` is `palette 2.json`. Use `"palette": "none"` to take the colors from the photo.
+Palettes live in `server/palettes/<id>.json` (same format as the website's custom colors). `darlart-v3` is the current paint range (566 colors, 38 families of 15 shades); `darlart-v2` is the previous one (409 colors). Use `"palette": "none"` to take the colors from the photo.
+
+The paint families shown in the legend come from `src/palettefamilies.ts`, generated from the palette: after changing the paints, run `node scripts/generate-palette-families.js server/palettes/<id>.json`.
 
 ## 3. API
 
@@ -117,7 +119,7 @@ Multipart form (`image` file) or JSON (`imageUrl`):
 | `cropMode` | `attention` | `center` for photos already cropped by the customer: kept as-is, only the pixels that don't fit the exact canvas ratio are trimmed from the middle. `attention` places the largest crop with the canvas ratio on the most interesting area. |
 | `crop` | | Optional `{ "x": 0.1, "y": 0.05, "w": 0.6, "h": 0.9 }` (fractions of the photo) to crop an uncropped photo. Overrides `cropMode`. |
 | `paperSize` | `a4` | `a2`, `a3`, `a4`, `a5`. |
-| `palette` | `darlart-v2` | Server palette id or `none`. |
+| `palette` | `darlart-v3` | Server palette id or `none`. |
 | `orderId` | | Used in file names: `<orderId> <colors> <difficulty> <size>.pdf`. |
 | `callbackUrl` | | Receives the job (same JSON as `GET /v1/jobs/:id`) when it completes or fails. It's retried 5 times over ~2.5 min. |
 | `randomSeed` | 7707 | Same photo + options + seed = same template. |
