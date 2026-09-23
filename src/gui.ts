@@ -4,10 +4,10 @@
 
 import { CancellationToken, IMap, RGB } from "./common";
 import { getColorCode } from "./core/palette";
-import { buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
+import { buildPaintingPdf, buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
 import { containBox, coverSource, darkenForSheet, insetBox, MOCKUP_KITS_GLOBAL, MOCKUP_STYLE, MockupBox, MockupTemplate, pickMockupTemplate, sheetGeometry } from "./core/mockup";
 import { buildSettings, Difficulty } from "./core/settings";
-import { buildFadedSvgString } from "./core/svg";
+import { buildBlankSvgString, buildFadedSvgString, buildSvgString } from "./core/svg";
 import { GUIProcessManager, ProcessResult } from "./guiprocessmanager";
 import { findPaletteFamily } from "./palettefamilies";
 import { Settings } from "./settings";
@@ -191,22 +191,40 @@ export function downloadPalettePng() {
     dl.click();
 }
 
+/** The finished painting: colors only, without outlines or numbers */
 export function downloadPNG(filename?: string) {
-    if ($("#svgContainer svg").length > 0) {
-        const original = $("#svgContainer svg").get(0) as unknown as SVGSVGElement;
-        const clone = original.cloneNode(true) as SVGSVGElement;
-
-        // Remove all labels/numbers before exporting
-        const labelGroups = clone.querySelectorAll('g.label');
-        labelGroups.forEach((el) => el.parentNode && el.parentNode.removeChild(el));
-        const texts = clone.querySelectorAll('text');
-        texts.forEach((el) => el.parentNode && el.parentNode.removeChild(el));
-
-        const defaultName = (typeof (window as any).getOutputFilename === "function")
-            ? (window as any).getOutputFilename("png")
-            : "paintbynumbers.png";
-        saveSvgAsPng(clone, filename || defaultName);
+    if (processResult == null) {
+        return;
     }
+    const svgString = buildSvgString(processResult.facetResult, processResult.colorsByIndex, { fill: true, stroke: false, labels: false });
+    const svg = document.importNode(new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement, true);
+    const defaultName = (typeof (window as any).getOutputFilename === "function")
+        ? (window as any).getOutputFilename("png")
+        : "paintbynumbers.png";
+    saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
+}
+
+/** The template to paint on: black outlines and numbers on white, no colors */
+export function downloadBlankSVG(filename?: string) {
+    if (processResult == null) {
+        return;
+    }
+    const svgString = buildBlankSvgString(processResult.facetResult, processResult.colorsByIndex);
+    const defaultName = (typeof (window as any).getOutputFilename === "function")
+        ? String((window as any).getOutputFilename("svg")).replace(/\.svg$/i, "-blank.svg")
+        : "paintbynumbers-blank.svg";
+    saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
+}
+
+function saveTextFile(content: string, filename: string, type: string) {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** The template as a pre-printed canvas: faint colors, grey outlines and numbers (same look as the API's canvas.png) */
@@ -408,6 +426,16 @@ export function buildTemplatePdf(paperSize: string = "a4") {
     return buildPdf(jspdf.jsPDF as JsPdfConstructor, processResult, { paperSize: size });
 }
 
+/** The painting guide: colored template with its numbers, then the palette */
+export function buildPaintingPdfDoc(paperSize: string = "a4") {
+    const jspdf = (window as any).jspdf;
+    if (processResult == null || !jspdf || !jspdf.jsPDF) {
+        return null;
+    }
+    const size = (PAPER_SIZES.indexOf(paperSize as PaperSize) >= 0 ? paperSize : "a4") as PaperSize;
+    return buildPaintingPdf(jspdf.jsPDF as JsPdfConstructor, processResult, { paperSize: size });
+}
+
 try {
     (window as any).downloadSVG = downloadSVG;
     (window as any).downloadPNG = downloadPNG;
@@ -417,4 +445,6 @@ try {
     (window as any).findPaletteFamily = findPaletteFamily;
     (window as any).downloadPalettePng = downloadPalettePng;
     (window as any).buildTemplatePdf = buildTemplatePdf;
+    (window as any).buildPaintingPdf = buildPaintingPdfDoc;
+    (window as any).downloadBlankSVG = downloadBlankSVG;
 } catch (_) {}

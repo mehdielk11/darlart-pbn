@@ -113,6 +113,54 @@ I used VSCode, which has built in typescript support. To debug it uses a tiny we
 To run do `npm install` to restore packages and then `npm start` to start the webserver
 
 
+## Deploying the website (Vercel)
+
+The website is a static site: `npm run vercel-build` compiles `src/` with TypeScript and `build.js` writes everything Vercel serves into `dist/` (the hashed bundle, `index.html`, `styles`, `scripts/lib` and the mockup kit scripts). Bundles from earlier builds are deleted, so only the current one is deployed.
+
+Vercel settings (also in `vercel.json`, so a fresh import needs no clicking):
+
+| Setting | Value |
+|---|---|
+| Framework preset | Other |
+| Build command | `npm run vercel-build` |
+| Output directory | `dist` |
+| Install command | default (`npm install`) |
+| Node.js version | 20 or newer (`engines` in `package.json`) |
+
+No environment variables are needed: the generator runs entirely in the browser, and the site never calls the API.
+
+`vercel.json` also sets `cleanUrls`, caches the content-hashed bundle for a year and other assets for a day, and sends `X-Content-Type-Options` and `Referrer-Policy`. `.vercelignore` keeps the API (`server/`), the n8n workflows, the Shopify theme, the tests and the kit photos out of the upload; the website only needs the generated `mockups/kit-*.js`.
+
+To deploy:
+
+```bash
+npm run vercel-build && npx vercel deploy --prod
+```
+
+or push to the branch connected to the Vercel project. To check the exact files that will be served, build and open `dist/`:
+
+```bash
+npm run vercel-build && python -m http.server 10003 --directory dist
+```
+
+The API (`server/`) is **not** deployed to Vercel: it needs sharp, long-running jobs and a disk, so it stays on the VM (see `automation/README.md`).
+
+## Deploying the website on your own server (VPS)
+
+The same `dist/` folder works on any static web server, with no Node process: everything runs in the visitor's browser.
+
+```bash
+# on your machine (or on the VPS, it only needs Node to build)
+npm ci && npm run vercel-build
+
+# copy the built site to the server
+rsync -av --delete dist/ user@your-vps:/var/www/darlart/
+```
+
+Then serve `/var/www/darlart` with nginx: `deploy/nginx-darlart.conf` is ready to copy, with gzip, cache rules matching the hashed bundle, and an optional (commented out) reverse proxy to the API on the same domain.
+
+The page loads no third-party JavaScript: jQuery, Materialize, RequireJS, saveSvgAsPng, jsPDF, Cropper and the Material Icons font are all served from your own domain. Only the Inter and Poppins text fonts come from Google Fonts, and if they can't be reached the page falls back to a system font.
+
 ## Compiling the cli version
 
 Install pkg first if you don't have it yet `npm install pkg -g`. Then in the root folder run `pkg .`. This will generate the output for linux, windows and macos.

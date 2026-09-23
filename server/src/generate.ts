@@ -8,10 +8,10 @@ import { jsPDF } from "jspdf";
 import { ComplexityMetrics, suggestDifficulty } from "../../src/core/complexity";
 import { PixelBox, printFormatForCanvas, RelativeBox, ResolvedCanvasSize } from "../../src/core/crop";
 import { buildPaletteEntries, groupPaletteEntries } from "../../src/core/palette";
-import { buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
+import { buildPaintingPdf, buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
 import { buildSettings, Difficulty } from "../../src/core/settings";
-import { buildFadedSvgString, buildSvgString } from "../../src/core/svg";
+import { buildBlankSvgString, buildFadedSvgString, buildSvgString } from "../../src/core/svg";
 import { CropMethod, CropMode, prepareImage } from "./image";
 import { buildMockup } from "./mockup";
 
@@ -82,7 +82,9 @@ const STEP_RANGES: { [key in ProgressStep]: [number, number] } = {
 
 export const OUTPUT_FILES = {
     pdf: { name: "template.pdf", contentType: "application/pdf" },
+    paintingPdf: { name: "painting.pdf", contentType: "application/pdf" },
     svg: { name: "template.svg", contentType: "image/svg+xml" },
+    blankSvg: { name: "template-blank.svg", contentType: "image/svg+xml" },
     preview: { name: "preview.png", contentType: "image/png" },
     canvas: { name: "canvas.png", contentType: "image/png" },
     mockup: { name: "mockup.png", contentType: "image/png" },
@@ -142,8 +144,17 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     await writeOutput(OUTPUT_FILES.pdf, ".pdf", Buffer.from(doc.output("arraybuffer")));
     report("output", 0.4);
 
-    // SVG: colored with borders and numbers (same as the website "Download SVG")
-    await writeOutput(OUTPUT_FILES.svg, ".svg", buildSvgString(result.facetResult, result.colorsByIndex, { fill: true, stroke: true, labels: true }));
+    // Painting guide: colored page with its numbers, then the palette
+    const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize });
+    await writeOutput(OUTPUT_FILES.paintingPdf, "-painting.pdf", Buffer.from(paintingDoc.output("arraybuffer")));
+    report("output", 0.5);
+
+    // SVG: colored with borders and numbers, white numbers on the dark regions (same as the website "Download SVG")
+    await writeOutput(OUTPUT_FILES.svg, ".svg", buildSvgString(result.facetResult, result.colorsByIndex, { fill: true, stroke: true, labels: true, labelContrast: true }));
+    report("output", 0.55);
+
+    // Blank SVG: outlines and numbers on white, nothing colored (the template to paint on)
+    await writeOutput(OUTPUT_FILES.blankSvg, "-blank.svg", buildBlankSvgString(result.facetResult, result.colorsByIndex));
     report("output", 0.6);
 
     // Preview: colored template without numbers

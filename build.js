@@ -55,7 +55,7 @@ if (fs.cpSync) {
 }
 // Kit layers for the "Download mockup" button (the scripts made by server/scripts/prepare-mockups.js)
 fs.mkdirSync('./dist/mockups', { recursive: true });
-for (const file of fs.readdirSync('./mockups')) {
+for (const file of fs.existsSync('./mockups') ? fs.readdirSync('./mockups') : []) {
   if (/\.js$/.test(file)) fs.copyFileSync(`./mockups/${file}`, `./dist/mockups/${file}`);
 }
 console.log('Copied styles, scripts/lib and mockups to dist/');
@@ -63,6 +63,14 @@ console.log('Copied styles, scripts/lib and mockups to dist/');
 // Write the obfuscated file
 const outputFilename = `main.${hash}.js`;
 fs.writeFileSync(`./dist/${outputFilename}`, obfuscationResult.getObfuscatedCode());
+
+// Drop the bundles of previous builds so only the current one is deployed
+for (const file of fs.readdirSync('./dist')) {
+  if (/^main\.[0-9a-f]+\.js$/.test(file) && file !== outputFilename) {
+    fs.unlinkSync(`./dist/${file}`);
+    console.log(`Removed old bundle: dist/${file}`);
+  }
+}
 
 console.log(`Build complete! Generated: dist/${outputFilename}`);
 
@@ -88,11 +96,12 @@ function ensureScript(src) {
 }
 
 // Insert vendor libs first, AMD loader last to avoid mismatched anonymous define() from UMD libs
+// All of them are served from this domain, so the page works without cdnjs or unpkg
 ensureScript('scripts/lib/saveSvgAsPng.js');
-ensureScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js');
+ensureScript('scripts/lib/jspdf.umd.min.js');
 ensureScript('scripts/lib/jquery-1.11.0.min.js');
 ensureScript('scripts/lib/materialize.min.js');
-ensureScript('https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js');
+ensureScript('scripts/lib/cropper.min.js');
 ensureScript('scripts/lib/require.js');
 
 // Write the updated dist/index.html

@@ -32,6 +32,8 @@
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
     const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
+    const downloadBlankSvgBtn = document.getElementById('btnDownloadBlankSVG');
+    const downloadPaintingPdfBtn = document.getElementById('btnDownloadPaintingPDF');
     const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
     const downloadPaletteBtn = document.getElementById('btnDownloadPalette');
@@ -1117,6 +1119,17 @@
 
     // Downloads the PDF (colored page, numbered outline, legend grouped by family) built by the shared core,
     // so the website and the API produce the same document
+    function downloadPaintingPdf() {
+        if (typeof window.buildPaintingPdf !== 'function' || !(window.jspdf && window.jspdf.jsPDF)) {
+            console.warn('PDF generation is not available yet');
+            return;
+        }
+        const doc = window.buildPaintingPdf(window.selectedPaperSize || 'a4');
+        if (doc) {
+            doc.save(getOutputFilename('pdf').replace(/\.pdf$/i, '-painting.pdf'));
+        }
+    }
+
     function downloadPdf() {
         if (typeof window.buildTemplatePdf !== 'function' || !(window.jspdf && window.jspdf.jsPDF)) {
             console.warn('PDF generation is not available yet');
@@ -1165,6 +1178,17 @@
             if (typeof window.downloadCanvasPNG === 'function') {
                 window.downloadCanvasPNG(filename);
             }
+        });
+
+        if (downloadBlankSvgBtn) downloadBlankSvgBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-blank.svg');
+            if (typeof window.downloadBlankSVG === 'function') {
+                window.downloadBlankSVG(filename);
+            }
+        });
+
+        if (downloadPaintingPdfBtn) downloadPaintingPdfBtn.addEventListener('click', () => {
+            downloadPaintingPdf();
         });
 
         if (downloadMockupBtn) downloadMockupBtn.addEventListener('click', () => {

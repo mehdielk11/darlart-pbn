@@ -167,7 +167,7 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             orderId: "#1001",
         });
 
-        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "mockup.png", "palette.json", "preview.png", "template.pdf", "template.svg"]);
+        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "mockup.png", "painting.pdf", "palette.json", "preview.png", "template-blank.svg", "template.pdf", "template.svg"]);
 
         // the kit mockup keeps the kit photo's size
         const mockupMeta = await require("sharp")(path.join(outputDir, "mockup.png")).metadata();
@@ -195,6 +195,24 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         for (const label of labels) {
             assert.ok(numbers.has(label), `label ${label} missing from the palette`);
         }
+        // numbers on dark regions are written in white so they stay readable
+        const darkFills = [...svg.matchAll(/fill: rgb\((\d+),(\d+),(\d+)\)/g)]
+            .filter((m) => 0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3] < 140);
+        if (darkFills.length > 0) {
+            assert.ok(svg.includes('fill="#ffffff">'), "expected white numbers on the dark regions");
+        }
+
+        // the blank template: outlines and numbers, no colored fill
+        const blank = fs.readFileSync(path.join(outputDir, "template-blank.svg"), "utf8");
+        assert.ok(blank.includes("fill: none;"), "the blank template should not be filled");
+        assert.ok(!/fill: rgb\(/.test(blank), "the blank template should have no colors");
+        assert.equal([...blank.matchAll(/<\/text>/g)].length, [...svg.matchAll(/<\/text>/g)].length);
+
+        // the painting guide: colored template with numbers, then the palette
+        const painting = fs.readFileSync(path.join(outputDir, "painting.pdf"), "latin1");
+        assert.ok(painting.startsWith("%PDF"));
+        assert.equal((painting.match(/\/Type \/Page\b/g) || []).length, 2);
+
         const colors = result.palette.flatMap((row) => row.colors);
         assert.ok(colors.every((c) => /^\d{4}$/.test(c.code)), "every color should have a Darl'Art code");
         assert.ok(result.palette.every((row) => row.family.startsWith("Famille")));

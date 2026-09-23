@@ -211,7 +211,7 @@ export class GUIProcessManager {
      *  Creates a vector based SVG image of the facets with the given configuration (same markup as the API output)
      */
     public static async createSVG(facetResult: FacetResult, colorsByIndex: RGB[], sizeMultiplier: number, fill: boolean, stroke: boolean, addColorLabels: boolean, fontSize: number = 50, fontColor: string = "black", onUpdate: ((progress: number) => void) | null = null) {
-        const svgString = buildSvgString(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor });
+        const svgString = buildSvgString(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor, labelContrast: true });
         const parsed = new DOMParser().parseFromString(svgString, "image/svg+xml");
         const svg = document.importNode(parsed.documentElement, true);
         if (onUpdate != null) {

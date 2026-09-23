@@ -1,0 +1,22 @@
+# Only the website is deployed to Vercel: "npm run vercel-build" compiles src/ and writes dist/.
+# The API (server/), the n8n workflows and the Shopify theme files live elsewhere.
+server/
+automation/
+shopify/
+gpt/
+test/
+src-cli/
+data/
+.claude/
+.git/
+*.md
+!README.md
+webpack.config.js
+obf.md
+temp_overlay.css
+Dockerfile
+.dockerignore
+
+# the kit photos: the website only needs the generated mockups/kit-*.js
+mockups/*.webp
+mockups/*.png

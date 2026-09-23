@@ -19,6 +19,14 @@ export interface SvgOptions {
     fontFamily?: string;
     /** Color painted behind the facets (default: none, transparent) */
     background?: string;
+    /** Numbers on dark filled regions are written in white instead of fontColor, so they stay readable */
+    labelContrast?: boolean;
+}
+
+/** Numbers stay readable on any fill: white on a dark region, the normal color on a light one */
+export function labelColorFor(color: RGB, fontColor: string): string {
+    const luminance = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
+    return luminance < 140 ? "#ffffff" : fontColor;
 }
 
 /** The faded "pre-printed canvas" look: pale colors with grey outlines and grey numbers */
@@ -96,9 +104,10 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
         parts.push(`<path data-facetId="${f.id}" d="${buildFacetPathData(outline, sizeMultiplier)}" style="${style}"></path>`);
 
         if (labels) {
+            const labelFill = fill && options.labelContrast ? labelColorFor(colorsByIndex[f.color], fontColor) : fontColor;
             parts.push(`<g class="label" transform="translate(${f.labelBounds.minX * sizeMultiplier},${f.labelBounds.minY * sizeMultiplier})">` +
                 `<svg width="${f.labelBounds.width * sizeMultiplier}" height="${f.labelBounds.height * sizeMultiplier}" overflow="visible" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet">` +
-                `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${fontColor}">${f.color + 1}</text>` +
+                `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${labelFill}">${f.color + 1}</text>` +
                 `</svg></g>`);
         }
     }
@@ -133,4 +142,23 @@ export function buildFadedSvgString(facetResult: FacetResult, colorsByIndex: RGB
     svgOptions.stroke = true;
     svgOptions.labels = true;
     return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
+}
+
+/**
+ * The template to paint on: black outlines and black numbers on white, no colors at all.
+ * Same geometry as the colored SVG, so both line up.
+ */
+export function buildBlankSvgString(facetResult: FacetResult, colorsByIndex: RGB[], options: SvgOptions = {}): string {
+    return buildSvgString(facetResult, colorsByIndex, {
+        strokeColor: "#000000",
+        fontColor: "#000000",
+        background: "#ffffff",
+        // thicker than the colored template: nothing but the lines shows where to paint
+        strokeWidth: 1.5,
+        ...options,
+        fill: false,
+        stroke: true,
+        labels: true,
+        labelContrast: false,
+    });
 }

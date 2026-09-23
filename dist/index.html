@@ -5,12 +5,12 @@
     <title>Free Online Custom Paint by Number Generator</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
     <link rel="stylesheet" href="styles/lib/materialize.min.css">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="styles/lib/material-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel='stylesheet' href='styles/main.css?v=af307d61' />
+    <link rel='stylesheet' href='styles/main.css?v=a5442a6d' />
     <!-- CropperJS (for image cropping UI) -->
-    <link href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css" rel="stylesheet">
+    <link href="styles/lib/cropper.min.css" rel="stylesheet">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
 </head>
 
@@ -178,6 +178,10 @@
                     <i class="material-icons">download</i>
                     Download SVG
                 </button>
+                <button class="download-btn" id="btnDownloadBlankSVG">
+                    <i class="material-icons">download</i>
+                    Blank SVG
+                </button>
                 <button class="download-btn" id="btnDownloadPNG">
                     <i class="material-icons">download</i>
                     Download PNG
@@ -189,6 +193,10 @@
                 <button class="download-btn" id="btnDownloadMockup">
                     <i class="material-icons">download</i>
                     Download mockup
+                </button>
+                <button class="download-btn" id="btnDownloadPaintingPDF">
+                    <i class="material-icons">download</i>
+                    Painting PDF
                 </button>
                 <button class="download-btn" id="btnDownloadOutline">
                     <i class="material-icons">download</i>
@@ -644,10 +652,10 @@
     <!--  -->
 
     <script src="scripts/lib/saveSvgAsPng.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+    <script src="scripts/lib/jspdf.umd.min.js"></script>
     <script src="scripts/lib/jquery-1.11.0.min.js"></script>
     <script src="scripts/lib/materialize.min.js"></script>
-    <script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
+    <script src="scripts/lib/cropper.min.js"></script>
     <script src="scripts/lib/require.js"></script>
     
     
@@ -677,7 +685,12 @@
     
     
     
-    <script src='main.af307d61.js'></script>
+    
+    
+    
+    
+    
+    <script src='main.a5442a6d.js'></script>
 </body>
 
 </html>

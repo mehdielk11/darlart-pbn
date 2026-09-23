@@ -2,16 +2,15 @@
  * PDF output of a processed image, drawn as vector content straight from the facet data (no SVG parsing, no DOM),
  * so the website and the API produce the same document.
  *
- * Page 1: colored template without numbers
- * Page 2: numbered outline
- * Page 3+: legend & palette, one card per Darl'Art paint family
+ * buildPdf: page 1 colored without numbers, page 2 numbered outline, page 3+ legend & palette by family
+ * buildPaintingPdf: page 1 colored with numbers, page 2 palette
  *
  * jsPDF is passed in (window.jspdf.jsPDF in the browser, require("jspdf").jsPDF in Node).
  */
 import { RGB } from "../common";
 import { FacetResult } from "../facetmanagement";
 import { buildPaletteEntries, groupPaletteEntries, PaletteRow } from "./palette";
-import { getFacetOutline, getLabelFontSize } from "./svg";
+import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
 export const PAPER_SIZES: PaperSize[] = ["a2", "a3", "a4", "a5"];
@@ -45,7 +44,8 @@ function hexToRgb(hex: string): RGB {
     return [parseInt(full.substring(0, 2), 16), parseInt(full.substring(2, 4), 16), parseInt(full.substring(4, 6), 16)];
 }
 
-export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
+/** Page setup shared by the PDFs: the template scaled and centered on the paper, with its facets ready to trace */
+function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions) {
     const paperSize = options.paperSize || "a4";
     const sizeMultiplier = options.sizeMultiplier || 3;
     const fontSize = options.fontSize || 50;
@@ -82,43 +82,78 @@ export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options
 
     const drawableFacets = facetResult.facets.filter((f) => f != null && f.borderSegments.length > 0);
 
-    // PAGE 1: colored template without numbers
-    doc.setLineJoin("round");
-    doc.setLineWidth(lineWidth);
-    doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-    for (const f of drawableFacets) {
-        const color = colorsByIndex[f!.color];
-        doc.setFillColor(color[0], color[1], color[2]);
-        traceFacet(getFacetOutline(f!));
-        doc.fillStroke();
-    }
+    /** Every facet's number, centered in its label box, the same way the SVG places it */
+    const drawLabels = (color: RGB | "contrast") => {
+        doc.setFont("helvetica", "normal");
+        if (color !== "contrast") { doc.setTextColor(color[0], color[1], color[2]); }
+        for (const f of drawableFacets) {
+            const bounds = f!.labelBounds;
+            // the label is centered in its box and scaled like the SVG viewBox "-50 -50 100 100" (meet)
+            const boxScale = Math.min(bounds.width, bounds.height) * sizeMultiplier / 100;
+            const labelSize = getLabelFontSize(f!, fontSize) * boxScale * scale;
+            if (labelSize < 0.5) { continue; }
+            if (color === "contrast") {
+                // white on a dark region, dark on a light one
+                doc.setTextColor(labelColorFor(colorsByIndex[f!.color], "#111111"));
+            }
+            doc.setFontSize(labelSize);
+            doc.text(String(f!.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
+        }
+    };
 
-    // PAGE 2: numbered outline
-    doc.addPage();
-    doc.setLineJoin("round");
-    doc.setLineWidth(lineWidth);
-    doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-    for (const f of drawableFacets) {
-        traceFacet(getFacetOutline(f!));
-        doc.stroke();
-    }
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-    for (const f of drawableFacets) {
-        const bounds = f!.labelBounds;
-        // the label is centered in its box and scaled like the SVG viewBox "-50 -50 100 100" (meet)
-        const boxScale = Math.min(bounds.width, bounds.height) * sizeMultiplier / 100;
-        const labelSize = getLabelFontSize(f!, fontSize) * boxScale * scale;
-        if (labelSize < 0.5) { continue; }
-        doc.setFontSize(labelSize);
-        doc.text(String(f!.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
-    }
+    /** The colored template, one filled and stroked shape per facet */
+    const drawColoredTemplate = () => {
+        doc.setLineJoin("round");
+        doc.setLineWidth(lineWidth);
+        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        for (const f of drawableFacets) {
+            const color = colorsByIndex[f!.color];
+            doc.setFillColor(color[0], color[1], color[2]);
+            traceFacet(getFacetOutline(f!));
+            doc.fillStroke();
+        }
+    };
 
-    // PAGE 3+: legend & palette
-    const rows = groupPaletteEntries(buildPaletteEntries(colorsByIndex, template.colorCodes));
-    addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
+    /** The outlines only, in the outline color */
+    const drawOutlines = () => {
+        doc.setLineJoin("round");
+        doc.setLineWidth(lineWidth);
+        doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+        for (const f of drawableFacets) {
+            traceFacet(getFacetOutline(f!));
+            doc.stroke();
+        }
+    };
 
-    return doc;
+    const addLegend = () => {
+        const rows = groupPaletteEntries(buildPaletteEntries(colorsByIndex, template.colorCodes));
+        addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
+    };
+
+    return { doc, drawColoredTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+}
+
+/** Page 1: colored without numbers. Page 2: numbered outline. Page 3+: legend & palette by family. */
+export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
+    const page = layoutTemplate(JsPDF, template, options);
+    page.drawColoredTemplate();
+    page.doc.addPage();
+    page.drawOutlines();
+    page.drawLabels(page.outlineColor);
+    page.addLegend();
+    return page.doc;
+}
+
+/**
+ * The painting guide: page 1 is the colored template with its numbers (white on the dark regions),
+ * page 2 is the palette.
+ */
+export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
+    const page = layoutTemplate(JsPDF, template, options);
+    page.drawColoredTemplate();
+    page.drawLabels("contrast");
+    page.addLegend();
+    return page.doc;
 }
 
 /**

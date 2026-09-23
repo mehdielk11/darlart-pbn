@@ -2993,12 +2993,19 @@ define("core/svg", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.FADED_CANVAS_STYLE = void 0;
+    exports.labelColorFor = labelColorFor;
     exports.getFacetOutline = getFacetOutline;
     exports.buildFacetPathData = buildFacetPathData;
     exports.getLabelFontSize = getLabelFontSize;
     exports.buildSvgString = buildSvgString;
     exports.fadeColors = fadeColors;
     exports.buildFadedSvgString = buildFadedSvgString;
+    exports.buildBlankSvgString = buildBlankSvgString;
+    /** Numbers stay readable on any fill: white on a dark region, the normal color on a light one */
+    function labelColorFor(color, fontColor) {
+        const luminance = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
+        return luminance < 140 ? "#ffffff" : fontColor;
+    }
     /** The faded "pre-printed canvas" look: pale colors with grey outlines and grey numbers */
     exports.FADED_CANVAS_STYLE = {
         /** Share of each color that is kept, the rest being white: 1 keeps the color, 0 turns it white */
@@ -3066,9 +3073,10 @@ define("core/svg", ["require", "exports"], function (require, exports) {
             style += `fill: ${fill ? color : "none"};`;
             parts.push(`<path data-facetId="${f.id}" d="${buildFacetPathData(outline, sizeMultiplier)}" style="${style}"></path>`);
             if (labels) {
+                const labelFill = fill && options.labelContrast ? labelColorFor(colorsByIndex[f.color], fontColor) : fontColor;
                 parts.push(`<g class="label" transform="translate(${f.labelBounds.minX * sizeMultiplier},${f.labelBounds.minY * sizeMultiplier})">` +
                     `<svg width="${f.labelBounds.width * sizeMultiplier}" height="${f.labelBounds.height * sizeMultiplier}" overflow="visible" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet">` +
-                    `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${fontColor}">${f.color + 1}</text>` +
+                    `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${labelFill}">${f.color + 1}</text>` +
                     `</svg></g>`);
             }
         }
@@ -3101,12 +3109,22 @@ define("core/svg", ["require", "exports"], function (require, exports) {
         svgOptions.labels = true;
         return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
     }
+    /**
+     * The template to paint on: black outlines and black numbers on white, no colors at all.
+     * Same geometry as the colored SVG, so both line up.
+     */
+    function buildBlankSvgString(facetResult, colorsByIndex, options = {}) {
+        return buildSvgString(facetResult, colorsByIndex, Object.assign(Object.assign({ strokeColor: "#000000", fontColor: "#000000", background: "#ffffff", 
+            // thicker than the colored template: nothing but the lines shows where to paint
+            strokeWidth: 1.5 }, options), { fill: false, stroke: true, labels: true, labelContrast: false }));
+    }
 });
 define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function (require, exports, palette_1, svg_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PAPER_SIZES = void 0;
     exports.buildPdf = buildPdf;
+    exports.buildPaintingPdf = buildPaintingPdf;
     exports.addLegendPages = addLegendPages;
     exports.PAPER_SIZES = ["a2", "a3", "a4", "a5"];
     const PAGE_MARGIN = 36; // 0.5 inch
@@ -3115,7 +3133,8 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
         const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
         return [parseInt(full.substring(0, 2), 16), parseInt(full.substring(2, 4), 16), parseInt(full.substring(4, 6), 16)];
     }
-    function buildPdf(JsPDF, template, options = {}) {
+    /** Page setup shared by the PDFs: the template scaled and centered on the paper, with its facets ready to trace */
+    function layoutTemplate(JsPDF, template, options) {
         const paperSize = options.paperSize || "a4";
         const sizeMultiplier = options.sizeMultiplier || 3;
         const fontSize = options.fontSize || 50;
@@ -3147,42 +3166,76 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
             doc.close();
         };
         const drawableFacets = facetResult.facets.filter((f) => f != null && f.borderSegments.length > 0);
-        // PAGE 1: colored template without numbers
-        doc.setLineJoin("round");
-        doc.setLineWidth(lineWidth);
-        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-        for (const f of drawableFacets) {
-            const color = colorsByIndex[f.color];
-            doc.setFillColor(color[0], color[1], color[2]);
-            traceFacet((0, svg_1.getFacetOutline)(f));
-            doc.fillStroke();
-        }
-        // PAGE 2: numbered outline
-        doc.addPage();
-        doc.setLineJoin("round");
-        doc.setLineWidth(lineWidth);
-        doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-        for (const f of drawableFacets) {
-            traceFacet((0, svg_1.getFacetOutline)(f));
-            doc.stroke();
-        }
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-        for (const f of drawableFacets) {
-            const bounds = f.labelBounds;
-            // the label is centered in its box and scaled like the SVG viewBox "-50 -50 100 100" (meet)
-            const boxScale = Math.min(bounds.width, bounds.height) * sizeMultiplier / 100;
-            const labelSize = (0, svg_1.getLabelFontSize)(f, fontSize) * boxScale * scale;
-            if (labelSize < 0.5) {
-                continue;
+        /** Every facet's number, centered in its label box, the same way the SVG places it */
+        const drawLabels = (color) => {
+            doc.setFont("helvetica", "normal");
+            if (color !== "contrast") {
+                doc.setTextColor(color[0], color[1], color[2]);
             }
-            doc.setFontSize(labelSize);
-            doc.text(String(f.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
-        }
-        // PAGE 3+: legend & palette
-        const rows = (0, palette_1.groupPaletteEntries)((0, palette_1.buildPaletteEntries)(colorsByIndex, template.colorCodes));
-        addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
-        return doc;
+            for (const f of drawableFacets) {
+                const bounds = f.labelBounds;
+                // the label is centered in its box and scaled like the SVG viewBox "-50 -50 100 100" (meet)
+                const boxScale = Math.min(bounds.width, bounds.height) * sizeMultiplier / 100;
+                const labelSize = (0, svg_1.getLabelFontSize)(f, fontSize) * boxScale * scale;
+                if (labelSize < 0.5) {
+                    continue;
+                }
+                if (color === "contrast") {
+                    // white on a dark region, dark on a light one
+                    doc.setTextColor((0, svg_1.labelColorFor)(colorsByIndex[f.color], "#111111"));
+                }
+                doc.setFontSize(labelSize);
+                doc.text(String(f.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
+            }
+        };
+        /** The colored template, one filled and stroked shape per facet */
+        const drawColoredTemplate = () => {
+            doc.setLineJoin("round");
+            doc.setLineWidth(lineWidth);
+            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            for (const f of drawableFacets) {
+                const color = colorsByIndex[f.color];
+                doc.setFillColor(color[0], color[1], color[2]);
+                traceFacet((0, svg_1.getFacetOutline)(f));
+                doc.fillStroke();
+            }
+        };
+        /** The outlines only, in the outline color */
+        const drawOutlines = () => {
+            doc.setLineJoin("round");
+            doc.setLineWidth(lineWidth);
+            doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+            for (const f of drawableFacets) {
+                traceFacet((0, svg_1.getFacetOutline)(f));
+                doc.stroke();
+            }
+        };
+        const addLegend = () => {
+            const rows = (0, palette_1.groupPaletteEntries)((0, palette_1.buildPaletteEntries)(colorsByIndex, template.colorCodes));
+            addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
+        };
+        return { doc, drawColoredTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+    }
+    /** Page 1: colored without numbers. Page 2: numbered outline. Page 3+: legend & palette by family. */
+    function buildPdf(JsPDF, template, options = {}) {
+        const page = layoutTemplate(JsPDF, template, options);
+        page.drawColoredTemplate();
+        page.doc.addPage();
+        page.drawOutlines();
+        page.drawLabels(page.outlineColor);
+        page.addLegend();
+        return page.doc;
+    }
+    /**
+     * The painting guide: page 1 is the colored template with its numbers (white on the dark regions),
+     * page 2 is the palette.
+     */
+    function buildPaintingPdf(JsPDF, template, options = {}) {
+        const page = layoutTemplate(JsPDF, template, options);
+        page.drawColoredTemplate();
+        page.drawLabels("contrast");
+        page.addLegend();
+        return page.doc;
     }
     /**
      * Legend as vector content. Family cards are packed into full-width lines and a new page
@@ -3933,7 +3986,7 @@ define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", 
          */
         static createSVG(facetResult_1, colorsByIndex_1, sizeMultiplier_1, fill_2, stroke_1, addColorLabels_1) {
             return __awaiter(this, arguments, void 0, function* (facetResult, colorsByIndex, sizeMultiplier, fill, stroke, addColorLabels, fontSize = 50, fontColor = "black", onUpdate = null) {
-                const svgString = (0, svg_2.buildSvgString)(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor });
+                const svgString = (0, svg_2.buildSvgString)(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor, labelContrast: true });
                 const parsed = new DOMParser().parseFromString(svgString, "image/svg+xml");
                 const svg = document.importNode(parsed.documentElement, true);
                 if (onUpdate != null) {
@@ -3959,12 +4012,14 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
     exports.updateOutput = updateOutput;
     exports.downloadPalettePng = downloadPalettePng;
     exports.downloadPNG = downloadPNG;
+    exports.downloadBlankSVG = downloadBlankSVG;
     exports.downloadCanvasPNG = downloadCanvasPNG;
     exports.buildMockupCanvas = buildMockupCanvas;
     exports.downloadMockupPNG = downloadMockupPNG;
     exports.downloadSVG = downloadSVG;
     exports.loadExample = loadExample;
     exports.buildTemplatePdf = buildTemplatePdf;
+    exports.buildPaintingPdfDoc = buildPaintingPdfDoc;
     let processResult = null;
     /** The (cropped) photo that processResult was made from, for the mockup's image card */
     let processedPhoto = null;
@@ -4128,20 +4183,38 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         dl.setAttribute("download", "palette.png");
         dl.click();
     }
+    /** The finished painting: colors only, without outlines or numbers */
     function downloadPNG(filename) {
-        if ($("#svgContainer svg").length > 0) {
-            const original = $("#svgContainer svg").get(0);
-            const clone = original.cloneNode(true);
-            // Remove all labels/numbers before exporting
-            const labelGroups = clone.querySelectorAll('g.label');
-            labelGroups.forEach((el) => el.parentNode && el.parentNode.removeChild(el));
-            const texts = clone.querySelectorAll('text');
-            texts.forEach((el) => el.parentNode && el.parentNode.removeChild(el));
-            const defaultName = (typeof window.getOutputFilename === "function")
-                ? window.getOutputFilename("png")
-                : "paintbynumbers.png";
-            saveSvgAsPng(clone, filename || defaultName);
+        if (processResult == null) {
+            return;
         }
+        const svgString = (0, svg_3.buildSvgString)(processResult.facetResult, processResult.colorsByIndex, { fill: true, stroke: false, labels: false });
+        const svg = document.importNode(new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement, true);
+        const defaultName = (typeof window.getOutputFilename === "function")
+            ? window.getOutputFilename("png")
+            : "paintbynumbers.png";
+        saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
+    }
+    /** The template to paint on: black outlines and numbers on white, no colors */
+    function downloadBlankSVG(filename) {
+        if (processResult == null) {
+            return;
+        }
+        const svgString = (0, svg_3.buildBlankSvgString)(processResult.facetResult, processResult.colorsByIndex);
+        const defaultName = (typeof window.getOutputFilename === "function")
+            ? String(window.getOutputFilename("svg")).replace(/\.svg$/i, "-blank.svg")
+            : "paintbynumbers-blank.svg";
+        saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
+    }
+    function saveTextFile(content, filename, type) {
+        const url = URL.createObjectURL(new Blob([content], { type }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     /** The template as a pre-printed canvas: faint colors, grey outlines and numbers (same look as the API's canvas.png) */
     function downloadCanvasPNG(filename) {
@@ -4329,6 +4402,15 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         const size = (pdf_1.PAPER_SIZES.indexOf(paperSize) >= 0 ? paperSize : "a4");
         return (0, pdf_1.buildPdf)(jspdf.jsPDF, processResult, { paperSize: size });
     }
+    /** The painting guide: colored template with its numbers, then the palette */
+    function buildPaintingPdfDoc(paperSize = "a4") {
+        const jspdf = window.jspdf;
+        if (processResult == null || !jspdf || !jspdf.jsPDF) {
+            return null;
+        }
+        const size = (pdf_1.PAPER_SIZES.indexOf(paperSize) >= 0 ? paperSize : "a4");
+        return (0, pdf_1.buildPaintingPdf)(jspdf.jsPDF, processResult, { paperSize: size });
+    }
     try {
         window.downloadSVG = downloadSVG;
         window.downloadPNG = downloadPNG;
@@ -4338,6 +4420,8 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         window.findPaletteFamily = palettefamilies_2.findPaletteFamily;
         window.downloadPalettePng = downloadPalettePng;
         window.buildTemplatePdf = buildTemplatePdf;
+        window.buildPaintingPdf = buildPaintingPdfDoc;
+        window.downloadBlankSVG = downloadBlankSVG;
     }
     catch (_) { }
 });
@@ -4792,6 +4876,8 @@ define("core/crop", ["require", "exports"], function (require, exports) {
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
     const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
+    const downloadBlankSvgBtn = document.getElementById('btnDownloadBlankSVG');
+    const downloadPaintingPdfBtn = document.getElementById('btnDownloadPaintingPDF');
     const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
     const downloadPaletteBtn = document.getElementById('btnDownloadPalette');
@@ -5877,6 +5963,17 @@ define("core/crop", ["require", "exports"], function (require, exports) {
 
     // Downloads the PDF (colored page, numbered outline, legend grouped by family) built by the shared core,
     // so the website and the API produce the same document
+    function downloadPaintingPdf() {
+        if (typeof window.buildPaintingPdf !== 'function' || !(window.jspdf && window.jspdf.jsPDF)) {
+            console.warn('PDF generation is not available yet');
+            return;
+        }
+        const doc = window.buildPaintingPdf(window.selectedPaperSize || 'a4');
+        if (doc) {
+            doc.save(getOutputFilename('pdf').replace(/\.pdf$/i, '-painting.pdf'));
+        }
+    }
+
     function downloadPdf() {
         if (typeof window.buildTemplatePdf !== 'function' || !(window.jspdf && window.jspdf.jsPDF)) {
             console.warn('PDF generation is not available yet');
@@ -5925,6 +6022,17 @@ define("core/crop", ["require", "exports"], function (require, exports) {
             if (typeof window.downloadCanvasPNG === 'function') {
                 window.downloadCanvasPNG(filename);
             }
+        });
+
+        if (downloadBlankSvgBtn) downloadBlankSvgBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-blank.svg');
+            if (typeof window.downloadBlankSVG === 'function') {
+                window.downloadBlankSVG(filename);
+            }
+        });
+
+        if (downloadPaintingPdfBtn) downloadPaintingPdfBtn.addEventListener('click', () => {
+            downloadPaintingPdf();
         });
 
         if (downloadMockupBtn) downloadMockupBtn.addEventListener('click', () => {
