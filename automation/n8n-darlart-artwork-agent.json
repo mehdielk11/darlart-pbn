@@ -155,7 +155,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// A fixed prompt: the model sees the reference itself (high input fidelity), so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
+        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
       }
     },
     {
@@ -191,10 +191,6 @@
             {
               "name": "quality",
               "value": "={{ $('Settings').first().json.imageQuality }}"
-            },
-            {
-              "name": "input_fidelity",
-              "value": "high"
             },
             {
               "name": "output_format",

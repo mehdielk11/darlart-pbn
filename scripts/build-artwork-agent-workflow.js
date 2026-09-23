@@ -107,7 +107,7 @@ connect("Prepare", "Save reference (Artwork Ref)");
 // No color instructions: the model paints the reference's own colors, and "Snap to palette" then picks the
 // 48 Darl'Art colors that fit the painting best. Palette lists in the prompt risk swatches painted into the image.
 node("Build image prompt", "n8n-nodes-base.code", 2, [880, 0], {
-    jsCode: `// A fixed prompt: the model sees the reference itself (high input fidelity), so no scene description is needed
+    jsCode: `// A fixed prompt: the model sees the reference itself, so no scene description is needed
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
     "Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.",
@@ -135,7 +135,6 @@ node("Generate ART", "n8n-nodes-base.httpRequest", 4.2, [1620, 0], {
             { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt }}" },
             { name: "size", value: "auto" },
             { name: "quality", value: "={{ $('Settings').first().json.imageQuality }}" },
-            { name: "input_fidelity", value: "high" },
             { name: "output_format", value: "png" },
             { name: "n", value: "1" },
             { parameterType: "formBinaryData", name: "image", inputDataFieldName: "reference" },
