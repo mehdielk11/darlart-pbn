@@ -12,8 +12,8 @@ Artwork Agent finished / Run now / every day 04:00
 ```
 
 ## Files
-- `Print/<stamp>_40x50_24_preview.svg`: the website's **Preview SVG** (`canvas.svg`), the faint pre-printed canvas;
-- `Print/<stamp>_40x50_24_catalog.pdf`: the website's **Print PDF** (`painting.pdf`): colored template with grey outlines and numbers, plus the palette page;
+- `Print/<stamp>_40x50_24_preview.svg`: the website's **Opacity SVG** (`canvas.svg`), the faint pre-printed canvas;
+- `Print/<stamp>_40x50_24_catalog.pdf`: the website's **Agency PDF** (`painting.pdf`): colored template with grey outlines and numbers, plus the palette page;
 - `<stamp>_40x50_24_user.pdf` (in `1xxx/`, one per version): the website's **User PDF** (`template.pdf`): finished painting, painted template with numbers, legend with numbers and colors only;
 - `<stamp>_mockup.png`: one kit mockup, from the first canvas size at `mockupColors` (48). It's saved last, so it also marks the folder as done.
 

@@ -25,7 +25,7 @@ const SETTINGS = {
     orientation: "auto", // portrait or landscape from the artwork's own shape
     palette: "darlart-v3",
     cropMode: "attention",
-    paperSize: "a4", // page size of the Print PDF
+    paperSize: "a4", // page size of the PDFs (Agency / User)
     mockupColors: 48, // the single mockup comes from the first canvas size at this color count
     maxPerRun: 5, // folders per run; the next run starts by itself when work remains
     lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run

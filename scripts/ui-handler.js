@@ -31,8 +31,8 @@
     const paperSizeSelect = document.getElementById('paperSize');
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
-    const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
     const downloadCanvasSvgBtn = document.getElementById('btnDownloadCanvasSVG');
+    const downloadBlankSvgBtn = document.getElementById('btnDownloadBlankSVG');
     const downloadPaintingPdfBtn = document.getElementById('btnDownloadPaintingPDF');
     const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
@@ -268,19 +268,21 @@
     let cropper = null;
     let allowZoomFromSlider = false;
     let baseZoomRatio = 1; // ratio used when slider is at 100%
-    let currentAspect = 3/4; // default aspect ratio
-    let currentCanvasSize = '30x40';
+    let currentAspect = 4/5; // default aspect ratio
+    let currentCanvasSize = '40x50';
     let currentOrientation = 'portrait';
     let pendingObjectUrl = null;
 
+    // Each size has a button (portrait key) and a landscape partner chosen by the orientation toggle
     const CANVAS_SIZES = {
-        '30x40': { w: 30, h: 40, partner: '40x30', orientation: 'portrait' },
-        '40x30': { w: 40, h: 30, partner: '30x40', orientation: 'landscape' },
-        '50x50': { w: 50, h: 50, partner: null, orientation: 'square' },
+        '20x25': { w: 20, h: 25, partner: '25x20', orientation: 'portrait' },
+        '25x20': { w: 25, h: 20, partner: '20x25', orientation: 'landscape' },
+        '32x40': { w: 32, h: 40, partner: '40x32', orientation: 'portrait' },
+        '40x32': { w: 40, h: 32, partner: '32x40', orientation: 'landscape' },
         '40x50': { w: 40, h: 50, partner: '50x40', orientation: 'portrait' },
         '50x40': { w: 50, h: 40, partner: '40x50', orientation: 'landscape' },
-        '60x70': { w: 60, h: 70, partner: '70x60', orientation: 'portrait' },
-        '70x60': { w: 70, h: 60, partner: '60x70', orientation: 'landscape' },
+        '60x75': { w: 60, h: 75, partner: '75x60', orientation: 'portrait' },
+        '75x60': { w: 75, h: 60, partner: '60x75', orientation: 'landscape' },
         'custom': { w: null, h: null, partner: null, orientation: null }
     };
 
@@ -336,10 +338,10 @@
         cropImgEl.onload = () => {
             const isLandscape = (cropImgEl.naturalWidth || 1) >= (cropImgEl.naturalHeight || 1);
             if (isLandscape) {
-                currentCanvasSize = '40x30';
+                currentCanvasSize = '50x40';
                 currentOrientation = 'landscape';
             } else {
-                currentCanvasSize = '30x40';
+                currentCanvasSize = '40x50';
                 currentOrientation = 'portrait';
             }
             updateCropAspect(false);
@@ -572,8 +574,10 @@
 
         // Highlight active size button
         const sizeButtons = document.querySelectorAll('.canvas-size-toggle .size-btn');
+        const currentCfg = CANVAS_SIZES[currentCanvasSize];
         sizeButtons.forEach(btn => {
-            const isMatch = btn.getAttribute('data-size') === currentCanvasSize;
+            const size = btn.getAttribute('data-size');
+            const isMatch = size === currentCanvasSize || (!!currentCfg && currentCfg.partner === size);
             btn.classList.toggle('active', isMatch);
             btn.setAttribute('aria-selected', isMatch ? 'true' : 'false');
         });
@@ -592,10 +596,6 @@
                 currentOrientation = (w > h) ? 'landscape' : 'portrait';
             }
             currentAspect = w / h;
-        } else if (currentCanvasSize === '50x50') {
-            isSquare = true;
-            currentOrientation = 'square';
-            currentAspect = 1.0;
         } else {
             isSquare = false;
             if (currentOrientation === 'square') {
@@ -655,6 +655,11 @@
 
     function selectCanvasSize(sizeKey) {
         if (!CANVAS_SIZES[sizeKey]) return;
+        // a size button keeps the current orientation: 40x50 in landscape is 50x40
+        const clicked = CANVAS_SIZES[sizeKey];
+        if (clicked.partner && currentOrientation !== 'square' && CANVAS_SIZES[clicked.partner].orientation === currentOrientation) {
+            sizeKey = clicked.partner;
+        }
         currentCanvasSize = sizeKey;
         const cfg = CANVAS_SIZES[sizeKey];
         if (cfg.orientation) {
@@ -1172,18 +1177,18 @@
             }
         });
 
-        // pre-printed canvas look: faint colors with grey outlines and numbers
-        if (downloadCanvasBtn) downloadCanvasBtn.addEventListener('click', () => {
-            const filename = getOutputFilename('png').replace(/\.png$/i, '-canvas.png');
-            if (typeof window.downloadCanvasPNG === 'function') {
-                window.downloadCanvasPNG(filename);
-            }
-        });
-
         if (downloadCanvasSvgBtn) downloadCanvasSvgBtn.addEventListener('click', () => {
             const filename = getOutputFilename('svg').replace(/\.svg$/i, '-canvas.svg');
             if (typeof window.downloadFadedSVG === 'function') {
                 window.downloadFadedSVG(filename);
+            }
+        });
+
+        // blank template: black outlines and numbers, no colors
+        if (downloadBlankSvgBtn) downloadBlankSvgBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-blank.svg');
+            if (typeof window.downloadBlankSVG === 'function') {
+                window.downloadBlankSVG(filename);
             }
         });
 

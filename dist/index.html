@@ -8,7 +8,7 @@
     <link href="styles/lib/material-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel='stylesheet' href='styles/main.css?v=e7457994' />
+    <link rel='stylesheet' href='styles/main.css?v=e42951d4' />
     <!-- CropperJS (for image cropping UI) -->
     <link href="styles/lib/cropper.min.css" rel="stylesheet">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
@@ -178,17 +178,17 @@
                     <i class="material-icons">download</i>
                     SVG
                 </button>
-                <button class="download-btn download-btn-print" id="btnDownloadCanvasSVG">
+                <button class="download-btn download-btn-print" id="btnDownloadBlankSVG">
                     <i class="material-icons">download</i>
-                    Preview SVG
+                    Blank SVG
+                </button>
+                <button class="download-btn" id="btnDownloadCanvasSVG">
+                    <i class="material-icons">download</i>
+                    Opacity SVG
                 </button>
                 <button class="download-btn" id="btnDownloadPNG">
                     <i class="material-icons">download</i>
                     PNG
-                </button>
-                <button class="download-btn" id="btnDownloadCanvasPNG">
-                    <i class="material-icons">download</i>
-                    Preview
                 </button>
                 <button class="download-btn" id="btnDownloadMockup">
                     <i class="material-icons">download</i>
@@ -196,7 +196,7 @@
                 </button>
                 <button class="download-btn download-btn-print" id="btnDownloadPaintingPDF">
                     <i class="material-icons">download</i>
-                    Print PDF
+                    Agency PDF
                 </button>
                 <button class="download-btn" id="btnDownloadOutline">
                     <i class="material-icons">download</i>
@@ -601,14 +601,12 @@
                 <div class="canvas-size-section">
                     <span class="crop-section-label">Canvas Size (cm):</span>
                     <div class="canvas-size-toggle" role="tablist" aria-label="Canvas size in centimeters">
-                        <button type="button" class="size-btn active" data-size="30x40" role="tab" aria-selected="true">30x40</button>
-                        <button type="button" class="size-btn" data-size="40x30" role="tab" aria-selected="false">40x30</button>
-                        <button type="button" class="size-btn" data-size="50x50" role="tab" aria-selected="false">50x50</button>
-                        <button type="button" class="size-btn" data-size="40x50" role="tab" aria-selected="false">40x50</button>
-                        <button type="button" class="size-btn" data-size="50x40" role="tab" aria-selected="false">50x40</button>
-                        <button type="button" class="size-btn" data-size="60x70" role="tab" aria-selected="false">60x70</button>
-                        <button type="button" class="size-btn" data-size="70x60" role="tab" aria-selected="false">70x60</button>
-                        <button type="button" class="size-btn" data-size="custom" role="tab" aria-selected="false">custom</button>
+                        <!-- one button per size: Portrait / Landscape (or the photo's shape) picks 40x50 or 50x40 -->
+                        <button type="button" class="size-btn" data-size="20x25" role="tab" aria-selected="false">20x25</button>
+                        <button type="button" class="size-btn" data-size="32x40" role="tab" aria-selected="false">32x40</button>
+                        <button type="button" class="size-btn active" data-size="40x50" role="tab" aria-selected="true">40x50</button>
+                        <button type="button" class="size-btn" data-size="60x75" role="tab" aria-selected="false">60x75</button>
+                        <button type="button" class="size-btn" data-size="custom" role="tab" aria-selected="false">Custom</button>
                     </div>
                 </div>
                 <div class="orientation-section">
@@ -703,7 +701,14 @@
     
     
     
-    <script src='main.e7457994.js'></script>
+    
+    
+    
+    
+    
+    
+    
+    <script src='main.e42951d4.js'></script>
 </body>
 
 </html>

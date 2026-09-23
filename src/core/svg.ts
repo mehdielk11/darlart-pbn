@@ -118,6 +118,20 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
     return parts.join("");
 }
 
+/** The blank template: dark grey outlines and black numbers on white, no colors (to print and paint from scratch) */
+export function buildBlankSvgString(facetResult: FacetResult, colorsByIndex: RGB[], options: SvgOptions = {}): string {
+    return buildSvgString(facetResult, colorsByIndex, {
+        // the same grey as the Agency PDF outlines: clear lines that stay softer than black
+        strokeColor: "#6a6f77",
+        fontColor: "#000000",
+        background: "#ffffff",
+        ...options,
+        fill: false,
+        stroke: true,
+        labels: true,
+    });
+}
+
 /** Mixes each color toward white, keeping `strength` of the original (0 = white, 1 = unchanged) */
 export function fadeColors(colorsByIndex: RGB[], strength: number): RGB[] {
     const kept = Math.max(0, Math.min(1, strength));

@@ -10,7 +10,7 @@
  */
 import { RGB } from "../common";
 import { FacetResult } from "../facetmanagement";
-import { buildPaletteEntries, groupPaletteEntries, PaletteRow } from "./palette";
+import { buildPaletteEntries, groupPaletteEntries, PaletteEntry, PaletteRow } from "./palette";
 import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
@@ -38,8 +38,6 @@ export interface PdfOptions {
 }
 
 const PAGE_MARGIN = 36; // 0.5 inch
-/** Colors per line in the simple legend (numbers and colors only) */
-const SIMPLE_LEGEND_ROW = 8;
 
 function hexToRgb(hex: string): RGB {
     const clean = hex.replace(/^#/, "");
@@ -129,11 +127,7 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
     const addLegend = (simple = false) => {
         const entries = buildPaletteEntries(colorsByIndex, template.colorCodes);
         if (simple) {
-            const rows: PaletteRow[] = [];
-            for (let i = 0; i < entries.length; i += SIMPLE_LEGEND_ROW) {
-                rows.push({ label: "", entries: entries.slice(i, i + SIMPLE_LEGEND_ROW) });
-            }
-            addLegendPages(doc, rows, options.legendTitle || "Legend & Palette", { details: false });
+            addSimpleLegendPages(doc, entries, options.legendTitle || "Legend & Palette");
         } else {
             addLegendPages(doc, groupPaletteEntries(entries), options.legendTitle || "Legend & Palette");
         }
@@ -175,9 +169,66 @@ export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate,
  * Legend as vector content. Family cards are packed into full-width lines and a new page
  * is only started when the next line doesn't fit on the current one.
  */
-export function addLegendPages(doc: any, rows: PaletteRow[], title: string, options: { details?: boolean } = {}) {
-    // details: paint code and hex value under each number (the production palette); off for the customer legend
-    const details = options.details !== false;
+/** Title line shared by the legends: title on the left, color count on the right, then a rule. Returns the next y. */
+function drawLegendHeader(doc: any, title: string, summary: string): number {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = PAGE_MARGIN;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor("#111827");
+    doc.text(title, PAGE_MARGIN, y + 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor("#6b7280");
+    doc.text(summary, pageWidth - PAGE_MARGIN, y + 12, { align: "right" });
+    y += 22;
+    doc.setDrawColor("#e5e7eb");
+    doc.setLineWidth(0.75);
+    doc.line(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN, y);
+    return y + 12;
+}
+
+/**
+ * The customer legend: large color circles with their number below, in number order, on the page itself
+ * (no cards, families, paint codes or hex values). Every row is centered, the last one included.
+ */
+export function addSimpleLegendPages(doc: any, entries: PaletteEntry[], title: string) {
+    if (entries.length === 0) { return; }
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - PAGE_MARGIN * 2;
+
+    const radius = 22;
+    const numberSize = 13;
+    const cellWidth = 64; // circle + breathing room
+    const columns = Math.max(4, Math.min(entries.length, Math.floor(contentWidth / cellWidth)));
+    const rowHeight = radius * 2 + 8 + numberSize + 18;
+
+    doc.addPage();
+    let y = drawLegendHeader(doc, title, entries.length + " colors") + 8;
+    for (let start = 0; start < entries.length; start += columns) {
+        if (y + rowHeight > pageHeight - PAGE_MARGIN) {
+            doc.addPage();
+            y = PAGE_MARGIN;
+        }
+        const row = entries.slice(start, start + columns);
+        let cx = (pageWidth - row.length * cellWidth) / 2 + cellWidth / 2;
+        for (const entry of row) {
+            doc.setLineWidth(0.8);
+            doc.setDrawColor("#9ca3af");
+            doc.setFillColor(entry.color[0], entry.color[1], entry.color[2]);
+            doc.circle(cx, y + radius, radius, "FD");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(numberSize);
+            doc.setTextColor("#111827");
+            doc.text(String(entry.number), cx, y + radius * 2 + 8 + numberSize * 0.8, { align: "center" });
+            cx += cellWidth;
+        }
+        y += rowHeight;
+    }
+}
+
+export function addLegendPages(doc: any, rows: PaletteRow[], title: string) {
     if (rows.length === 0) { return; }
 
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -194,8 +245,8 @@ export function addLegendPages(doc: any, rows: PaletteRow[], title: string, opti
     const radius = 12 * k;
     const labelFontSize = Math.max(6, 8.5 * k);
     const labelLineHeight = labelFontSize * 1.25;
-    const hasCodes = details && rows.some((row) => row.entries.some((e) => !!e.code));
-    const cellHeight = radius * 2 + 10 * k + (hasCodes ? 8.5 * k : 0) + (details ? 8 * k : 0) + 3 * k;
+    const hasCodes = rows.some((row) => row.entries.some((e) => !!e.code));
+    const cellHeight = radius * 2 + 10 * k + (hasCodes ? 8.5 * k : 0) + 8 * k + 3 * k;
 
     interface Card { row: PaletteRow; width: number; labelLines: string[]; }
     interface Line { cards: Card[]; labelHeight: number; height: number; }
@@ -277,33 +328,18 @@ export function addLegendPages(doc: any, rows: PaletteRow[], title: string, opti
                     doc.text(entry.code, cx, textY, { align: "center" });
                 }
             }
-            if (details) {
-                textY += 8 * k;
-                doc.setFont("helvetica", "normal");
-                doc.setFontSize(Math.max(4.5, 6.5 * k));
-                doc.setTextColor("#6b7280");
-                doc.text(entry.hex, cx, textY, { align: "center" });
-            }
+            textY += 8 * k;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(Math.max(4.5, 6.5 * k));
+            doc.setTextColor("#6b7280");
+            doc.text(entry.hex, cx, textY, { align: "center" });
             cellX += cellWidth;
         }
     };
 
     doc.addPage();
-    let y = PAGE_MARGIN;
     const colorCount = rows.reduce((sum, row) => sum + row.entries.length, 0);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor("#111827");
-    doc.text(title, PAGE_MARGIN, y + 12);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor("#6b7280");
-    doc.text(colorCount + " colors" + (isGrouped ? " · " + rows.length + " families" : ""), pageWidth - PAGE_MARGIN, y + 12, { align: "right" });
-    y += 22;
-    doc.setDrawColor("#e5e7eb");
-    doc.setLineWidth(0.75);
-    doc.line(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN, y);
-    y += 12;
+    let y = drawLegendHeader(doc, title, colorCount + " colors" + (isGrouped ? " · " + rows.length + " families" : ""));
 
     for (const line of lines) {
         if (y + line.height > pageHeight - PAGE_MARGIN) {

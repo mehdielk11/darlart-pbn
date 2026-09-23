@@ -7,7 +7,7 @@ import { getColorCode } from "./core/palette";
 import { buildPaintingPdf, buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
 import { containBox, coverSource, darkenForSheet, insetBox, MOCKUP_KITS_GLOBAL, MOCKUP_STYLE, MockupBox, MockupTemplate, pickMockupTemplate, sheetGeometry } from "./core/mockup";
 import { buildSettings, Difficulty } from "./core/settings";
-import { buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "./core/svg";
+import { buildBlankSvgString, buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "./core/svg";
 import { GUIProcessManager, ProcessResult } from "./guiprocessmanager";
 import { findPaletteFamily } from "./palettefamilies";
 import { Settings } from "./settings";
@@ -220,6 +220,20 @@ export function downloadFadedSVG(filename?: string) {
     saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
 }
 
+/** The blank template: dark grey outlines and black numbers on white, no colors */
+export function downloadBlankSVG(filename?: string) {
+    if (processResult == null) {
+        return;
+    }
+    const svgString = buildBlankSvgString(processResult.facetResult, processResult.colorsByIndex, {
+        fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+    });
+    const defaultName = (typeof (window as any).getOutputFilename === "function")
+        ? String((window as any).getOutputFilename("svg")).replace(/\.svg$/i, "-blank.svg")
+        : "paintbynumbers-blank.svg";
+    saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
+}
+
 function saveTextFile(content: string, filename: string, type: string) {
     const url = URL.createObjectURL(new Blob([content], { type }));
     const link = document.createElement("a");
@@ -229,19 +243,6 @@ function saveTextFile(content: string, filename: string, type: string) {
     link.click();
     document.body.removeChild(link);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** The template as a pre-printed canvas: faint colors, grey outlines and numbers (same look as the API's canvas.png) */
-export function downloadCanvasPNG(filename?: string) {
-    if (processResult == null) {
-        return;
-    }
-    const svgString = buildFadedSvgString(processResult.facetResult, processResult.colorsByIndex, { sizeMultiplier: 3, strokeWidth: 1.2 });
-    const svg = document.importNode(new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement, true);
-    const defaultName = (typeof (window as any).getOutputFilename === "function")
-        ? String((window as any).getOutputFilename("png")).replace(/\.png$/i, "-canvas.png")
-        : "paintbynumbers-canvas.png";
-    saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
 }
 
 function snapshotCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
@@ -443,7 +444,6 @@ export function buildPaintingPdfDoc(paperSize: string = "a4") {
 try {
     (window as any).downloadSVG = downloadSVG;
     (window as any).downloadPNG = downloadPNG;
-    (window as any).downloadCanvasPNG = downloadCanvasPNG;
     (window as any).buildMockupCanvas = buildMockupCanvas;
     (window as any).downloadMockupPNG = downloadMockupPNG;
     (window as any).findPaletteFamily = findPaletteFamily;
@@ -451,4 +451,5 @@ try {
     (window as any).buildTemplatePdf = buildTemplatePdf;
     (window as any).buildPaintingPdf = buildPaintingPdfDoc;
     (window as any).downloadFadedSVG = downloadFadedSVG;
+    (window as any).downloadBlankSVG = downloadBlankSVG;
 } catch (_) {}
