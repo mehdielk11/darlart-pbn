@@ -209,7 +209,7 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             orderId: "#1001",
         });
 
-        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "canvas.svg", "mockup.png", "painting.pdf", "palette.json", "preview.png", "template.pdf", "template.svg"]);
+        assert.deepEqual(result.files.map((f) => f.name).sort(), ["blank.svg", "canvas.png", "canvas.svg", "mockup.png", "painting.pdf", "palette.json", "preview.png", "template.pdf", "template.svg"]);
 
         // the kit mockup keeps the kit photo's size
         const mockupMeta = await require("sharp")(path.join(outputDir, "mockup.png")).metadata();
@@ -245,6 +245,9 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         }
 
         // the canvas SVG: the same faint look as canvas.png, with slightly stronger colors, and the same numbers
+        const blankSvg = fs.readFileSync(path.join(outputDir, "blank.svg"), "utf8");
+        assert.ok(!/fill: rgb/.test(blankSvg), "blank.svg has no colored regions");
+        assert.ok(/stroke: #6a6f77/.test(blankSvg) && /<text[^>]*fill="#000000"/.test(blankSvg), "blank.svg: grey outlines, black numbers");
         const canvasSvg = fs.readFileSync(path.join(outputDir, "canvas.svg"), "utf8");
         assert.ok(canvasSvg.includes('<rect width="100%" height="100%" fill="#ffffff">'), "the canvas SVG should be on white");
         assert.equal([...canvasSvg.matchAll(/<\/text>/g)].length, [...svg.matchAll(/<\/text>/g)].length);

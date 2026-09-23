@@ -145,6 +145,7 @@ Downloads one file:
 - `template.pdf` (the website's **User PDF**): page 1 the finished painting (colors only, like `preview.png`), page 2 the painted template (colors, outlines and numbers, like `template.svg`), page 3+ the legend with numbers and colors only (no families, paint codes or hex values);
 - `painting.pdf`: the painting guide, page 1 the colored template with its numbers (white on the dark regions), page 2 the palette;
 - `template.svg`: colored template with numbers, written in white on the dark regions so they stay readable;
+- `blank.svg`: the website's **Blank SVG**: grey outlines and black numbers on white, no colors;
 - `canvas.svg`: the pre-printed canvas as vector: every region faintly tinted, with grey outlines and numbers on white. Same look as `canvas.png`, with slightly stronger colors since it's made to be printed;
 - `preview.png`: the finished painting, colors only, without outlines or numbers;
 - `canvas.png`: the pre-printed canvas look, with every region faintly tinted and grey outlines and numbers on white, up to 3508 px (A4 at 300 dpi);

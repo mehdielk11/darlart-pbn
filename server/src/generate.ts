@@ -11,7 +11,7 @@ import { buildPaletteEntries, groupPaletteEntries } from "../../src/core/palette
 import { buildPaintingPdf, buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
 import { buildSettings, Difficulty } from "../../src/core/settings";
-import { buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "../../src/core/svg";
+import { buildBlankSvgString, buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "../../src/core/svg";
 import { CropMethod, CropMode, prepareImage } from "./image";
 import { buildMockup } from "./mockup";
 
@@ -85,6 +85,7 @@ export const OUTPUT_FILES = {
     paintingPdf: { name: "painting.pdf", contentType: "application/pdf" },
     svg: { name: "template.svg", contentType: "image/svg+xml" },
     canvasSvg: { name: "canvas.svg", contentType: "image/svg+xml" },
+    blankSvg: { name: "blank.svg", contentType: "image/svg+xml" },
     preview: { name: "preview.png", contentType: "image/png" },
     canvas: { name: "canvas.png", contentType: "image/png" },
     mockup: { name: "mockup.png", contentType: "image/png" },
@@ -157,6 +158,10 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     await writeOutput(OUTPUT_FILES.canvasSvg, "-canvas.svg", buildFadedSvgString(result.facetResult, result.colorsByIndex, {
         colorStrength: FADED_CANVAS_STYLE.svgColorStrength,
         strokeWidth: 1.2,
+        fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+    }));
+    // Blank SVG: grey outlines and black numbers on white, no colors (same as the website "Blank SVG")
+    await writeOutput(OUTPUT_FILES.blankSvg, "-blank.svg", buildBlankSvgString(result.facetResult, result.colorsByIndex, {
         fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
     }));
     report("output", 0.6);

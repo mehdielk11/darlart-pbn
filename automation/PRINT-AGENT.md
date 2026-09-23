@@ -7,12 +7,12 @@ Artwork Agent finished / Run now / every day 04:00
   -> queue lock (one worker at a time)
   -> folders still missing print files, oldest first (maxPerRun per run)
   -> one pbn job at a time: canvasSizes x colorsList (default 40x50 x 12/24/36/48), HARD, orientation auto
-  -> 1xxx/Print/<stamp>_<size>_<N>_preview.svg + _catalog.pdf, 1xxx/<stamp>_<size>_<N>_user.pdf, then 1xxx/<stamp>_mockup.png
+  -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf, 1xxx/<stamp>_<size>_<N>_user.pdf, then 1xxx/<stamp>_mockup.png
   -> release the lock; if files were saved, start again (picks up folders that arrived meanwhile)
 ```
 
 ## Files
-- `Print/<stamp>_40x50_24_preview.svg`: the website's **Opacity SVG** (`canvas.svg`), the faint pre-printed canvas;
+- `Print/<stamp>_40x50_24_blank.svg`: the website's **Blank SVG** (`blank.svg`): grey outlines and black numbers on white, no colors (the file printed on the canvas);
 - `Print/<stamp>_40x50_24_catalog.pdf`: the website's **Agency PDF** (`painting.pdf`): colored template with grey outlines and numbers, plus the palette page;
 - `<stamp>_40x50_24_user.pdf` (in `1xxx/`, one per version): the website's **User PDF** (`template.pdf`): finished painting, painted template with numbers, legend with numbers and colors only;
 - `<stamp>_mockup.png`: one kit mockup, from the first canvas size at `mockupColors` (48). It's saved last, so it also marks the folder as done.

@@ -5,7 +5,7 @@
  *   -> queue lock (one worker at a time, a Drive lock file with a heartbeat)
  *   -> folders "Artwork Agent/1xxx" still missing print files
  *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 40x50 (portrait or landscape from the artwork itself)
- *   -> 1xxx/Print/<stamp>_<size>_<N>_preview.svg + _catalog.pdf, 1xxx/<stamp>_<size>_<N>_user.pdf, and one 1xxx/<stamp>_mockup.png
+ *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf, 1xxx/<stamp>_<size>_<N>_user.pdf, and one 1xxx/<stamp>_mockup.png
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
  *
  * Rebuild with `node scripts/build-print-agent-workflow.js`, then re-import the workflow.
@@ -194,7 +194,7 @@ $input.all().forEach((item, i) => {
     const folderJobs = [];
     sizes.forEach((size, s) => {
         for (const n of colors) {
-            const needSvg = !has(size, n, "_preview.svg");
+            const needSvg = !has(size, n, "_blank.svg");
             const needPdf = !has(size, n, "_catalog.pdf");
             const needUser = !inSet(rootFiles, size, n, "_user.pdf");
             const needMockup = needMockupFile && s === 0 && n === mockupColors;
@@ -322,7 +322,8 @@ const url = (name) => (result.files.find((f) => f.name === name) || {}).url;
 const label = (result.canvas && result.canvas.label) || task.size;
 const files = [];
 if (task.needSvg) {
-    files.push({ url: url("canvas.svg"), name: task.stamp + "_" + label + "_" + task.colors + "_preview.svg", parent: task.printFolderId, mimeType: "image/svg+xml" });
+    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas
+    files.push({ url: url("blank.svg"), name: task.stamp + "_" + label + "_" + task.colors + "_blank.svg", parent: task.printFolderId, mimeType: "image/svg+xml" });
 }
 if (task.needPdf) {
     files.push({ url: url("painting.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_catalog.pdf", parent: task.printFolderId, mimeType: "application/pdf" });
