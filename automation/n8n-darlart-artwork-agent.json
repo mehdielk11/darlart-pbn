@@ -382,7 +382,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2080,
+        2300,
         -200
       ],
       "parameters": {
@@ -424,11 +424,24 @@
     },
     {
       "id": "aa000016-0000-4000-8000-000000000000",
+      "name": "Approved artwork",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "// The checker (AI Agent) only outputs its verdict: take the approved image from the latest paint attempt\nreturn [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwork } }];"
+      }
+    },
+    {
+      "id": "aa000017-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2300,
+        2520,
         -200
       ],
       "parameters": {
@@ -436,12 +449,12 @@
       }
     },
     {
-      "id": "aa000017-0000-4000-8000-000000000000",
+      "id": "aa000018-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
       "position": [
-        2520,
+        2740,
         -200
       ],
       "parameters": {
@@ -455,12 +468,12 @@
       }
     },
     {
-      "id": "aa000018-0000-4000-8000-000000000000",
+      "id": "aa000019-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2740,
+        2960,
         -200
       ],
       "parameters": {
@@ -498,12 +511,12 @@
       }
     },
     {
-      "id": "aa000019-0000-4000-8000-000000000000",
+      "id": "aa000020-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2960,
+        3180,
         -200
       ],
       "parameters": {
@@ -511,12 +524,12 @@
       }
     },
     {
-      "id": "aa000020-0000-4000-8000-000000000000",
+      "id": "aa000021-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        3180,
+        3400,
         -200
       ],
       "parameters": {
@@ -536,12 +549,12 @@
       }
     },
     {
-      "id": "aa000021-0000-4000-8000-000000000000",
+      "id": "aa000022-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3400,
+        3620,
         -200
       ],
       "parameters": {
@@ -549,12 +562,12 @@
       }
     },
     {
-      "id": "aa000022-0000-4000-8000-000000000000",
+      "id": "aa000023-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        3620,
+        3840,
         -200
       ],
       "parameters": {
@@ -574,12 +587,12 @@
       }
     },
     {
-      "id": "aa000023-0000-4000-8000-000000000000",
+      "id": "aa000024-0000-4000-8000-000000000000",
       "name": "Build result page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3840,
+        4060,
         -200
       ],
       "parameters": {
@@ -588,12 +601,12 @@
       "executeOnce": true
     },
     {
-      "id": "aa000024-0000-4000-8000-000000000000",
+      "id": "aa000025-0000-4000-8000-000000000000",
       "name": "Page: result",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
       "position": [
-        4060,
+        4280,
         -200
       ],
       "parameters": {
@@ -718,7 +731,7 @@
       "main": [
         [
           {
-            "node": "Snap to palette (48 colors)",
+            "node": "Approved artwork",
             "type": "main",
             "index": 0
           }
@@ -755,6 +768,17 @@
         [
           {
             "node": "Page: artwork failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved artwork": {
+      "main": [
+        [
+          {
+            "node": "Snap to palette (48 colors)",
             "type": "main",
             "index": 0
           }

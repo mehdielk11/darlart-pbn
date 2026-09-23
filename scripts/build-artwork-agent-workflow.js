@@ -204,7 +204,7 @@ node("Page: artwork failed", "n8n-nodes-base.form", 2.3, [3040, 300], {
 connect("Paint again?", "Page: artwork failed", 1);
 
 // ---- 4. strict palette -----------------------------------------------------------------------
-node("Snap to palette (48 colors)", "n8n-nodes-base.httpRequest", 4.2, [2600, -200], {
+node("Snap to palette (48 colors)", "n8n-nodes-base.httpRequest", 4.2, [2820, -200], {
     method: "POST",
     url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/recolor",
     authentication: "genericCredentialType",
@@ -222,9 +222,14 @@ node("Snap to palette (48 colors)", "n8n-nodes-base.httpRequest", 4.2, [2600, -2
     },
     options: { timeout: 180000 },
 });
-connect("Artwork clean?", "Snap to palette (48 colors)", 0);
+node("Approved artwork", "n8n-nodes-base.code", 2, [2600, -200], {
+    jsCode: `// The checker (AI Agent) only outputs its verdict: take the approved image from the latest paint attempt
+return [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwork } }];`,
+});
+connect("Artwork clean?", "Approved artwork", 0);
+connect("Approved artwork", "Snap to palette (48 colors)");
 
-node("Check palette", "n8n-nodes-base.code", 2, [2820, -200], {
+node("Check palette", "n8n-nodes-base.code", 2, [3040, -200], {
     jsCode: `// Every pixel of the final artwork is a Darl'Art color: check the count and the codes before saving
 const PALETTE = ${JSON.stringify(codeToHex)};
 const settings = $('Settings').first().json;
@@ -247,7 +252,7 @@ return [{ json: { image: result.image, paletteJson } }];`,
 });
 connect("Snap to palette (48 colors)", "Check palette");
 
-node("Artwork file", "n8n-nodes-base.convertToFile", 1.1, [3040, -200], {
+node("Artwork file", "n8n-nodes-base.convertToFile", 1.1, [3260, -200], {
     operation: "toBinary",
     sourceProperty: "image",
     binaryPropertyName: "artwork",
@@ -256,7 +261,7 @@ node("Artwork file", "n8n-nodes-base.convertToFile", 1.1, [3040, -200], {
 connect("Check palette", "Artwork file");
 
 // ---- 5. Drive folder Artwork Agent/1xxx ----------------------------------------------------------
-node("List Artwork Agent folders", "n8n-nodes-base.httpRequest", 4.2, [3260, -200], {
+node("List Artwork Agent folders", "n8n-nodes-base.httpRequest", 4.2, [3480, -200], {
     url: "https://www.googleapis.com/drive/v3/files",
     authentication: "predefinedCredentialType",
     nodeCredentialType: "googleDriveOAuth2Api",
@@ -274,7 +279,7 @@ node("List Artwork Agent folders", "n8n-nodes-base.httpRequest", 4.2, [3260, -20
 });
 connect("Artwork file", "List Artwork Agent folders");
 
-node("Next folder number", "n8n-nodes-base.code", 2, [3480, -200], {
+node("Next folder number", "n8n-nodes-base.code", 2, [3700, -200], {
     jsCode: `// The new folder is the next free number: 1001, 1002, ... (folders with other names are ignored)
 const first = Number($('Settings').first().json.firstFolderNumber) || 1001;
 const numbers = (($input.first().json.files) || []).map((f) => String(f.name).trim()).filter((n) => /^\\d+$/.test(n)).map(Number);
@@ -283,7 +288,7 @@ return [{ json: { folderName: String(next) } }];`,
 });
 connect("List Artwork Agent folders", "Next folder number");
 
-node("Create folder (Artwork Agent/1xxx)", "n8n-nodes-base.googleDrive", 3, [3700, -200], {
+node("Create folder (Artwork Agent/1xxx)", "n8n-nodes-base.googleDrive", 3, [3920, -200], {
     resource: "folder",
     name: "={{ $json.folderName }}",
     driveId: drive,
@@ -292,7 +297,7 @@ node("Create folder (Artwork Agent/1xxx)", "n8n-nodes-base.googleDrive", 3, [370
 });
 connect("Next folder number", "Create folder (Artwork Agent/1xxx)");
 
-node("Files for the folder", "n8n-nodes-base.code", 2, [3920, -200], {
+node("Files for the folder", "n8n-nodes-base.code", 2, [4140, -200], {
     jsCode: `// Artwork Ref + Artwork Gen (+ the palette JSON), one item per file
 const folderId = $input.first().json.id;
 const prepared = $('Prepare').first();
@@ -308,7 +313,7 @@ return [
 });
 connect("Create folder (Artwork Agent/1xxx)", "Files for the folder");
 
-node("Upload to folder", "n8n-nodes-base.googleDrive", 3, [4140, -200], {
+node("Upload to folder", "n8n-nodes-base.googleDrive", 3, [4360, -200], {
     name: "={{ $json.name }}",
     driveId: drive,
     folderId: byId("={{ $json.folderId }}"),
@@ -318,7 +323,7 @@ node("Upload to folder", "n8n-nodes-base.googleDrive", 3, [4140, -200], {
 connect("Files for the folder", "Upload to folder");
 
 // ---- 6. result page -------------------------------------------------------------------------
-node("Build result page", "n8n-nodes-base.code", 2, [4360, -200], {
+node("Build result page", "n8n-nodes-base.code", 2, [4580, -200], {
     jsCode: `// Result: 1xxx = Artwork Ref + Artwork Gen, shown on the form's last page
 const folder = $('Create folder (Artwork Agent/1xxx)').first().json;
 const paletteJson = $('Check palette').first().json.paletteJson;
@@ -346,7 +351,7 @@ return [{ json: { html, folder: folder.name, folderUrl } }];`,
 });
 connect("Upload to folder", "Build result page");
 
-node("Page: result", "n8n-nodes-base.form", 2.3, [4580, -200], {
+node("Page: result", "n8n-nodes-base.form", 2.3, [4800, -200], {
     operation: "completion",
     respondWith: "showText",
     responseText: "={{ $json.html }}",
