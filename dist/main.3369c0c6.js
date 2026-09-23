@@ -3194,13 +3194,35 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
                 doc.text(String(f.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
             }
         };
-        /** The colored template, one filled and stroked shape per facet */
-        const drawColoredTemplate = () => {
+        /**
+         * The colored template, one filled shape per facet. Without borders each shape is stroked in its own
+         * color instead, the way the SVG does it, so no white seams show between the regions.
+         */
+        const drawColoredTemplate = (borders = true) => {
             doc.setLineJoin("round");
             doc.setLineWidth(lineWidth);
-            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            if (borders) {
+                doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            }
             for (const f of drawableFacets) {
                 const color = colorsByIndex[f.color];
+                doc.setFillColor(color[0], color[1], color[2]);
+                if (!borders) {
+                    doc.setDrawColor(color[0], color[1], color[2]);
+                }
+                traceFacet((0, svg_1.getFacetOutline)(f));
+                doc.fillStroke();
+            }
+        };
+        /** The pre-printed canvas: faintly tinted regions with grey outlines, the look of the "Preview SVG" download */
+        const drawFadedTemplate = () => {
+            const faded = (0, svg_1.fadeColors)(colorsByIndex, svg_1.FADED_CANVAS_STYLE.svgColorStrength);
+            const stroke = hexToRgb(svg_1.FADED_CANVAS_STYLE.strokeColor);
+            doc.setLineJoin("round");
+            doc.setLineWidth(lineWidth);
+            doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
+            for (const f of drawableFacets) {
+                const color = faded[f.color];
                 doc.setFillColor(color[0], color[1], color[2]);
                 traceFacet((0, svg_1.getFacetOutline)(f));
                 doc.fillStroke();
@@ -3220,15 +3242,19 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
             const rows = (0, palette_1.groupPaletteEntries)((0, palette_1.buildPaletteEntries)(colorsByIndex, template.colorCodes));
             addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
         };
-        return { doc, drawColoredTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+        return { doc, drawColoredTemplate, drawFadedTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
     }
-    /** Page 1: colored without numbers. Page 2: numbered outline. Page 3+: legend & palette by family. */
+    /**
+     * Page 1: the finished painting, colors only (the "Download PNG" image).
+     * Page 2: the pre-printed canvas, faint colors with grey outlines and numbers (the "Preview SVG" image).
+     * Page 3+: legend & palette by family.
+     */
     function buildPdf(JsPDF, template, options = {}) {
         const page = layoutTemplate(JsPDF, template, options);
-        page.drawColoredTemplate();
+        page.drawColoredTemplate(false);
         page.doc.addPage();
-        page.drawOutlines();
-        page.drawLabels(page.outlineColor);
+        page.drawFadedTemplate();
+        page.drawLabels(hexToRgb(svg_1.FADED_CANVAS_STYLE.fontColor));
         page.addLegend();
         return page.doc;
     }

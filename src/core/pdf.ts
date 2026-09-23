@@ -2,7 +2,8 @@
  * PDF output of a processed image, drawn as vector content straight from the facet data (no SVG parsing, no DOM),
  * so the website and the API produce the same document.
  *
- * buildPdf: page 1 colored without numbers, page 2 numbered outline, page 3+ legend & palette by family
+ * buildPdf: page 1 the finished painting (colors only), page 2 the pre-printed canvas (faint colors,
+ * grey outlines and numbers), page 3+ legend & palette by family
  * buildPaintingPdf: page 1 colored with numbers, page 2 palette
  *
  * jsPDF is passed in (window.jspdf.jsPDF in the browser, require("jspdf").jsPDF in Node).
@@ -10,7 +11,7 @@
 import { RGB } from "../common";
 import { FacetResult } from "../facetmanagement";
 import { buildPaletteEntries, groupPaletteEntries, PaletteRow } from "./palette";
-import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
+import { fadeColors, FADED_CANVAS_STYLE, getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
 export const PAPER_SIZES: PaperSize[] = ["a2", "a3", "a4", "a5"];
@@ -101,13 +102,36 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         }
     };
 
-    /** The colored template, one filled and stroked shape per facet */
-    const drawColoredTemplate = () => {
+    /**
+     * The colored template, one filled shape per facet. Without borders each shape is stroked in its own
+     * color instead, the way the SVG does it, so no white seams show between the regions.
+     */
+    const drawColoredTemplate = (borders: boolean = true) => {
         doc.setLineJoin("round");
         doc.setLineWidth(lineWidth);
-        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        if (borders) {
+            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        }
         for (const f of drawableFacets) {
             const color = colorsByIndex[f!.color];
+            doc.setFillColor(color[0], color[1], color[2]);
+            if (!borders) {
+                doc.setDrawColor(color[0], color[1], color[2]);
+            }
+            traceFacet(getFacetOutline(f!));
+            doc.fillStroke();
+        }
+    };
+
+    /** The pre-printed canvas: faintly tinted regions with grey outlines, the look of the "Preview SVG" download */
+    const drawFadedTemplate = () => {
+        const faded = fadeColors(colorsByIndex, FADED_CANVAS_STYLE.svgColorStrength);
+        const stroke = hexToRgb(FADED_CANVAS_STYLE.strokeColor);
+        doc.setLineJoin("round");
+        doc.setLineWidth(lineWidth);
+        doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
+        for (const f of drawableFacets) {
+            const color = faded[f!.color];
             doc.setFillColor(color[0], color[1], color[2]);
             traceFacet(getFacetOutline(f!));
             doc.fillStroke();
@@ -130,16 +154,20 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
     };
 
-    return { doc, drawColoredTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+    return { doc, drawColoredTemplate, drawFadedTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
 }
 
-/** Page 1: colored without numbers. Page 2: numbered outline. Page 3+: legend & palette by family. */
+/**
+ * Page 1: the finished painting, colors only (the "Download PNG" image).
+ * Page 2: the pre-printed canvas, faint colors with grey outlines and numbers (the "Preview SVG" image).
+ * Page 3+: legend & palette by family.
+ */
 export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
     const page = layoutTemplate(JsPDF, template, options);
-    page.drawColoredTemplate();
+    page.drawColoredTemplate(false);
     page.doc.addPage();
-    page.drawOutlines();
-    page.drawLabels(page.outlineColor);
+    page.drawFadedTemplate();
+    page.drawLabels(hexToRgb(FADED_CANVAS_STYLE.fontColor));
     page.addLegend();
     return page.doc;
 }

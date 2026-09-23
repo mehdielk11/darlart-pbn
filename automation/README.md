@@ -142,7 +142,7 @@ Status and, when completed, `result`:
 ### `GET /v1/jobs/:id/files/:name`
 
 Downloads one file:
-- `template.pdf`: page 1 colored, page 2 numbered outline, page 3+ legend by family;
+- `template.pdf`: page 1 the finished painting (colors only, like `preview.png`), page 2 the pre-printed canvas (faint colors with grey outlines and numbers, like `canvas.svg`), page 3+ legend by family;
 - `painting.pdf`: the painting guide, page 1 the colored template with its numbers (white on the dark regions), page 2 the palette;
 - `template.svg`: colored template with numbers, written in white on the dark regions so they stay readable;
 - `canvas.svg`: the pre-printed canvas as vector: every region faintly tinted, with grey outlines and numbers on white. Same look as `canvas.png`, with slightly stronger colors since it's made to be printed;
