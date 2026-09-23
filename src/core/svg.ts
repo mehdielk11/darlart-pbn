@@ -33,8 +33,8 @@ export function labelColorFor(color: RGB, fontColor: string): string {
 export const FADED_CANVAS_STYLE = {
     /** Share of each color that is kept, the rest being white: 1 keeps the color, 0 turns it white */
     colorStrength: 0.22,
-    /** The vector version is printed rather than shown on screen, so its colors are a little stronger */
-    svgColorStrength: 0.32,
+    /** The vector version, lighter than the PNG: it is printed and the numbers must stay easy to read */
+    svgColorStrength: 0.18,
     strokeColor: "#a2a7ad",
     fontColor: "#868b92",
     background: "#ffffff",
