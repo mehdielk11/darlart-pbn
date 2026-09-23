@@ -1223,6 +1223,16 @@ select#paperSize {
     box-shadow: none;
 }
 
+/* The two files that go to production (the canvas print and the painting guide) */
+.download-btn.download-btn-print {
+    background: #e74c3c;
+}
+
+.download-btn.download-btn-print:hover:not(:disabled) {
+    background: #c0392b;
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
 /* Hidden processing elements */
 .hidden-processing {
     display: none !important;
