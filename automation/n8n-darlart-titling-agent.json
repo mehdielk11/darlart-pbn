@@ -14,7 +14,7 @@
     },
     {
       "id": "bb000002-0000-4000-8000-000000000000",
-      "name": "Every hour",
+      "name": "Every day",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -25,8 +25,9 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 1
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 3
             }
           ]
         }
@@ -34,6 +35,19 @@
     },
     {
       "id": "bb000003-0000-4000-8000-000000000000",
+      "name": "When called by Artwork Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "bb000004-0000-4000-8000-000000000000",
       "name": "Settings",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -116,7 +130,7 @@
       }
     },
     {
-      "id": "bb000004-0000-4000-8000-000000000000",
+      "id": "bb000005-0000-4000-8000-000000000000",
       "name": "Shopify collections",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -138,7 +152,7 @@
       }
     },
     {
-      "id": "bb000005-0000-4000-8000-000000000000",
+      "id": "bb000006-0000-4000-8000-000000000000",
       "name": "Themes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -151,7 +165,7 @@
       }
     },
     {
-      "id": "bb000006-0000-4000-8000-000000000000",
+      "id": "bb000007-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -194,7 +208,7 @@
       }
     },
     {
-      "id": "bb000007-0000-4000-8000-000000000000",
+      "id": "bb000008-0000-4000-8000-000000000000",
       "name": "Folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -207,7 +221,7 @@
       }
     },
     {
-      "id": "bb000008-0000-4000-8000-000000000000",
+      "id": "bb000009-0000-4000-8000-000000000000",
       "name": "List folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -250,7 +264,7 @@
       }
     },
     {
-      "id": "bb000009-0000-4000-8000-000000000000",
+      "id": "bb000010-0000-4000-8000-000000000000",
       "name": "Pending folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -263,7 +277,7 @@
       }
     },
     {
-      "id": "bb000010-0000-4000-8000-000000000000",
+      "id": "bb000011-0000-4000-8000-000000000000",
       "name": "Loop over folders",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -276,7 +290,7 @@
       }
     },
     {
-      "id": "bb000011-0000-4000-8000-000000000000",
+      "id": "bb000012-0000-4000-8000-000000000000",
       "name": "Download artwork",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -300,7 +314,7 @@
       }
     },
     {
-      "id": "bb000012-0000-4000-8000-000000000000",
+      "id": "bb000013-0000-4000-8000-000000000000",
       "name": "Titling agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -319,7 +333,7 @@
       }
     },
     {
-      "id": "bb000013-0000-4000-8000-000000000000",
+      "id": "bb000014-0000-4000-8000-000000000000",
       "name": "Titling model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -337,7 +351,7 @@
       }
     },
     {
-      "id": "bb000014-0000-4000-8000-000000000000",
+      "id": "bb000015-0000-4000-8000-000000000000",
       "name": "Listing format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -351,7 +365,7 @@
       }
     },
     {
-      "id": "bb000015-0000-4000-8000-000000000000",
+      "id": "bb000016-0000-4000-8000-000000000000",
       "name": "Build product JSON",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -364,7 +378,7 @@
       }
     },
     {
-      "id": "bb000016-0000-4000-8000-000000000000",
+      "id": "bb000017-0000-4000-8000-000000000000",
       "name": "Save product JSON",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -389,7 +403,7 @@
       }
     },
     {
-      "id": "bb000017-0000-4000-8000-000000000000",
+      "id": "bb000018-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -414,7 +428,18 @@
         ]
       ]
     },
-    "Every hour": {
+    "Every day": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by Artwork Agent": {
       "main": [
         [
           {

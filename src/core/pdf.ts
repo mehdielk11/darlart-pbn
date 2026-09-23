@@ -2,8 +2,8 @@
  * PDF output of a processed image, drawn as vector content straight from the facet data (no SVG parsing, no DOM),
  * so the website and the API produce the same document.
  *
- * buildPdf: page 1 the finished painting (colors only), page 2 the pre-printed canvas (faint colors,
- * grey outlines and numbers), page 3+ legend & palette by family
+ * buildPdf (the customer's "User PDF"): page 1 the finished painting (colors only), page 2 the painted template
+ * (colors, outlines and numbers), page 3+ the legend: numbers and colors only
  * buildPaintingPdf: page 1 colored with numbers, page 2 palette
  *
  * jsPDF is passed in (window.jspdf.jsPDF in the browser, require("jspdf").jsPDF in Node).
@@ -11,7 +11,7 @@
 import { RGB } from "../common";
 import { FacetResult } from "../facetmanagement";
 import { buildPaletteEntries, groupPaletteEntries, PaletteRow } from "./palette";
-import { fadeColors, FADED_CANVAS_STYLE, getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
+import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
 export const PAPER_SIZES: PaperSize[] = ["a2", "a3", "a4", "a5"];
@@ -38,6 +38,8 @@ export interface PdfOptions {
 }
 
 const PAGE_MARGIN = 36; // 0.5 inch
+/** Colors per line in the simple legend (numbers and colors only) */
+const SIMPLE_LEGEND_ROW = 8;
 
 function hexToRgb(hex: string): RGB {
     const clean = hex.replace(/^#/, "");
@@ -123,41 +125,36 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         }
     };
 
-    /** The pre-printed canvas: faintly tinted regions with grey outlines, the look of the "Preview SVG" download */
-    const drawFadedTemplate = () => {
-        const faded = fadeColors(colorsByIndex, FADED_CANVAS_STYLE.svgColorStrength);
-        const stroke = hexToRgb(FADED_CANVAS_STYLE.strokeColor);
-        doc.setLineJoin("round");
-        doc.setLineWidth(lineWidth);
-        doc.setDrawColor(stroke[0], stroke[1], stroke[2]);
-        for (const f of drawableFacets) {
-            const color = faded[f!.color];
-            doc.setFillColor(color[0], color[1], color[2]);
-            traceFacet(getFacetOutline(f!));
-            doc.fillStroke();
+    /** `simple`: numbers and colors only, in number order (no families, paint codes or hex values) */
+    const addLegend = (simple = false) => {
+        const entries = buildPaletteEntries(colorsByIndex, template.colorCodes);
+        if (simple) {
+            const rows: PaletteRow[] = [];
+            for (let i = 0; i < entries.length; i += SIMPLE_LEGEND_ROW) {
+                rows.push({ label: "", entries: entries.slice(i, i + SIMPLE_LEGEND_ROW) });
+            }
+            addLegendPages(doc, rows, options.legendTitle || "Legend & Palette", { details: false });
+        } else {
+            addLegendPages(doc, groupPaletteEntries(entries), options.legendTitle || "Legend & Palette");
         }
     };
 
-    const addLegend = () => {
-        const rows = groupPaletteEntries(buildPaletteEntries(colorsByIndex, template.colorCodes));
-        addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
-    };
-
-    return { doc, drawColoredTemplate, drawFadedTemplate, drawLabels, addLegend, outlineColor };
+    return { doc, drawColoredTemplate, drawLabels, addLegend, outlineColor };
 }
 
 /**
- * Page 1: the finished painting, colors only (the "Download PNG" image).
- * Page 2: the pre-printed canvas, faint colors with grey outlines and numbers (the "Preview SVG" image).
- * Page 3+: legend & palette by family.
+ * The customer's "User PDF".
+ * Page 1: the finished painting, colors only (the "PNG" image).
+ * Page 2: the painted template, colors with outlines and numbers, white on the dark regions (the "SVG" image).
+ * Page 3+: the legend, numbers and colors only, even with a paint palette (no families, codes or hex values).
  */
 export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
     const page = layoutTemplate(JsPDF, template, options);
     page.drawColoredTemplate(null);
     page.doc.addPage();
-    page.drawFadedTemplate();
-    page.drawLabels(hexToRgb(FADED_CANVAS_STYLE.fontColor));
-    page.addLegend();
+    page.drawColoredTemplate();
+    page.drawLabels("contrast");
+    page.addLegend(true);
     return page.doc;
 }
 
@@ -178,7 +175,9 @@ export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate,
  * Legend as vector content. Family cards are packed into full-width lines and a new page
  * is only started when the next line doesn't fit on the current one.
  */
-export function addLegendPages(doc: any, rows: PaletteRow[], title: string) {
+export function addLegendPages(doc: any, rows: PaletteRow[], title: string, options: { details?: boolean } = {}) {
+    // details: paint code and hex value under each number (the production palette); off for the customer legend
+    const details = options.details !== false;
     if (rows.length === 0) { return; }
 
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -195,8 +194,8 @@ export function addLegendPages(doc: any, rows: PaletteRow[], title: string) {
     const radius = 12 * k;
     const labelFontSize = Math.max(6, 8.5 * k);
     const labelLineHeight = labelFontSize * 1.25;
-    const hasCodes = rows.some((row) => row.entries.some((e) => !!e.code));
-    const cellHeight = radius * 2 + 10 * k + (hasCodes ? 8.5 * k : 0) + 8 * k + 3 * k;
+    const hasCodes = details && rows.some((row) => row.entries.some((e) => !!e.code));
+    const cellHeight = radius * 2 + 10 * k + (hasCodes ? 8.5 * k : 0) + (details ? 8 * k : 0) + 3 * k;
 
     interface Card { row: PaletteRow; width: number; labelLines: string[]; }
     interface Line { cards: Card[]; labelHeight: number; height: number; }
@@ -278,11 +277,13 @@ export function addLegendPages(doc: any, rows: PaletteRow[], title: string) {
                     doc.text(entry.code, cx, textY, { align: "center" });
                 }
             }
-            textY += 8 * k;
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(Math.max(4.5, 6.5 * k));
-            doc.setTextColor("#6b7280");
-            doc.text(entry.hex, cx, textY, { align: "center" });
+            if (details) {
+                textY += 8 * k;
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(Math.max(4.5, 6.5 * k));
+                doc.setTextColor("#6b7280");
+                doc.text(entry.hex, cx, textY, { align: "center" });
+            }
             cellX += cellWidth;
         }
     };

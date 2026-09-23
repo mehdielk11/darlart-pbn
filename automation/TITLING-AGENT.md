@@ -3,7 +3,7 @@
 `n8n-darlart-titling-agent.json`: writes the Shopify product texts for every artwork made by the Artwork Agent.
 
 ```
-Run now / every hour -> Shopify collections (themes) -> Drive "Artwork Agent" folders
+Artwork Agent finished / Run now / every day 03:00 -> Shopify collections (themes) -> Drive "Artwork Agent" folders
   -> folders with <date+time>_art.png and no <date+time>_product.json, one by one:
      download the artwork -> Titling agent (gpt-5-mini, sees the artwork)
      -> <date+time>_product.json saved in the same folder
@@ -26,6 +26,7 @@ Shopify's own field names, so a later workflow can create the product as is:
 
 - A folder is done once its `_product.json` exists: delete that file to have it rewritten.
 - New collections in Shopify are picked up automatically. Non-theme collections are listed in `skipCollections` (Settings).
-- About $0.005 per artwork. Publish the workflow to run it every hour; "Run now" works anytime.
+- About $0.005 per artwork.
+- Triggers: the Artwork Agent calls it after saving each artwork ("When called by Artwork Agent", no waiting), a daily run at 03:00 catches anything a failed run left behind, and "Run now" works anytime. It must be **published** for the Artwork Agent's production runs to call it.
 - Credentials: "Shopify darlart.ma" (Shopify OAuth2, store smgi0i-0a = darlart.ma), Google Drive account, OpenAI.
 - Rebuild the file with `node scripts/build-titling-agent-workflow.js`.

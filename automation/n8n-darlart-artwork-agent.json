@@ -602,6 +602,54 @@
     },
     {
       "id": "aa000025-0000-4000-8000-000000000000",
+      "name": "Run Titling Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3840,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tOSHbCt7hJ6ORh8a"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000026-0000-4000-8000-000000000000",
+      "name": "Run Print Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3840,
+        200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ytxV3m341mDLCdt4"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000027-0000-4000-8000-000000000000",
       "name": "Page: result",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
@@ -867,6 +915,16 @@
         [
           {
             "node": "Build result page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Titling Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Print Agent",
             "type": "main",
             "index": 0
           }

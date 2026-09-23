@@ -1,7 +1,7 @@
 /**
  * Builds automation/n8n-darlart-titling-agent.json, the "Titling Agent" n8n workflow:
  *
- *   Run now / every hour -> Shopify collections (the store's themes) + Drive "Artwork Agent" folders
+ *   Artwork Agent finished / Run now / every day -> Shopify collections (the store's themes) + Drive "Artwork Agent" folders
  *   -> folders that have an artwork but no product JSON yet, one by one:
  *      download the artwork -> AI agent (title, description, tags, themes) -> <date+time>_product.json in the same folder
  *
@@ -63,7 +63,10 @@ const driveList = (name, position, q) => node(name, "n8n-nodes-base.httpRequest"
 
 // ---- 1. triggers, settings --------------------------------------------------------------------
 node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 0], {});
-node("Every hour", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 200], { rule: { interval: [{ field: "hours", hoursInterval: 1 }] } });
+// safety net: catches folders a failed run left behind
+node("Every day", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 200], { rule: { interval: [{ field: "days", daysInterval: 1, triggerAtHour: 3 }] } });
+// the Artwork Agent calls this workflow when it has saved a new artwork
+node("When called by Artwork Agent", "n8n-nodes-base.executeWorkflowTrigger", 1.1, [0, 400], { inputSource: "passthrough" });
 
 node("Settings", "n8n-nodes-base.set", 3.4, [220, 100], {
     assignments: {
@@ -74,7 +77,8 @@ node("Settings", "n8n-nodes-base.set", 3.4, [220, 100], {
     options: {},
 });
 connect("Run now", "Settings");
-connect("Every hour", "Settings");
+connect("Every day", "Settings");
+connect("When called by Artwork Agent", "Settings");
 
 // ---- 2. the store's themes ----------------------------------------------------------------------
 node("Shopify collections", "n8n-nodes-base.httpRequest", 4.2, [440, 100], {

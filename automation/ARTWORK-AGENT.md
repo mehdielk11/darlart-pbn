@@ -8,6 +8,8 @@ Formulaire (upload) -> Save reference (Drive "Artwork Ref")
   -> Check artwork (gpt-5-mini: no swatches/text/border, up to 3 tries)
   -> Snap to palette (pbn API /v1/recolor: every pixel -> one of 48 Darl'Art colors)
   -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON -> result page
+                                                                         -> Run Titling Agent (product JSON, not awaited)
+                                                                         -> Run Print Agent (print files + mockup, queued, not awaited)
 ```
 
 ## Why the palette is strict

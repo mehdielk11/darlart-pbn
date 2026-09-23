@@ -29,6 +29,8 @@ const SETTINGS = {
     timezone: "Africa/Casablanca",
 };
 // ============================================================================================
+const SETTINGS_TITLING_WORKFLOW_ID = "tOSHbCt7hJ6ORh8a"; // "Darl'Art Titling Agent" in n8n
+const SETTINGS_PRINT_WORKFLOW_ID = "ytxV3m341mDLCdt4"; // "Darl'Art Print Agent" in n8n
 
 const excluded = new Set(SETTINGS.exclude.split(","));
 const codeToHex = {};
@@ -350,6 +352,26 @@ const html = \`<style>
 return [{ json: { html, folder: folder.name, folderUrl } }];`,
 });
 connect("Upload to folder", "Build result page");
+
+// ---- 7. product texts ----------------------------------------------------------------------------
+// Starts the Titling Agent (product JSON for this folder and any other folder still missing one) without waiting:
+// the result page doesn't wait for it and a titling error can't fail the artwork run.
+node("Run Titling Agent", "n8n-nodes-base.executeWorkflow", 1.2, [4360, 0], {
+    source: "database",
+    workflowId: { __rl: true, mode: "id", value: SETTINGS_TITLING_WORKFLOW_ID },
+    mode: "once",
+    options: { waitForSubWorkflow: false },
+}, { executeOnce: true, onError: "continueRegularOutput" });
+connect("Upload to folder", "Run Titling Agent");
+
+// Starts the Print Agent (PBN variants, print files and mockup), queued on its side, without waiting
+node("Run Print Agent", "n8n-nodes-base.executeWorkflow", 1.2, [4360, 200], {
+    source: "database",
+    workflowId: { __rl: true, mode: "id", value: SETTINGS_PRINT_WORKFLOW_ID },
+    mode: "once",
+    options: { waitForSubWorkflow: false },
+}, { executeOnce: true, onError: "continueRegularOutput" });
+connect("Upload to folder", "Run Print Agent");
 
 node("Page: result", "n8n-nodes-base.form", 2.3, [4800, -200], {
     operation: "completion",

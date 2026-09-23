@@ -1,0 +1,1459 @@
+{
+  "name": "Darl'Art Print Agent",
+  "nodes": [
+    {
+      "id": "cc000001-0000-4000-8000-000000000000",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "cc000002-0000-4000-8000-000000000000",
+      "name": "Every day",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cc000003-0000-4000-8000-000000000000",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "cc000004-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "pbnApiUrl",
+              "value": "http://127.0.0.1:3000",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "colorsList",
+              "value": "12,24,36,48",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "canvasSizes",
+              "value": "40x50",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "difficulty",
+              "value": "hard",
+              "type": "string"
+            },
+            {
+              "id": "set5",
+              "name": "orientation",
+              "value": "auto",
+              "type": "string"
+            },
+            {
+              "id": "set6",
+              "name": "palette",
+              "value": "darlart-v3",
+              "type": "string"
+            },
+            {
+              "id": "set7",
+              "name": "cropMode",
+              "value": "attention",
+              "type": "string"
+            },
+            {
+              "id": "set8",
+              "name": "paperSize",
+              "value": "a4",
+              "type": "string"
+            },
+            {
+              "id": "set9",
+              "name": "mockupColors",
+              "value": 48,
+              "type": "number"
+            },
+            {
+              "id": "set10",
+              "name": "maxPerRun",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "set11",
+              "name": "lockStaleMinutes",
+              "value": 45,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000005-0000-4000-8000-000000000000",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_print-agent.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000006-0000-4000-8000-000000000000",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Another worker holds a fresh lock (refreshed less than lockStaleMinutes ago): it will also pick up new folders\nconst settings = $('Settings').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      }
+    },
+    {
+      "id": "cc000007-0000-4000-8000-000000000000",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000008-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        360
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "cc000009-0000-4000-8000-000000000000",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_print-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000010-0000-4000-8000-000000000000",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_print-agent.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000011-0000-4000-8000-000000000000",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        120
+      ],
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst settings = $('Settings').first().json;\nconst mine = $('Create lock').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      }
+    },
+    {
+      "id": "cc000012-0000-4000-8000-000000000000",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000013-0000-4000-8000-000000000000",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        280
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000014-0000-4000-8000-000000000000",
+      "name": "List Artwork Agent folders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        40
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000015-0000-4000-8000-000000000000",
+      "name": "Folders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        40
+      ],
+      "parameters": {
+        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+      }
+    },
+    {
+      "id": "cc000016-0000-4000-8000-000000000000",
+      "name": "List folder files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        40
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000017-0000-4000-8000-000000000000",
+      "name": "Folder states",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        40
+      ],
+      "parameters": {
+        "jsCode": "// Folders with an artwork: its date+time stamp, the Print subfolder (if any) and the files already there\nconst folders = $('Folders').all();\nconst states = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));\n    if (!art) return;\n    const print = files.find((f) => f.name === \"Print\" && f.mimeType === \"application/vnd.google-apps.folder\");\n    states.push({ json: { folderId: folder.id, folder: folder.name, stamp: art.name.slice(0, 19), artworkId: art.id, printFolderId: print ? print.id : \"\", rootFiles: files.map((f) => f.name) } });\n});\nreturn states.length ? states : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "cc000018-0000-4000-8000-000000000000",
+      "name": "List Print files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        40
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.printFolderId ? \"'\" + $json.printFolderId + \"' in parents and trashed = false\" : \"name = '__none__' and trashed = false\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000019-0000-4000-8000-000000000000",
+      "name": "Plan jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        40
+      ],
+      "parameters": {
+        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$input.all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    const rootFiles = new Set(state.rootFiles);\n    const inSet = (set, size, n, suffix) => set.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || set.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const has = (size, n, suffix) => inSet(printFiles, size, n, suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_preview.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !inSet(rootFiles, size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "cc000020-0000-4000-8000-000000000000",
+      "name": "Anything to do?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingtodo",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000021-0000-4000-8000-000000000000",
+      "name": "Folders to prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "// One item per folder with jobs, to make sure its Print subfolder exists\nconst seen = new Set();\nconst out = [];\nfor (const item of $input.all()) {\n    if (seen.has(item.json.folderId)) continue;\n    seen.add(item.json.folderId);\n    out.push({ json: { folderId: item.json.folderId, printFolderId: item.json.printFolderId } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "cc000022-0000-4000-8000-000000000000",
+      "name": "Ensure Print folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3740,
+        -40
+      ],
+      "parameters": {
+        "method": "={{ $json.printFolderId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.printFolderId ? '/' + $json.printFolderId : '') + '?supportsAllDrives=true&fields=id,name,mimeType' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.printFolderId ? {} : { name: 'Print', mimeType: 'application/vnd.google-apps.folder', parents: [$json.folderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000023-0000-4000-8000-000000000000",
+      "name": "Jobs ready",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "// Every job now knows its Print folder\nconst prepared = $('Folders to prepare').all();\nconst printIds = {};\n$input.all().forEach((item, i) => {\n    if (item.json.mimeType !== \"application/vnd.google-apps.folder\") throw new Error(\"Print folder for \" + prepared[i].json.folderId + \" is not a folder: \" + JSON.stringify(item.json));\n    printIds[prepared[i].json.folderId] = item.json.id;\n});\nreturn $('Plan jobs').all().map((item) => ({ json: { ...item.json, printFolderId: printIds[item.json.folderId] } }));"
+      }
+    },
+    {
+      "id": "cc000024-0000-4000-8000-000000000000",
+      "name": "Loop over jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4180,
+        -40
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000025-0000-4000-8000-000000000000",
+      "name": "Heartbeat (refresh lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        60
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000026-0000-4000-8000-000000000000",
+      "name": "Download artwork",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        60
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over jobs').first().json.artworkId }}?alt=media&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "image"
+            }
+          },
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "cc000027-0000-4000-8000-000000000000",
+      "name": "Create pbn job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        60
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "canvasSize",
+              "value": "={{ $('Loop over jobs').first().json.size }}"
+            },
+            {
+              "name": "orientation",
+              "value": "={{ $('Settings').first().json.orientation }}"
+            },
+            {
+              "name": "colors",
+              "value": "={{ $('Loop over jobs').first().json.colors }}"
+            },
+            {
+              "name": "difficulty",
+              "value": "={{ $('Settings').first().json.difficulty }}"
+            },
+            {
+              "name": "palette",
+              "value": "={{ $('Settings').first().json.palette }}"
+            },
+            {
+              "name": "cropMode",
+              "value": "={{ $('Settings').first().json.cropMode }}"
+            },
+            {
+              "name": "paperSize",
+              "value": "={{ $('Settings').first().json.paperSize }}"
+            },
+            {
+              "name": "orderId",
+              "value": "={{ $('Loop over jobs').first().json.folder }}"
+            },
+            {
+              "name": "callbackUrl",
+              "value": "={{ $execution.resumeUrl }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "image"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000028-0000-4000-8000-000000000000",
+      "name": "Job accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5060,
+        60
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Jobaccepted",
+              "leftValue": "={{ !!$json.jobId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000029-0000-4000-8000-000000000000",
+      "name": "Wait for pbn job",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5280,
+        0
+      ],
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "incomingAuthentication": "headerAuth",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": 30,
+        "resumeUnit": "minutes",
+        "options": {}
+      },
+      "webhookId": "9a91f456-a1de-4a78-9791-1af5a8aad073"
+    },
+    {
+      "id": "cc000030-0000-4000-8000-000000000000",
+      "name": "Files to save",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)\nconst task = $('Loop over jobs').first().json;\nconst result = ($json.body && $json.body.status === \"completed\" && $json.body.result) || null;\nif (!result) return [{ json: { skip: true, reason: ($json.body && ($json.body.error || $json.body.status)) || \"no answer from the pbn API within 30 minutes\" } }];\nconst url = (name) => (result.files.find((f) => f.name === name) || {}).url;\nconst label = (result.canvas && result.canvas.label) || task.size;\nconst files = [];\nif (task.needSvg) {\n    files.push({ url: url(\"canvas.svg\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_preview.svg\", parent: task.printFolderId, mimeType: \"image/svg+xml\" });\n}\nif (task.needPdf) {\n    files.push({ url: url(\"painting.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_catalog.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needUser) {\n    files.push({ url: url(\"template.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_user.pdf\", parent: task.folderId, mimeType: \"application/pdf\" });\n}\nif (task.needMockup) {\n    files.push({ url: url(\"mockup.png\"), name: task.stamp + \"_mockup.png\", parent: task.folderId, mimeType: \"image/png\" });\n}\nconst ready = files.filter((f) => f.url);\nif (ready.length !== files.length) return [{ json: { skip: true, reason: \"the pbn API result is missing a file\" } }];\nreturn ready.map((f) => ({ json: f }));"
+      }
+    },
+    {
+      "id": "cc000031-0000-4000-8000-000000000000",
+      "name": "Job done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5720,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Jobdone",
+              "leftValue": "={{ !$json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000032-0000-4000-8000-000000000000",
+      "name": "Download file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5940,
+        -60
+      ],
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000033-0000-4000-8000-000000000000",
+      "name": "Save to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6160,
+        -60
+      ],
+      "parameters": {
+        "name": "={{ $('Files to save').item.json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Files to save').item.json.parent }}"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000034-0000-4000-8000-000000000000",
+      "name": "Run summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "// Files saved in this run (failed jobs are retried by the next run)\nconst saved = $input.all().filter((item) => item.json.id && item.json.name).map((item) => item.json.name);\nreturn [{ json: { saved: saved.length, files: saved } }];"
+      }
+    },
+    {
+      "id": "cc000035-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst saved = $('Run summary').isExecuted ? $('Run summary').first().json.saved : 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, saved } }));"
+      }
+    },
+    {
+      "id": "cc000036-0000-4000-8000-000000000000",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        -220
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000037-0000-4000-8000-000000000000",
+      "name": "More to do?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5060,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "// Folders may have arrived while this run worked: start a new run (which finds nothing and stops if all is done)\nconst saved = $('Locks to delete').first().json.saved;\nreturn [{ json: { again: saved > 0, saved } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000038-0000-4000-8000-000000000000",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $json.again }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000039-0000-4000-8000-000000000000",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5500,
+        -300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by another workflow": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
+      "main": [
+        [
+          {
+            "node": "List Artwork Agent folders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Artwork Agent folders": {
+      "main": [
+        [
+          {
+            "node": "Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Folders": {
+      "main": [
+        [
+          {
+            "node": "List folder files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List folder files": {
+      "main": [
+        [
+          {
+            "node": "Folder states",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Folder states": {
+      "main": [
+        [
+          {
+            "node": "List Print files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Print files": {
+      "main": [
+        [
+          {
+            "node": "Plan jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan jobs": {
+      "main": [
+        [
+          {
+            "node": "Anything to do?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to do?": {
+      "main": [
+        [
+          {
+            "node": "Folders to prepare",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Folders to prepare": {
+      "main": [
+        [
+          {
+            "node": "Ensure Print folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Print folder": {
+      "main": [
+        [
+          {
+            "node": "Jobs ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs ready": {
+      "main": [
+        [
+          {
+            "node": "Loop over jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over jobs": {
+      "main": [
+        [
+          {
+            "node": "Run summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Heartbeat (refresh lock)": {
+      "main": [
+        [
+          {
+            "node": "Download artwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download artwork": {
+      "main": [
+        [
+          {
+            "node": "Create pbn job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create pbn job": {
+      "main": [
+        [
+          {
+            "node": "Job accepted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job accepted?": {
+      "main": [
+        [
+          {
+            "node": "Wait for pbn job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop over jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for pbn job": {
+      "main": [
+        [
+          {
+            "node": "Files to save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Files to save": {
+      "main": [
+        [
+          {
+            "node": "Job done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job done?": {
+      "main": [
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop over jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "Save to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Drive": {
+      "main": [
+        [
+          {
+            "node": "Loop over jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run summary": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "More to do?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More to do?": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca"
+  },
+  "pinData": {}
+}
