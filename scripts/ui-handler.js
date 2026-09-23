@@ -1153,7 +1153,7 @@
             if (typeof window.downloadSVG === 'function') {
                 window.downloadSVG(filename);
             } else {
-                const downloadSVGBtn = document.getElementById('btnDownloadSVG');
+                const downloadSVGBtn = document.getElementById('btnLegacyDownloadSVG');
                 if (downloadSVGBtn) {
                     downloadSVGBtn.click();
                 }
@@ -1165,7 +1165,7 @@
             if (typeof window.downloadPNG === 'function') {
                 window.downloadPNG(filename);
             } else {
-                const hiddenPngBtn = document.querySelector('.hidden-processing #btnDownloadPNG');
+                const hiddenPngBtn = document.querySelector('.hidden-processing #btnLegacyDownloadPNG');
                 if (hiddenPngBtn) {
                     hiddenPngBtn.click();
                 }

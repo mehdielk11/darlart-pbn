@@ -45,15 +45,17 @@ $(document).ready(function () {
         await updateOutput();
     });
 
-    $("#btnDownloadSVG").click(function () {
+    // Buttons of the hidden original UI. The site's own download buttons are wired in scripts/ui-handler.js:
+    // binding these by their old ids added a second handler to them, so the PNG downloaded twice.
+    $("#btnLegacyDownloadSVG").click(function () {
         downloadSVG();
     });
 
-    $("#btnDownloadPNG").click(function () {
+    $("#btnLegacyDownloadPNG").click(function () {
         downloadPNG();
     });
 
-    $("#btnDownloadPalettePNG").click(function () {
+    $("#btnLegacyDownloadPalettePNG").click(function () {
         downloadPalettePng();
     });
 

@@ -4657,13 +4657,15 @@ define("main", ["require", "exports", "gui", "lib/clipboard"], function (require
         $("#chkShowLabels, #chkFillFacets, #chkShowBorders, #txtSizeMultiplier, #txtLabelFontSize, #txtLabelFontColor").change(() => __awaiter(this, void 0, void 0, function* () {
             yield (0, gui_2.updateOutput)();
         }));
-        $("#btnDownloadSVG").click(function () {
+        // Buttons of the hidden original UI. The site's own download buttons are wired in scripts/ui-handler.js:
+        // binding these by their old ids added a second handler to them, so the PNG downloaded twice.
+        $("#btnLegacyDownloadSVG").click(function () {
             (0, gui_2.downloadSVG)();
         });
-        $("#btnDownloadPNG").click(function () {
+        $("#btnLegacyDownloadPNG").click(function () {
             (0, gui_2.downloadPNG)();
         });
-        $("#btnDownloadPalettePNG").click(function () {
+        $("#btnLegacyDownloadPalettePNG").click(function () {
             (0, gui_2.downloadPalettePng)();
         });
         $("#lnkTrivial").click(() => { (0, gui_2.loadExample)("imgTrivial"); return false; });
