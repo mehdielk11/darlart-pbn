@@ -145,7 +145,7 @@ Downloads one file:
 - `template.pdf`: page 1 colored, page 2 numbered outline, page 3+ legend by family;
 - `painting.pdf`: the painting guide, page 1 the colored template with its numbers (white on the dark regions), page 2 the palette;
 - `template.svg`: colored template with numbers, written in white on the dark regions so they stay readable;
-- `template-blank.svg`: the template to paint on, black outlines and numbers on white, no colors;
+- `canvas.svg`: the pre-printed canvas as vector: every region faintly tinted, with grey outlines and numbers on white. Same look as `canvas.png`, with slightly stronger colors since it's made to be printed;
 - `preview.png`: the finished painting, colors only, without outlines or numbers;
 - `canvas.png`: the pre-printed canvas look, with every region faintly tinted and grey outlines and numbers on white, up to 3508 px (A4 at 300 dpi);
 - `mockup.png`: the "perfect kit" product photo (1254 × 1254) showing this template on the canvas, a grey print of it on the reference sheet and the customer's cropped photo on the image card. The landscape or portrait kit is picked from the painting's shape. The website's "Download mockup" button draws the same image. The kit photos are in `/mockups` and their placeholder positions in `src/core/mockup.ts`. After replacing a kit photo or moving a placeholder, run `npm run prepare:mockups` to rebuild its `-blank` (sheet drawing erased) and `-overlay` (brushes lying on the sheet) layers, and the `kit-*.js` script the website loads them from;

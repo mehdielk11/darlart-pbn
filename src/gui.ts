@@ -7,7 +7,7 @@ import { getColorCode } from "./core/palette";
 import { buildPaintingPdf, buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
 import { containBox, coverSource, darkenForSheet, insetBox, MOCKUP_KITS_GLOBAL, MOCKUP_STYLE, MockupBox, MockupTemplate, pickMockupTemplate, sheetGeometry } from "./core/mockup";
 import { buildSettings, Difficulty } from "./core/settings";
-import { buildBlankSvgString, buildFadedSvgString, buildSvgString } from "./core/svg";
+import { buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "./core/svg";
 import { GUIProcessManager, ProcessResult } from "./guiprocessmanager";
 import { findPaletteFamily } from "./palettefamilies";
 import { Settings } from "./settings";
@@ -204,15 +204,19 @@ export function downloadPNG(filename?: string) {
     saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
 }
 
-/** The template to paint on: black outlines and numbers on white, no colors */
-export function downloadBlankSVG(filename?: string) {
+/** The pre-printed canvas as vector: the same faint look as the Preview PNG, with slightly stronger colors */
+export function downloadFadedSVG(filename?: string) {
     if (processResult == null) {
         return;
     }
-    const svgString = buildBlankSvgString(processResult.facetResult, processResult.colorsByIndex);
+    const svgString = buildFadedSvgString(processResult.facetResult, processResult.colorsByIndex, {
+        colorStrength: FADED_CANVAS_STYLE.svgColorStrength,
+        strokeWidth: 1.2,
+        fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+    });
     const defaultName = (typeof (window as any).getOutputFilename === "function")
-        ? String((window as any).getOutputFilename("svg")).replace(/\.svg$/i, "-blank.svg")
-        : "paintbynumbers-blank.svg";
+        ? String((window as any).getOutputFilename("svg")).replace(/\.svg$/i, "-canvas.svg")
+        : "paintbynumbers-canvas.svg";
     saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
 }
 
@@ -446,5 +450,5 @@ try {
     (window as any).downloadPalettePng = downloadPalettePng;
     (window as any).buildTemplatePdf = buildTemplatePdf;
     (window as any).buildPaintingPdf = buildPaintingPdfDoc;
-    (window as any).downloadBlankSVG = downloadBlankSVG;
+    (window as any).downloadFadedSVG = downloadFadedSVG;
 } catch (_) {}

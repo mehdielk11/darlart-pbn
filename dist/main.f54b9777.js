@@ -3014,7 +3014,6 @@ define("core/svg", ["require", "exports"], function (require, exports) {
     exports.buildSvgString = buildSvgString;
     exports.fadeColors = fadeColors;
     exports.buildFadedSvgString = buildFadedSvgString;
-    exports.buildBlankSvgString = buildBlankSvgString;
     /** Numbers stay readable on any fill: white on a dark region, the normal color on a light one */
     function labelColorFor(color, fontColor) {
         const luminance = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
@@ -3024,6 +3023,8 @@ define("core/svg", ["require", "exports"], function (require, exports) {
     exports.FADED_CANVAS_STYLE = {
         /** Share of each color that is kept, the rest being white: 1 keeps the color, 0 turns it white */
         colorStrength: 0.22,
+        /** The vector version is printed rather than shown on screen, so its colors are a little stronger */
+        svgColorStrength: 0.32,
         strokeColor: "#a2a7ad",
         fontColor: "#868b92",
         background: "#ffffff",
@@ -3122,15 +3123,6 @@ define("core/svg", ["require", "exports"], function (require, exports) {
         svgOptions.stroke = true;
         svgOptions.labels = true;
         return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
-    }
-    /**
-     * The template to paint on: black outlines and black numbers on white, no colors at all.
-     * Same geometry as the colored SVG, so both line up.
-     */
-    function buildBlankSvgString(facetResult, colorsByIndex, options = {}) {
-        return buildSvgString(facetResult, colorsByIndex, Object.assign(Object.assign({ strokeColor: "#000000", fontColor: "#000000", background: "#ffffff", 
-            // thicker than the colored template: nothing but the lines shows where to paint
-            strokeWidth: 1.5 }, options), { fill: false, stroke: true, labels: true, labelContrast: false }));
     }
 });
 define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function (require, exports, palette_1, svg_1) {
@@ -4053,7 +4045,7 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
     exports.updateOutput = updateOutput;
     exports.downloadPalettePng = downloadPalettePng;
     exports.downloadPNG = downloadPNG;
-    exports.downloadBlankSVG = downloadBlankSVG;
+    exports.downloadFadedSVG = downloadFadedSVG;
     exports.downloadCanvasPNG = downloadCanvasPNG;
     exports.buildMockupCanvas = buildMockupCanvas;
     exports.downloadMockupPNG = downloadMockupPNG;
@@ -4236,15 +4228,19 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
             : "paintbynumbers.png";
         saveSvgAsPng(svg, filename || defaultName, { backgroundColor: "#ffffff" });
     }
-    /** The template to paint on: black outlines and numbers on white, no colors */
-    function downloadBlankSVG(filename) {
+    /** The pre-printed canvas as vector: the same faint look as the Preview PNG, with slightly stronger colors */
+    function downloadFadedSVG(filename) {
         if (processResult == null) {
             return;
         }
-        const svgString = (0, svg_3.buildBlankSvgString)(processResult.facetResult, processResult.colorsByIndex);
+        const svgString = (0, svg_3.buildFadedSvgString)(processResult.facetResult, processResult.colorsByIndex, {
+            colorStrength: svg_3.FADED_CANVAS_STYLE.svgColorStrength,
+            strokeWidth: 1.2,
+            fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+        });
         const defaultName = (typeof window.getOutputFilename === "function")
-            ? String(window.getOutputFilename("svg")).replace(/\.svg$/i, "-blank.svg")
-            : "paintbynumbers-blank.svg";
+            ? String(window.getOutputFilename("svg")).replace(/\.svg$/i, "-canvas.svg")
+            : "paintbynumbers-canvas.svg";
         saveTextFile('<?xml version="1.0" standalone="no"?>\r\n' + svgString, filename || defaultName, "image/svg+xml;charset=utf-8");
     }
     function saveTextFile(content, filename, type) {
@@ -4462,7 +4458,7 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         window.downloadPalettePng = downloadPalettePng;
         window.buildTemplatePdf = buildTemplatePdf;
         window.buildPaintingPdf = buildPaintingPdfDoc;
-        window.downloadBlankSVG = downloadBlankSVG;
+        window.downloadFadedSVG = downloadFadedSVG;
     }
     catch (_) { }
 });
@@ -4919,7 +4915,7 @@ define("core/crop", ["require", "exports"], function (require, exports) {
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
     const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
-    const downloadBlankSvgBtn = document.getElementById('btnDownloadBlankSVG');
+    const downloadCanvasSvgBtn = document.getElementById('btnDownloadCanvasSVG');
     const downloadPaintingPdfBtn = document.getElementById('btnDownloadPaintingPDF');
     const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
@@ -6067,10 +6063,10 @@ define("core/crop", ["require", "exports"], function (require, exports) {
             }
         });
 
-        if (downloadBlankSvgBtn) downloadBlankSvgBtn.addEventListener('click', () => {
-            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-blank.svg');
-            if (typeof window.downloadBlankSVG === 'function') {
-                window.downloadBlankSVG(filename);
+        if (downloadCanvasSvgBtn) downloadCanvasSvgBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-canvas.svg');
+            if (typeof window.downloadFadedSVG === 'function') {
+                window.downloadFadedSVG(filename);
             }
         });
 

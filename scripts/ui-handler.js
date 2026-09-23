@@ -32,7 +32,7 @@
     const downloadBtn = document.getElementById('btnDownloadPDF');
     const downloadPngBtn = document.getElementById('btnDownloadPNG');
     const downloadCanvasBtn = document.getElementById('btnDownloadCanvasPNG');
-    const downloadBlankSvgBtn = document.getElementById('btnDownloadBlankSVG');
+    const downloadCanvasSvgBtn = document.getElementById('btnDownloadCanvasSVG');
     const downloadPaintingPdfBtn = document.getElementById('btnDownloadPaintingPDF');
     const downloadMockupBtn = document.getElementById('btnDownloadMockup');
     const downloadOutlineBtn = document.getElementById('btnDownloadOutline');
@@ -1180,10 +1180,10 @@
             }
         });
 
-        if (downloadBlankSvgBtn) downloadBlankSvgBtn.addEventListener('click', () => {
-            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-blank.svg');
-            if (typeof window.downloadBlankSVG === 'function') {
-                window.downloadBlankSVG(filename);
+        if (downloadCanvasSvgBtn) downloadCanvasSvgBtn.addEventListener('click', () => {
+            const filename = getOutputFilename('svg').replace(/\.svg$/i, '-canvas.svg');
+            if (typeof window.downloadFadedSVG === 'function') {
+                window.downloadFadedSVG(filename);
             }
         });
 

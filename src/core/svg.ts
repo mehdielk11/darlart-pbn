@@ -33,6 +33,8 @@ export function labelColorFor(color: RGB, fontColor: string): string {
 export const FADED_CANVAS_STYLE = {
     /** Share of each color that is kept, the rest being white: 1 keeps the color, 0 turns it white */
     colorStrength: 0.22,
+    /** The vector version is printed rather than shown on screen, so its colors are a little stronger */
+    svgColorStrength: 0.32,
     strokeColor: "#a2a7ad",
     fontColor: "#868b92",
     background: "#ffffff",
@@ -144,21 +146,3 @@ export function buildFadedSvgString(facetResult: FacetResult, colorsByIndex: RGB
     return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
 }
 
-/**
- * The template to paint on: black outlines and black numbers on white, no colors at all.
- * Same geometry as the colored SVG, so both line up.
- */
-export function buildBlankSvgString(facetResult: FacetResult, colorsByIndex: RGB[], options: SvgOptions = {}): string {
-    return buildSvgString(facetResult, colorsByIndex, {
-        strokeColor: "#000000",
-        fontColor: "#000000",
-        background: "#ffffff",
-        // thicker than the colored template: nothing but the lines shows where to paint
-        strokeWidth: 1.5,
-        ...options,
-        fill: false,
-        stroke: true,
-        labels: true,
-        labelContrast: false,
-    });
-}

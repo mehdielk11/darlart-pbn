@@ -188,7 +188,7 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             orderId: "#1001",
         });
 
-        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "mockup.png", "painting.pdf", "palette.json", "preview.png", "template-blank.svg", "template.pdf", "template.svg"]);
+        assert.deepEqual(result.files.map((f) => f.name).sort(), ["canvas.png", "canvas.svg", "mockup.png", "painting.pdf", "palette.json", "preview.png", "template.pdf", "template.svg"]);
 
         // the kit mockup keeps the kit photo's size
         const mockupMeta = await require("sharp")(path.join(outputDir, "mockup.png")).metadata();
@@ -223,11 +223,19 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
             assert.ok(svg.includes('fill="#ffffff">'), "expected white numbers on the dark regions");
         }
 
-        // the blank template: outlines and numbers, no colored fill
-        const blank = fs.readFileSync(path.join(outputDir, "template-blank.svg"), "utf8");
-        assert.ok(blank.includes("fill: none;"), "the blank template should not be filled");
-        assert.ok(!/fill: rgb\(/.test(blank), "the blank template should have no colors");
-        assert.equal([...blank.matchAll(/<\/text>/g)].length, [...svg.matchAll(/<\/text>/g)].length);
+        // the canvas SVG: the same faint look as canvas.png, with slightly stronger colors, and the same numbers
+        const canvasSvg = fs.readFileSync(path.join(outputDir, "canvas.svg"), "utf8");
+        assert.ok(canvasSvg.includes('<rect width="100%" height="100%" fill="#ffffff">'), "the canvas SVG should be on white");
+        assert.equal([...canvasSvg.matchAll(/<\/text>/g)].length, [...svg.matchAll(/<\/text>/g)].length);
+        const faintness = (text) => {
+            const fills = [...text.matchAll(/fill: rgb\((\d+),(\d+),(\d+)\)/g)];
+            return fills.reduce((sum, m) => sum + (Number(m[1]) + Number(m[2]) + Number(m[3])) / 3, 0) / fills.length;
+        };
+        const templateBrightness = faintness(svg);
+        const canvasBrightness = faintness(canvasSvg);
+        // faded toward white, but not as pale as the preview canvas.png
+        assert.ok(canvasBrightness > templateBrightness, `canvas.svg (${canvasBrightness}) should be paler than the template (${templateBrightness})`);
+        assert.ok(canvasBrightness < 255, "canvas.svg should still be colored");
 
         // the painting guide: colored template with numbers, then the palette
         const painting = fs.readFileSync(path.join(outputDir, "painting.pdf"), "latin1");
