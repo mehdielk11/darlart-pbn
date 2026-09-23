@@ -47,9 +47,9 @@ export const MOCKUP_TEMPLATES: { [name in "landscape" | "portrait"]: MockupTempl
         overlay: "kit-landscape-overlay.png",
         script: "kit-landscape.js",
         size: 1254,
-        canvas: { left: 288, top: 321, width: 683, height: 534 },
-        card: { left: 53, top: 324, width: 184, height: 183 },
-        sheet: [[628, 189], [1213, 330], [1083.4, 868.5], [498.4, 727.5]],
+        canvas: { left: 288, top: 321, width: 680, height: 532 },
+        card: { left: 53, top: 324, width: 184, height: 182 },
+        sheet: [[628, 188], [1215, 329], [1089, 862], [506, 722]],
     },
     portrait: {
         name: "portrait",
@@ -58,9 +58,10 @@ export const MOCKUP_TEMPLATES: { [name in "landscape" | "portrait"]: MockupTempl
         overlay: "kit-portrait-overlay.png",
         script: "kit-portrait.js",
         size: 1254,
-        canvas: { left: 313, top: 172, width: 629, height: 752 },
-        card: { left: 68, top: 356, width: 172, height: 187 },
-        sheet: [[784.1, 184.4], [1167, 357], [884.4, 886.3], [501.5, 713.6]],
+        canvas: { left: 313, top: 172, width: 628, height: 750 },
+        card: { left: 68, top: 356, width: 171, height: 187 },
+        // the sheet lies almost entirely behind the canvas: only its top-right corner shows
+        sheet: [[786, 186], [1169, 357], [907, 851], [524, 680]],
     },
 };
 

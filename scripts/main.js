@@ -3145,7 +3145,7 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
         const sizeMultiplier = options.sizeMultiplier || 3;
         const fontSize = options.fontSize || 50;
         const borderColor = hexToRgb(options.borderColor || "#000000");
-        const outlineColor = hexToRgb(options.outlineColor || "#bcc0ca");
+        const outlineColor = hexToRgb(options.outlineColor || "#6a6f77");
         const { facetResult, colorsByIndex } = template;
         // Template geometry in SVG units (image pixels * multiplier) with a small padding so strokes aren't clipped at the edges
         const svgWidth = facetResult.width * sizeMultiplier;
@@ -3195,19 +3195,19 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
             }
         };
         /**
-         * The colored template, one filled shape per facet. Without borders each shape is stroked in its own
-         * color instead, the way the SVG does it, so no white seams show between the regions.
+         * The colored template, one filled shape per facet, outlined in `border`. With `null` each shape is
+         * stroked in its own color instead, the way the SVG does it, so no white seams show between the regions.
          */
-        const drawColoredTemplate = (borders = true) => {
+        const drawColoredTemplate = (border = borderColor) => {
             doc.setLineJoin("round");
             doc.setLineWidth(lineWidth);
-            if (borders) {
-                doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            if (border) {
+                doc.setDrawColor(border[0], border[1], border[2]);
             }
             for (const f of drawableFacets) {
                 const color = colorsByIndex[f.color];
                 doc.setFillColor(color[0], color[1], color[2]);
-                if (!borders) {
+                if (!border) {
                     doc.setDrawColor(color[0], color[1], color[2]);
                 }
                 traceFacet((0, svg_1.getFacetOutline)(f));
@@ -3228,21 +3228,11 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
                 doc.fillStroke();
             }
         };
-        /** The outlines only, in the outline color */
-        const drawOutlines = () => {
-            doc.setLineJoin("round");
-            doc.setLineWidth(lineWidth);
-            doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-            for (const f of drawableFacets) {
-                traceFacet((0, svg_1.getFacetOutline)(f));
-                doc.stroke();
-            }
-        };
         const addLegend = () => {
             const rows = (0, palette_1.groupPaletteEntries)((0, palette_1.buildPaletteEntries)(colorsByIndex, template.colorCodes));
             addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
         };
-        return { doc, drawColoredTemplate, drawFadedTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+        return { doc, drawColoredTemplate, drawFadedTemplate, drawLabels, addLegend, outlineColor };
     }
     /**
      * Page 1: the finished painting, colors only (the "Download PNG" image).
@@ -3251,7 +3241,7 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
      */
     function buildPdf(JsPDF, template, options = {}) {
         const page = layoutTemplate(JsPDF, template, options);
-        page.drawColoredTemplate(false);
+        page.drawColoredTemplate(null);
         page.doc.addPage();
         page.drawFadedTemplate();
         page.drawLabels(hexToRgb(svg_1.FADED_CANVAS_STYLE.fontColor));
@@ -3259,12 +3249,13 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
         return page.doc;
     }
     /**
-     * The painting guide: page 1 is the colored template with its numbers (white on the dark regions),
-     * page 2 is the palette.
+     * The painting guide: page 1 is the colored template with grey outlines and its numbers (white on the
+     * dark regions), page 2 is the palette.
      */
     function buildPaintingPdf(JsPDF, template, options = {}) {
         const page = layoutTemplate(JsPDF, template, options);
-        page.drawColoredTemplate();
+        // grey outlines: they show where each region ends without cutting up the artwork the way black does
+        page.drawColoredTemplate(page.outlineColor);
         page.drawLabels("contrast");
         page.addLegend();
         return page.doc;
@@ -3430,9 +3421,9 @@ define("core/mockup", ["require", "exports"], function (require, exports) {
             overlay: "kit-landscape-overlay.png",
             script: "kit-landscape.js",
             size: 1254,
-            canvas: { left: 288, top: 321, width: 683, height: 534 },
-            card: { left: 53, top: 324, width: 184, height: 183 },
-            sheet: [[628, 189], [1213, 330], [1083.4, 868.5], [498.4, 727.5]],
+            canvas: { left: 288, top: 321, width: 680, height: 532 },
+            card: { left: 53, top: 324, width: 184, height: 182 },
+            sheet: [[628, 188], [1215, 329], [1089, 862], [506, 722]],
         },
         portrait: {
             name: "portrait",
@@ -3441,9 +3432,10 @@ define("core/mockup", ["require", "exports"], function (require, exports) {
             overlay: "kit-portrait-overlay.png",
             script: "kit-portrait.js",
             size: 1254,
-            canvas: { left: 313, top: 172, width: 629, height: 752 },
-            card: { left: 68, top: 356, width: 172, height: 187 },
-            sheet: [[784.1, 184.4], [1167, 357], [884.4, 886.3], [501.5, 713.6]],
+            canvas: { left: 313, top: 172, width: 628, height: 750 },
+            card: { left: 68, top: 356, width: 171, height: 187 },
+            // the sheet lies almost entirely behind the canvas: only its top-right corner shows
+            sheet: [[786, 186], [1169, 357], [907, 851], [524, 680]],
         },
     };
     exports.MOCKUP_STYLE = {

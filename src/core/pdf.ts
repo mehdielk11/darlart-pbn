@@ -32,7 +32,7 @@ export interface PdfOptions {
     fontSize?: number;
     /** Borders of the colored page */
     borderColor?: string;
-    /** Borders and numbers of the outline page */
+    /** Borders of the painting guide's colored page: grey, so they guide without cutting up the artwork */
     outlineColor?: string;
     legendTitle?: string;
 }
@@ -51,7 +51,7 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
     const sizeMultiplier = options.sizeMultiplier || 3;
     const fontSize = options.fontSize || 50;
     const borderColor = hexToRgb(options.borderColor || "#000000");
-    const outlineColor = hexToRgb(options.outlineColor || "#bcc0ca");
+    const outlineColor = hexToRgb(options.outlineColor || "#6a6f77");
     const { facetResult, colorsByIndex } = template;
 
     // Template geometry in SVG units (image pixels * multiplier) with a small padding so strokes aren't clipped at the edges
@@ -103,19 +103,19 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
     };
 
     /**
-     * The colored template, one filled shape per facet. Without borders each shape is stroked in its own
-     * color instead, the way the SVG does it, so no white seams show between the regions.
+     * The colored template, one filled shape per facet, outlined in `border`. With `null` each shape is
+     * stroked in its own color instead, the way the SVG does it, so no white seams show between the regions.
      */
-    const drawColoredTemplate = (borders: boolean = true) => {
+    const drawColoredTemplate = (border: RGB | null = borderColor) => {
         doc.setLineJoin("round");
         doc.setLineWidth(lineWidth);
-        if (borders) {
-            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        if (border) {
+            doc.setDrawColor(border[0], border[1], border[2]);
         }
         for (const f of drawableFacets) {
             const color = colorsByIndex[f!.color];
             doc.setFillColor(color[0], color[1], color[2]);
-            if (!borders) {
+            if (!border) {
                 doc.setDrawColor(color[0], color[1], color[2]);
             }
             traceFacet(getFacetOutline(f!));
@@ -138,23 +138,12 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         }
     };
 
-    /** The outlines only, in the outline color */
-    const drawOutlines = () => {
-        doc.setLineJoin("round");
-        doc.setLineWidth(lineWidth);
-        doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
-        for (const f of drawableFacets) {
-            traceFacet(getFacetOutline(f!));
-            doc.stroke();
-        }
-    };
-
     const addLegend = () => {
         const rows = groupPaletteEntries(buildPaletteEntries(colorsByIndex, template.colorCodes));
         addLegendPages(doc, rows, options.legendTitle || "Legend & Palette");
     };
 
-    return { doc, drawColoredTemplate, drawFadedTemplate, drawOutlines, drawLabels, addLegend, outlineColor };
+    return { doc, drawColoredTemplate, drawFadedTemplate, drawLabels, addLegend, outlineColor };
 }
 
 /**
@@ -164,7 +153,7 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
  */
 export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
     const page = layoutTemplate(JsPDF, template, options);
-    page.drawColoredTemplate(false);
+    page.drawColoredTemplate(null);
     page.doc.addPage();
     page.drawFadedTemplate();
     page.drawLabels(hexToRgb(FADED_CANVAS_STYLE.fontColor));
@@ -173,12 +162,13 @@ export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options
 }
 
 /**
- * The painting guide: page 1 is the colored template with its numbers (white on the dark regions),
- * page 2 is the palette.
+ * The painting guide: page 1 is the colored template with grey outlines and its numbers (white on the
+ * dark regions), page 2 is the palette.
  */
 export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
     const page = layoutTemplate(JsPDF, template, options);
-    page.drawColoredTemplate();
+    // grey outlines: they show where each region ends without cutting up the artwork the way black does
+    page.drawColoredTemplate(page.outlineColor);
     page.drawLabels("contrast");
     page.addLegend();
     return page.doc;
