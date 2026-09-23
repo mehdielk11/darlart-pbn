@@ -93,7 +93,7 @@
             {
               "id": "set8",
               "name": "imageQuality",
-              "value": "high",
+              "value": "medium",
               "type": "string"
             },
             {
@@ -147,7 +147,7 @@
     },
     {
       "id": "aa000005-0000-4000-8000-000000000000",
-      "name": "Photo for the agent",
+      "name": "Build image prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -155,80 +155,16 @@
         0
       ],
       "parameters": {
-        "jsCode": "// The Drive node returns file metadata only: hand the reference image to the AI agent again\nreturn [{ json: { referenceFileId: $input.first().json.id }, binary: $('Prepare').first().binary }];"
+        "jsCode": "// A fixed prompt: the model sees the reference itself (high input fidelity), so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
       }
     },
     {
       "id": "aa000006-0000-4000-8000-000000000000",
-      "name": "AI Agent (art director)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 2.2,
-      "position": [
-        1100,
-        0
-      ],
-      "parameters": {
-        "promptType": "define",
-        "text": "=Number of colors N = {{ $('Settings').first().json.colors }}.\nPrepare the artwork brief for the attached reference image.",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "You are the art director of Darl'Art, a paint-by-numbers brand. You receive a reference image and a number of colors N. You never draw: you write the brief a painter will follow.\n\nDARL'ART PALETTE: the only paint colors that exist.\nEach line is a family \"FF: SS=HEX ...\": the color ID is family + shade, e.g. \"01: 05=FC6286\" means ID 0105 = #FC6286. Shades 01 to 10 go from very light to vivid, 11 to 15 from dark to darkest.\n01: 01=FFBBE4 02=FFA8CA 03=FF93B5 04=FF80A3 05=FC6286 06=F95379 07=F4446B 08=F02252 09=E20030 10=DC0000 11=5A0000 12=470000 13=350000 14=240000 15=140000\n02: 01=FFC6CD 02=FFAFB8 03=FF9BA7 04=FE8992 05=FF7A83 06=FC737D 07=FB6570 08=F54C53 09=F1404A 10=DF0207 11=561920 12=45141A 13=340F13 14=270B0E 15=1C080A\n03: 01=FFC6CC 02=FEACB2 03=FFA0A6 04=FF8F95 05=FF9188 06=FF8B82 07=FF7C74 08=FF665E 09=FF5F53 10=FA3218 11=64352F 12=502A26 13=3C201C 14=2D1815 15=20110F\n04: 01=FED1CC 02=FFBDB1 03=FEAA9F 04=FF9F93 05=FF957D 06=FF8C71 07=FF8168 08=FE7155 09=FF6040 10=F94C21 11=684531 12=533727 13=3E291D 14=2F1F16 15=211610\n05: 01=FFD9C6 02=FEC4B0 03=FFB39C 04=FFA88D 05=FEB080 06=FEAA7B 07=FF9A64 08=FF915E 09=FF8752 10=FF692A 11=685836 12=53462B 13=3E3520 14=2F2818 15=211C11\n06: 01=FFE2C0 02=FED3A9 03=FFC796 04=FFBC87 05=FEC182 06=FEB775 07=FFAE6C 08=FFA157 09=FF9348 10=FF812A 11=756937 12=5E542C 13=463F21 14=352F19 15=252212\n07: 01=FFEFC3 02=FFE0A7 03=FFD799 04=FFCE89 05=FFCB7F 06=FFC571 07=FEBC66 08=FFB35B 09=FEAA48 10=FF9E33 11=837D3F 12=696432 13=4F4B26 14=3B381C 15=2A2814\n08: 01=FFF7C5 02=FFF2AC 03=FFEA9E 04=FFE18B 05=FEDC7B 06=FFD573 07=FFCC63 08=FFC557 09=FEC049 10=FFB636 11=7A7940 12=626133 13=494926 14=37361D 15=272714\n09: 01=FFFFC7 02=FFFFAF 03=FEFE9A 04=FFFF8D 05=FFFF81 06=FFFF71 07=FFFF69 08=FEFF5B 09=FFF643 10=FFF12E 11=85853F 12=66652F 13=4D4C23 14=39391A 15=292913\n10: 01=F5FAC4 02=EBF5B0 03=DFF39E 04=D3F191 05=CCEE8D 06=C3E87E 07=BAE476 08=B0DD66 09=A2D959 10=97D147 11=6A7042 12=555A35 13=404328 14=30321E 15=222415\n11: 01=EBFFCC 02=DAF9B5 03=CCF3A2 04=BFED93 05=B0E78A 06=A6DF7E 07=9ADC72 08=8ED366 09=82D15C 10=6EC449 11=597B3E 12=476232 13=354A25 14=28371C 15=1C2714\n12: 01=D5F6C9 02=C1EEB3 03=B3E8A4 04=A4E297 05=ACF393 06=A0E885 07=96E57C 08=8DE074 09=77D364 10=60C752 11=527A45 12=426237 13=314929 14=25371F 15=1A2716\n13: 01=BFEFD9 02=A4E4BF 03=96DFB2 04=85D8A2 05=85D691 06=7CCF87 07=71C97F 08=5CBF6C 09=4CB862 10=2EA555 11=336C4C 12=29563D 13=1F412E 14=173122 15=102318\n14: 01=B9F1D6 02=9FE7C2 03=8CDFB5 04=7AD5AA 05=68CC9A 06=5DC391 07=4EBB84 08=41B47B 09=23A565 10=079A53 11=166D43 12=125736 13=0D4128 14=0A311E 15=072315\n15: 01=ADEFD4 02=8EE2C8 03=79D6B7 04=66CDAF 05=57C69B 06=4CC093 07=3DB285 08=26A97D 09=02946D 10=028B5F 11=04634D 12=034F3E 13=023B2E 14=022D23 15=012019\n16: 01=9AE6E2 02=81DCD5 03=69CEC8 04=55C3BA 05=4FC0AE 06=42B6A3 07=37AE9B 08=189D88 09=059885 10=007D6B 11=00574F 12=00463F 13=00342F 14=002724 15=001C19\n17: 01=98E7EB 02=7AD9DB 03=5ECECF 04=4CC4C2 05=4DC0BB 06=3EB7B0 07=2AA9A2 08=0B9D93 09=008D84 10=007972 11=005A58 12=004846 13=003635 14=002828 15=001D1C\n18: 01=8DE4F5 02=68D3E5 03=52C9DD 04=3ABBD1 05=3BB6C8 06=2AADC1 07=119FB3 08=0093A7 09=008298 10=016F88 11=00525D 12=00424A 13=003138 14=00252A 15=001A1E\n19: 01=8DE3FA 02=69D2EF 03=4EC5E3 04=34BBD9 05=32B3D3 06=15A3C7 07=029CC0 08=0090B5 09=007BA5 10=006A92 11=004C5C 12=003D4A 13=002E37 14=002229 15=00181D\n20: 01=87E1FC 02=63CFF3 03=49C4ED 04=35BAE5 05=2DB0DA 06=11A4D0 07=009DCA 08=008CBD 09=017DB1 10=0068A1 11=004B60 12=003C4D 13=002D3A 14=00222B 15=00181F\n21: 01=8CE3FF 02=66D2F9 03=48C2F1 04=35B9EA 05=32B5E9 06=06A0DC 07=0394D3 08=0388CB 09=007CC2 10=0064B0 11=004C66 12=003D52 13=002E3D 14=00222E 15=001821\n22: 01=8EE1FF 02=6DD0F0 03=51C1EF 04=3CB6E7 05=32A7DC 06=129BD2 07=038FCA 08=0084C2 09=0172B6 10=005DA3 11=004763 12=00394F 13=002B3B 14=00202D 15=001720\n23: 01=8AD9F8 02=70C9F1 03=56BDE8 04=43ADDD 05=30A6D8 06=269BD0 07=018CC3 08=007CB8 09=025798 10=005A99 11=01445F 12=01364C 13=012939 14=001F2B 15=00161E\n24: 01=93D5F5 02=72C1E8 03=58B1DD 04=43A4D1 05=329CCC 06=3395C6 07=0083B7 08=0176AC 09=00649F 10=004E87 11=00405C 12=00334A 13=002637 14=001D29 15=00141D\n25: 01=9ED1F0 02=7ABADD 03=65A8D2 04=529BC6 05=539AC4 06=4089B4 07=2F7DAD 08=166A99 09=025A8C 10=023F75 11=013453 12=012A42 13=011F32 14=001725 15=00111B\n26: 01=A2D1EB 02=82BADB 03=6BABCF 04=5C9DC3 05=558AB4 06=467DA6 07=3D749D 08=236391 09=205F8B 10=01366A 11=00243C 12=001D30 13=001624 14=00101B 15=000C13\n27: 01=B4C1E4 02=99ACD6 03=8099C2 04=728AB6 05=527CA6 06=4E78A2 07=406B95 08=38638D 09=1C4670 10=002454 11=011132 12=010E28 13=010A1E 14=000816 15=000510\n28: 01=C0BFDE 02=A8A8CA 03=9696BA 04=8484AA 05=7779A0 06=676992 07=64668F 08=51537A 09=3C3E65 10=0E093F 11=040426 12=03031E 13=020217 14=020211 15=01010C\n29: 01=CAC9D7 02=B0B1C5 03=A0A0B8 04=8F8FA7 05=8281A0 06=727191 07=656182 08=554F71 09=443A5F 10=250034 11=180322 12=13021B 13=0E0214 14=0B010F 15=08010B\n30: 01=F1CFDF 02=E0B9CC 03=D0A3B8 04=C494AE 05=A67892 06=9A6883 07=905976 08=7E4764 09=672C4C 10=3E0019 11=280008 12=220007 13=1B0006 14=150005 15=0F0004\n31: 01=EEC0DA 02=E1A6C4 03=D392B4 04=CA82A7 05=B97197 06=AE6489 07=9F5179 08=8F3C66 09=7C234F 10=5A000A 11=370005 12=2C0004 13=210003 14=190002 15=120002\n32: 01=F4B9D7 02=EAA2C7 03=E18CB6 04=D67BA6 05=C76C98 06=BE5D8A 07=B6517D 08=A73862 09=97224F 10=710002 11=460002 12=380002 13=2A0001 14=200001 15=160001\n33: 01=F8D0CE 02=EFBAB6 03=E7AAA7 04=E09B96 05=DF928C 06=CD746E 07=CE756F 08=C56660 09=BB544F 10=A63E35 11=633631 12=4F2B27 13=3B201D 14=2D1816 15=201110\n34: 01=FCDBCA 02=F6C7B5 03=F0B9A4 04=E9AB94 05=EA9882 06=E99179 07=E3836A 08=DB775F 09=CE644C 10=C15234 11=6C4935 12=4B3B2B 13=3A3728 14=25251B 15=14130E\n35: 01=F0DACD 02=E7C8B6 03=DCB7A4 04=D4A996 05=D59E89 06=CC937F 07=C4866F 08=B87660 09=A9674D 10=98573B 11=6E4B37 12=474030 13=30312B 14=23241F 15=0E130D\n36: 01=ECDCCF 02=DDC7B9 03=D5BAA5 04=CAAB97 05=C19E8A 06=B8927F 07=AB8570 08=A67C66 09=916B56 10=7C563F 11=664C3B 12=523D2F 13=3D2E23 14=2E221B 15=211813\n37: 01=D4D4D4 02=C0C0C0 03=B1B1B1 04=A5A5A3 05=9E9E92 06=919185 07=838377 08=78786C 09=68685C 10=545547 11=43443F 12=363632 13=282926 14=1E1F1C 15=151614\n38: 02=F3F3F3 03=E7E7E7 04=DADADA 05=CCCCCC 06=BCBCBC 07=AAAAAA 08=959595 09=7C7C7C 10=5A5A5A\n\nYOUR TASKS\n1. SCENE: describe everything visible in the reference in rich detail, so nothing is lost: the subject(s), faces and expressions, poses, hands, hair, clothing and its folds, objects, the background, the light direction, the framing. 80 to 160 words. Never name a real person.\n2. ORIENTATION: landscape, portrait or square, from the reference's shape.\n3. PALETTE: exactly N distinct IDs from the palette above that together can paint this image faithfully: cover the lightest highlights, the darkest shadows, every important hue, and several tone steps for large areas (skin, sky, foliage...). For each: the ID and where it goes. Largest area first. Only IDs that exist in the list.",
-          "passthroughBinaryImages": true
-        }
-      }
-    },
-    {
-      "id": "aa000007-0000-4000-8000-000000000000",
-      "name": "Art director model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        1060,
-        220
-      ],
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-5",
-          "mode": "id"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000008-0000-4000-8000-000000000000",
-      "name": "Brief format",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
-      "position": [
-        1240,
-        220
-      ],
-      "parameters": {
-        "schemaType": "manual",
-        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"scene\": {\n      \"type\": \"string\"\n    },\n    \"orientation\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"landscape\",\n        \"portrait\",\n        \"square\"\n      ]\n    },\n    \"palette\": {\n      \"type\": \"array\",\n      \"description\": \"Exactly N distinct Darl'Art IDs, largest area first\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"id\": {\n            \"type\": \"string\",\n            \"description\": \"4-digit Darl'Art ID, e.g. 0105\"\n          },\n          \"use\": {\n            \"type\": \"string\",\n            \"description\": \"Where the color goes\"\n          }\n        },\n        \"required\": [\n          \"id\",\n          \"use\"\n        ]\n      }\n    }\n  },\n  \"required\": [\n    \"scene\",\n    \"orientation\",\n    \"palette\"\n  ]\n}"
-      }
-    },
-    {
-      "id": "aa000009-0000-4000-8000-000000000000",
-      "name": "Build image prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1400,
-        0
-      ],
-      "parameters": {
-        "jsCode": "// Keeps only real Darl'Art IDs (the HEX always comes from the palette, never from the model) and writes the image prompt.\n// The final colors are enforced later by \"Snap to palette\": this list only steers the painter toward them.\nconst PALETTE = {\"1001\":\"#F5FAC4\",\"1002\":\"#EBF5B0\",\"1003\":\"#DFF39E\",\"1004\":\"#D3F191\",\"1005\":\"#CCEE8D\",\"1006\":\"#C3E87E\",\"1007\":\"#BAE476\",\"1008\":\"#B0DD66\",\"1009\":\"#A2D959\",\"1010\":\"#97D147\",\"1011\":\"#6A7042\",\"1012\":\"#555A35\",\"1013\":\"#404328\",\"1014\":\"#30321E\",\"1015\":\"#222415\",\"1101\":\"#EBFFCC\",\"1102\":\"#DAF9B5\",\"1103\":\"#CCF3A2\",\"1104\":\"#BFED93\",\"1105\":\"#B0E78A\",\"1106\":\"#A6DF7E\",\"1107\":\"#9ADC72\",\"1108\":\"#8ED366\",\"1109\":\"#82D15C\",\"1110\":\"#6EC449\",\"1111\":\"#597B3E\",\"1112\":\"#476232\",\"1113\":\"#354A25\",\"1114\":\"#28371C\",\"1115\":\"#1C2714\",\"1201\":\"#D5F6C9\",\"1202\":\"#C1EEB3\",\"1203\":\"#B3E8A4\",\"1204\":\"#A4E297\",\"1205\":\"#ACF393\",\"1206\":\"#A0E885\",\"1207\":\"#96E57C\",\"1208\":\"#8DE074\",\"1209\":\"#77D364\",\"1210\":\"#60C752\",\"1211\":\"#527A45\",\"1212\":\"#426237\",\"1213\":\"#314929\",\"1214\":\"#25371F\",\"1215\":\"#1A2716\",\"1301\":\"#BFEFD9\",\"1302\":\"#A4E4BF\",\"1303\":\"#96DFB2\",\"1304\":\"#85D8A2\",\"1305\":\"#85D691\",\"1306\":\"#7CCF87\",\"1307\":\"#71C97F\",\"1308\":\"#5CBF6C\",\"1309\":\"#4CB862\",\"1310\":\"#2EA555\",\"1311\":\"#336C4C\",\"1312\":\"#29563D\",\"1313\":\"#1F412E\",\"1314\":\"#173122\",\"1315\":\"#102318\",\"1401\":\"#B9F1D6\",\"1402\":\"#9FE7C2\",\"1403\":\"#8CDFB5\",\"1404\":\"#7AD5AA\",\"1405\":\"#68CC9A\",\"1406\":\"#5DC391\",\"1407\":\"#4EBB84\",\"1408\":\"#41B47B\",\"1409\":\"#23A565\",\"1410\":\"#079A53\",\"1411\":\"#166D43\",\"1412\":\"#125736\",\"1413\":\"#0D4128\",\"1414\":\"#0A311E\",\"1415\":\"#072315\",\"1501\":\"#ADEFD4\",\"1502\":\"#8EE2C8\",\"1503\":\"#79D6B7\",\"1504\":\"#66CDAF\",\"1505\":\"#57C69B\",\"1506\":\"#4CC093\",\"1507\":\"#3DB285\",\"1508\":\"#26A97D\",\"1509\":\"#02946D\",\"1510\":\"#028B5F\",\"1511\":\"#04634D\",\"1512\":\"#034F3E\",\"1513\":\"#023B2E\",\"1514\":\"#022D23\",\"1515\":\"#012019\",\"1601\":\"#9AE6E2\",\"1602\":\"#81DCD5\",\"1603\":\"#69CEC8\",\"1604\":\"#55C3BA\",\"1605\":\"#4FC0AE\",\"1606\":\"#42B6A3\",\"1607\":\"#37AE9B\",\"1608\":\"#189D88\",\"1609\":\"#059885\",\"1610\":\"#007D6B\",\"1611\":\"#00574F\",\"1612\":\"#00463F\",\"1613\":\"#00342F\",\"1614\":\"#002724\",\"1615\":\"#001C19\",\"1701\":\"#98E7EB\",\"1702\":\"#7AD9DB\",\"1703\":\"#5ECECF\",\"1704\":\"#4CC4C2\",\"1705\":\"#4DC0BB\",\"1706\":\"#3EB7B0\",\"1707\":\"#2AA9A2\",\"1708\":\"#0B9D93\",\"1709\":\"#008D84\",\"1710\":\"#007972\",\"1711\":\"#005A58\",\"1712\":\"#004846\",\"1713\":\"#003635\",\"1714\":\"#002828\",\"1715\":\"#001D1C\",\"1801\":\"#8DE4F5\",\"1802\":\"#68D3E5\",\"1803\":\"#52C9DD\",\"1804\":\"#3ABBD1\",\"1805\":\"#3BB6C8\",\"1806\":\"#2AADC1\",\"1807\":\"#119FB3\",\"1808\":\"#0093A7\",\"1809\":\"#008298\",\"1810\":\"#016F88\",\"1811\":\"#00525D\",\"1812\":\"#00424A\",\"1813\":\"#003138\",\"1814\":\"#00252A\",\"1815\":\"#001A1E\",\"1901\":\"#8DE3FA\",\"1902\":\"#69D2EF\",\"1903\":\"#4EC5E3\",\"1904\":\"#34BBD9\",\"1905\":\"#32B3D3\",\"1906\":\"#15A3C7\",\"1907\":\"#029CC0\",\"1908\":\"#0090B5\",\"1909\":\"#007BA5\",\"1910\":\"#006A92\",\"1911\":\"#004C5C\",\"1912\":\"#003D4A\",\"1913\":\"#002E37\",\"1914\":\"#002229\",\"1915\":\"#00181D\",\"2001\":\"#87E1FC\",\"2002\":\"#63CFF3\",\"2003\":\"#49C4ED\",\"2004\":\"#35BAE5\",\"2005\":\"#2DB0DA\",\"2006\":\"#11A4D0\",\"2007\":\"#009DCA\",\"2008\":\"#008CBD\",\"2009\":\"#017DB1\",\"2010\":\"#0068A1\",\"2011\":\"#004B60\",\"2012\":\"#003C4D\",\"2013\":\"#002D3A\",\"2014\":\"#00222B\",\"2015\":\"#00181F\",\"2101\":\"#8CE3FF\",\"2102\":\"#66D2F9\",\"2103\":\"#48C2F1\",\"2104\":\"#35B9EA\",\"2105\":\"#32B5E9\",\"2106\":\"#06A0DC\",\"2107\":\"#0394D3\",\"2108\":\"#0388CB\",\"2109\":\"#007CC2\",\"2110\":\"#0064B0\",\"2111\":\"#004C66\",\"2112\":\"#003D52\",\"2113\":\"#002E3D\",\"2114\":\"#00222E\",\"2115\":\"#001821\",\"2201\":\"#8EE1FF\",\"2202\":\"#6DD0F0\",\"2203\":\"#51C1EF\",\"2204\":\"#3CB6E7\",\"2205\":\"#32A7DC\",\"2206\":\"#129BD2\",\"2207\":\"#038FCA\",\"2208\":\"#0084C2\",\"2209\":\"#0172B6\",\"2210\":\"#005DA3\",\"2211\":\"#004763\",\"2212\":\"#00394F\",\"2213\":\"#002B3B\",\"2214\":\"#00202D\",\"2215\":\"#001720\",\"2301\":\"#8AD9F8\",\"2302\":\"#70C9F1\",\"2303\":\"#56BDE8\",\"2304\":\"#43ADDD\",\"2305\":\"#30A6D8\",\"2306\":\"#269BD0\",\"2307\":\"#018CC3\",\"2308\":\"#007CB8\",\"2309\":\"#025798\",\"2310\":\"#005A99\",\"2311\":\"#01445F\",\"2312\":\"#01364C\",\"2313\":\"#012939\",\"2314\":\"#001F2B\",\"2315\":\"#00161E\",\"2401\":\"#93D5F5\",\"2402\":\"#72C1E8\",\"2403\":\"#58B1DD\",\"2404\":\"#43A4D1\",\"2405\":\"#329CCC\",\"2406\":\"#3395C6\",\"2407\":\"#0083B7\",\"2408\":\"#0176AC\",\"2409\":\"#00649F\",\"2410\":\"#004E87\",\"2411\":\"#00405C\",\"2412\":\"#00334A\",\"2413\":\"#002637\",\"2414\":\"#001D29\",\"2415\":\"#00141D\",\"2501\":\"#9ED1F0\",\"2502\":\"#7ABADD\",\"2503\":\"#65A8D2\",\"2504\":\"#529BC6\",\"2505\":\"#539AC4\",\"2506\":\"#4089B4\",\"2507\":\"#2F7DAD\",\"2508\":\"#166A99\",\"2509\":\"#025A8C\",\"2510\":\"#023F75\",\"2511\":\"#013453\",\"2512\":\"#012A42\",\"2513\":\"#011F32\",\"2514\":\"#001725\",\"2515\":\"#00111B\",\"2601\":\"#A2D1EB\",\"2602\":\"#82BADB\",\"2603\":\"#6BABCF\",\"2604\":\"#5C9DC3\",\"2605\":\"#558AB4\",\"2606\":\"#467DA6\",\"2607\":\"#3D749D\",\"2608\":\"#236391\",\"2609\":\"#205F8B\",\"2610\":\"#01366A\",\"2611\":\"#00243C\",\"2612\":\"#001D30\",\"2613\":\"#001624\",\"2614\":\"#00101B\",\"2615\":\"#000C13\",\"2701\":\"#B4C1E4\",\"2702\":\"#99ACD6\",\"2703\":\"#8099C2\",\"2704\":\"#728AB6\",\"2705\":\"#527CA6\",\"2706\":\"#4E78A2\",\"2707\":\"#406B95\",\"2708\":\"#38638D\",\"2709\":\"#1C4670\",\"2710\":\"#002454\",\"2711\":\"#011132\",\"2712\":\"#010E28\",\"2713\":\"#010A1E\",\"2714\":\"#000816\",\"2715\":\"#000510\",\"2801\":\"#C0BFDE\",\"2802\":\"#A8A8CA\",\"2803\":\"#9696BA\",\"2804\":\"#8484AA\",\"2805\":\"#7779A0\",\"2806\":\"#676992\",\"2807\":\"#64668F\",\"2808\":\"#51537A\",\"2809\":\"#3C3E65\",\"2810\":\"#0E093F\",\"2811\":\"#040426\",\"2812\":\"#03031E\",\"2813\":\"#020217\",\"2814\":\"#020211\",\"2815\":\"#01010C\",\"2901\":\"#CAC9D7\",\"2902\":\"#B0B1C5\",\"2903\":\"#A0A0B8\",\"2904\":\"#8F8FA7\",\"2905\":\"#8281A0\",\"2906\":\"#727191\",\"2907\":\"#656182\",\"2908\":\"#554F71\",\"2909\":\"#443A5F\",\"2910\":\"#250034\",\"2911\":\"#180322\",\"2912\":\"#13021B\",\"2913\":\"#0E0214\",\"2914\":\"#0B010F\",\"2915\":\"#08010B\",\"3001\":\"#F1CFDF\",\"3002\":\"#E0B9CC\",\"3003\":\"#D0A3B8\",\"3004\":\"#C494AE\",\"3005\":\"#A67892\",\"3006\":\"#9A6883\",\"3007\":\"#905976\",\"3008\":\"#7E4764\",\"3009\":\"#672C4C\",\"3010\":\"#3E0019\",\"3011\":\"#280008\",\"3012\":\"#220007\",\"3013\":\"#1B0006\",\"3014\":\"#150005\",\"3015\":\"#0F0004\",\"3101\":\"#EEC0DA\",\"3102\":\"#E1A6C4\",\"3103\":\"#D392B4\",\"3104\":\"#CA82A7\",\"3105\":\"#B97197\",\"3106\":\"#AE6489\",\"3107\":\"#9F5179\",\"3108\":\"#8F3C66\",\"3109\":\"#7C234F\",\"3110\":\"#5A000A\",\"3111\":\"#370005\",\"3112\":\"#2C0004\",\"3113\":\"#210003\",\"3114\":\"#190002\",\"3115\":\"#120002\",\"3201\":\"#F4B9D7\",\"3202\":\"#EAA2C7\",\"3203\":\"#E18CB6\",\"3204\":\"#D67BA6\",\"3205\":\"#C76C98\",\"3206\":\"#BE5D8A\",\"3207\":\"#B6517D\",\"3208\":\"#A73862\",\"3209\":\"#97224F\",\"3210\":\"#710002\",\"3211\":\"#460002\",\"3212\":\"#380002\",\"3213\":\"#2A0001\",\"3214\":\"#200001\",\"3215\":\"#160001\",\"3301\":\"#F8D0CE\",\"3302\":\"#EFBAB6\",\"3303\":\"#E7AAA7\",\"3304\":\"#E09B96\",\"3305\":\"#DF928C\",\"3306\":\"#CD746E\",\"3307\":\"#CE756F\",\"3308\":\"#C56660\",\"3309\":\"#BB544F\",\"3310\":\"#A63E35\",\"3311\":\"#633631\",\"3312\":\"#4F2B27\",\"3313\":\"#3B201D\",\"3314\":\"#2D1816\",\"3315\":\"#201110\",\"3401\":\"#FCDBCA\",\"3402\":\"#F6C7B5\",\"3403\":\"#F0B9A4\",\"3404\":\"#E9AB94\",\"3405\":\"#EA9882\",\"3406\":\"#E99179\",\"3407\":\"#E3836A\",\"3408\":\"#DB775F\",\"3409\":\"#CE644C\",\"3410\":\"#C15234\",\"3411\":\"#6C4935\",\"3412\":\"#4B3B2B\",\"3413\":\"#3A3728\",\"3414\":\"#25251B\",\"3415\":\"#14130E\",\"3501\":\"#F0DACD\",\"3502\":\"#E7C8B6\",\"3503\":\"#DCB7A4\",\"3504\":\"#D4A996\",\"3505\":\"#D59E89\",\"3506\":\"#CC937F\",\"3507\":\"#C4866F\",\"3508\":\"#B87660\",\"3509\":\"#A9674D\",\"3510\":\"#98573B\",\"3511\":\"#6E4B37\",\"3512\":\"#474030\",\"3513\":\"#30312B\",\"3514\":\"#23241F\",\"3515\":\"#0E130D\",\"3601\":\"#ECDCCF\",\"3602\":\"#DDC7B9\",\"3603\":\"#D5BAA5\",\"3604\":\"#CAAB97\",\"3605\":\"#C19E8A\",\"3606\":\"#B8927F\",\"3607\":\"#AB8570\",\"3608\":\"#A67C66\",\"3609\":\"#916B56\",\"3610\":\"#7C563F\",\"3611\":\"#664C3B\",\"3612\":\"#523D2F\",\"3613\":\"#3D2E23\",\"3614\":\"#2E221B\",\"3615\":\"#211813\",\"3701\":\"#D4D4D4\",\"3702\":\"#C0C0C0\",\"3703\":\"#B1B1B1\",\"3704\":\"#A5A5A3\",\"3705\":\"#9E9E92\",\"3706\":\"#919185\",\"3707\":\"#838377\",\"3708\":\"#78786C\",\"3709\":\"#68685C\",\"3710\":\"#545547\",\"3711\":\"#43443F\",\"3712\":\"#363632\",\"3713\":\"#282926\",\"3714\":\"#1E1F1C\",\"3715\":\"#151614\",\"3802\":\"#F3F3F3\",\"3803\":\"#E7E7E7\",\"3804\":\"#DADADA\",\"3805\":\"#CCCCCC\",\"3806\":\"#BCBCBC\",\"3807\":\"#AAAAAA\",\"3808\":\"#959595\",\"3809\":\"#7C7C7C\",\"3810\":\"#5A5A5A\",\"0101\":\"#FFBBE4\",\"0102\":\"#FFA8CA\",\"0103\":\"#FF93B5\",\"0104\":\"#FF80A3\",\"0105\":\"#FC6286\",\"0106\":\"#F95379\",\"0107\":\"#F4446B\",\"0108\":\"#F02252\",\"0109\":\"#E20030\",\"0110\":\"#DC0000\",\"0111\":\"#5A0000\",\"0112\":\"#470000\",\"0113\":\"#350000\",\"0114\":\"#240000\",\"0115\":\"#140000\",\"0201\":\"#FFC6CD\",\"0202\":\"#FFAFB8\",\"0203\":\"#FF9BA7\",\"0204\":\"#FE8992\",\"0205\":\"#FF7A83\",\"0206\":\"#FC737D\",\"0207\":\"#FB6570\",\"0208\":\"#F54C53\",\"0209\":\"#F1404A\",\"0210\":\"#DF0207\",\"0211\":\"#561920\",\"0212\":\"#45141A\",\"0213\":\"#340F13\",\"0214\":\"#270B0E\",\"0215\":\"#1C080A\",\"0301\":\"#FFC6CC\",\"0302\":\"#FEACB2\",\"0303\":\"#FFA0A6\",\"0304\":\"#FF8F95\",\"0305\":\"#FF9188\",\"0306\":\"#FF8B82\",\"0307\":\"#FF7C74\",\"0308\":\"#FF665E\",\"0309\":\"#FF5F53\",\"0310\":\"#FA3218\",\"0311\":\"#64352F\",\"0312\":\"#502A26\",\"0313\":\"#3C201C\",\"0314\":\"#2D1815\",\"0315\":\"#20110F\",\"0401\":\"#FED1CC\",\"0402\":\"#FFBDB1\",\"0403\":\"#FEAA9F\",\"0404\":\"#FF9F93\",\"0405\":\"#FF957D\",\"0406\":\"#FF8C71\",\"0407\":\"#FF8168\",\"0408\":\"#FE7155\",\"0409\":\"#FF6040\",\"0410\":\"#F94C21\",\"0411\":\"#684531\",\"0412\":\"#533727\",\"0413\":\"#3E291D\",\"0414\":\"#2F1F16\",\"0415\":\"#211610\",\"0501\":\"#FFD9C6\",\"0502\":\"#FEC4B0\",\"0503\":\"#FFB39C\",\"0504\":\"#FFA88D\",\"0505\":\"#FEB080\",\"0506\":\"#FEAA7B\",\"0507\":\"#FF9A64\",\"0508\":\"#FF915E\",\"0509\":\"#FF8752\",\"0510\":\"#FF692A\",\"0511\":\"#685836\",\"0512\":\"#53462B\",\"0513\":\"#3E3520\",\"0514\":\"#2F2818\",\"0515\":\"#211C11\",\"0601\":\"#FFE2C0\",\"0602\":\"#FED3A9\",\"0603\":\"#FFC796\",\"0604\":\"#FFBC87\",\"0605\":\"#FEC182\",\"0606\":\"#FEB775\",\"0607\":\"#FFAE6C\",\"0608\":\"#FFA157\",\"0609\":\"#FF9348\",\"0610\":\"#FF812A\",\"0611\":\"#756937\",\"0612\":\"#5E542C\",\"0613\":\"#463F21\",\"0614\":\"#352F19\",\"0615\":\"#252212\",\"0701\":\"#FFEFC3\",\"0702\":\"#FFE0A7\",\"0703\":\"#FFD799\",\"0704\":\"#FFCE89\",\"0705\":\"#FFCB7F\",\"0706\":\"#FFC571\",\"0707\":\"#FEBC66\",\"0708\":\"#FFB35B\",\"0709\":\"#FEAA48\",\"0710\":\"#FF9E33\",\"0711\":\"#837D3F\",\"0712\":\"#696432\",\"0713\":\"#4F4B26\",\"0714\":\"#3B381C\",\"0715\":\"#2A2814\",\"0801\":\"#FFF7C5\",\"0802\":\"#FFF2AC\",\"0803\":\"#FFEA9E\",\"0804\":\"#FFE18B\",\"0805\":\"#FEDC7B\",\"0806\":\"#FFD573\",\"0807\":\"#FFCC63\",\"0808\":\"#FFC557\",\"0809\":\"#FEC049\",\"0810\":\"#FFB636\",\"0811\":\"#7A7940\",\"0812\":\"#626133\",\"0813\":\"#494926\",\"0814\":\"#37361D\",\"0815\":\"#272714\",\"0901\":\"#FFFFC7\",\"0902\":\"#FFFFAF\",\"0903\":\"#FEFE9A\",\"0904\":\"#FFFF8D\",\"0905\":\"#FFFF81\",\"0906\":\"#FFFF71\",\"0907\":\"#FFFF69\",\"0908\":\"#FEFF5B\",\"0909\":\"#FFF643\",\"0910\":\"#FFF12E\",\"0911\":\"#85853F\",\"0912\":\"#66652F\",\"0913\":\"#4D4C23\",\"0914\":\"#39391A\",\"0915\":\"#292913\"};\nconst brief = $json.output || {};\nconst seen = new Set();\nconst colors = [];\nfor (const c of brief.palette || []) {\n    const id = String(c.id || \"\").replace(/\\D/g, \"\").padStart(4, \"0\");\n    if (!PALETTE[id] || seen.has(id)) continue;\n    seen.add(id);\n    colors.push({ id, hex: PALETTE[id], use: String(c.use || \"\").trim() });\n}\nconst orientation = [\"landscape\", \"portrait\", \"square\"].includes(brief.orientation) ? brief.orientation : \"square\";\nconst size = { landscape: \"1536x1024\", portrait: \"1024x1536\", square: \"1024x1024\" }[orientation];\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"Keep everything from the image: \" + String(brief.scene || \"\").trim(),\n    orientation.charAt(0).toUpperCase() + orientation.slice(1) + \" composition, the same framing as the reference.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features and expressions, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture. Faithful likeness and realistic proportions.\",\n    colors.length ? \"Use only this limited set of paint colors, each for the areas listed: \" + colors.map((c) => c.hex + \" (\" + c.use + \")\").join(\", \") + \". No other color.\" : \"\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].filter(Boolean).join(\"\\n\");\nreturn [{\n    json: { orientation, size, suggestedColors: colors, imagePrompt },\n    binary: $('Prepare').first().binary,\n}];"
-      }
-    },
-    {
-      "id": "aa000010-0000-4000-8000-000000000000",
       "name": "Generate ART",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1620,
+        1100,
         0
       ],
       "parameters": {
@@ -250,7 +186,7 @@
             },
             {
               "name": "size",
-              "value": "={{ $('Build image prompt').last().json.size }}"
+              "value": "auto"
             },
             {
               "name": "quality",
@@ -281,12 +217,12 @@
       }
     },
     {
-      "id": "aa000011-0000-4000-8000-000000000000",
+      "id": "aa000007-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
       "position": [
-        1840,
+        1320,
         0
       ],
       "parameters": {
@@ -300,12 +236,12 @@
       }
     },
     {
-      "id": "aa000012-0000-4000-8000-000000000000",
+      "id": "aa000008-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
       "position": [
-        2060,
+        1540,
         0
       ],
       "parameters": {
@@ -319,12 +255,12 @@
       }
     },
     {
-      "id": "aa000013-0000-4000-8000-000000000000",
+      "id": "aa000009-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [
-        2020,
+        1500,
         220
       ],
       "parameters": {
@@ -337,12 +273,12 @@
       }
     },
     {
-      "id": "aa000014-0000-4000-8000-000000000000",
+      "id": "aa000010-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
       "position": [
-        2200,
+        1680,
         220
       ],
       "parameters": {
@@ -351,12 +287,12 @@
       }
     },
     {
-      "id": "aa000015-0000-4000-8000-000000000000",
+      "id": "aa000011-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2380,
+        1860,
         0
       ],
       "parameters": {
@@ -384,12 +320,12 @@
       }
     },
     {
-      "id": "aa000016-0000-4000-8000-000000000000",
+      "id": "aa000012-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2600,
+        2080,
         200
       ],
       "parameters": {
@@ -397,12 +333,12 @@
       }
     },
     {
-      "id": "aa000017-0000-4000-8000-000000000000",
+      "id": "aa000013-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2820,
+        2300,
         200
       ],
       "parameters": {
@@ -430,12 +366,12 @@
       }
     },
     {
-      "id": "aa000018-0000-4000-8000-000000000000",
+      "id": "aa000014-0000-4000-8000-000000000000",
       "name": "Page: artwork failed",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
       "position": [
-        3040,
+        2520,
         300
       ],
       "parameters": {
@@ -445,12 +381,12 @@
       }
     },
     {
-      "id": "aa000019-0000-4000-8000-000000000000",
+      "id": "aa000015-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2600,
+        2080,
         -200
       ],
       "parameters": {
@@ -491,12 +427,12 @@
       }
     },
     {
-      "id": "aa000020-0000-4000-8000-000000000000",
+      "id": "aa000016-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2820,
+        2300,
         -200
       ],
       "parameters": {
@@ -504,12 +440,12 @@
       }
     },
     {
-      "id": "aa000021-0000-4000-8000-000000000000",
+      "id": "aa000017-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
       "position": [
-        3040,
+        2520,
         -200
       ],
       "parameters": {
@@ -523,12 +459,12 @@
       }
     },
     {
-      "id": "aa000022-0000-4000-8000-000000000000",
+      "id": "aa000018-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3260,
+        2740,
         -200
       ],
       "parameters": {
@@ -566,12 +502,12 @@
       }
     },
     {
-      "id": "aa000023-0000-4000-8000-000000000000",
+      "id": "aa000019-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3480,
+        2960,
         -200
       ],
       "parameters": {
@@ -579,12 +515,12 @@
       }
     },
     {
-      "id": "aa000024-0000-4000-8000-000000000000",
+      "id": "aa000020-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        3700,
+        3180,
         -200
       ],
       "parameters": {
@@ -604,12 +540,12 @@
       }
     },
     {
-      "id": "aa000025-0000-4000-8000-000000000000",
+      "id": "aa000021-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3920,
+        3400,
         -200
       ],
       "parameters": {
@@ -617,12 +553,12 @@
       }
     },
     {
-      "id": "aa000026-0000-4000-8000-000000000000",
+      "id": "aa000022-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        4140,
+        3620,
         -200
       ],
       "parameters": {
@@ -642,12 +578,12 @@
       }
     },
     {
-      "id": "aa000027-0000-4000-8000-000000000000",
+      "id": "aa000023-0000-4000-8000-000000000000",
       "name": "Build result page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4360,
+        3840,
         -200
       ],
       "parameters": {
@@ -656,12 +592,12 @@
       "executeOnce": true
     },
     {
-      "id": "aa000028-0000-4000-8000-000000000000",
+      "id": "aa000024-0000-4000-8000-000000000000",
       "name": "Page: result",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
       "position": [
-        4580,
+        4060,
         -200
       ],
       "parameters": {
@@ -706,50 +642,6 @@
       ]
     },
     "Save reference (Artwork Ref)": {
-      "main": [
-        [
-          {
-            "node": "Photo for the agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Photo for the agent": {
-      "main": [
-        [
-          {
-            "node": "AI Agent (art director)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Art director model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent (art director)",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Brief format": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "AI Agent (art director)",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent (art director)": {
       "main": [
         [
           {

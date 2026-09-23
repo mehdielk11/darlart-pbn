@@ -2,12 +2,11 @@
  * Builds automation/n8n-darlart-artwork-agent.json, the "Artwork Agent" n8n workflow:
  *
  *   Formulaire (upload) -> save the reference in Drive "Artwork Ref"
- *   -> AI agent (art brief from the photo, colors picked from the Darl'Art palette)
- *   -> gpt-image paints the artwork -> checker rejects swatches/text/borders (up to 3 tries)
+ *   -> gpt-image paints the artwork from the reference (fixed prompt, the reference's own colors) -> checker rejects swatches/text/borders (up to 3 tries)
  *   -> pbn API /v1/recolor: every pixel snapped to exactly 48 Darl'Art colors
  *   -> new folder "Artwork Agent/1xxx" with the reference, the artwork and the palette JSON
  *
- * The palette is embedded from server/palettes/darlart-v3.json: run `node scripts/build-artwork-agent-workflow.js`
+ * "Check palette" embeds the palette from server/palettes/darlart-v3.json: run `node scripts/build-artwork-agent-workflow.js`
  * again after changing it, then re-import the workflow.
  */
 const fs = require("fs");
@@ -26,7 +25,7 @@ const SETTINGS = {
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent"
     firstFolderNumber: 1001,
     imageModel: "gpt-image-2",
-    imageQuality: "high",
+    imageQuality: "medium", // "high" costs ~4x more; the 48-color snap removes the fine texture it adds
     timezone: "Africa/Casablanca",
 };
 // ============================================================================================
@@ -39,11 +38,6 @@ for (const [hex, value] of Object.entries(palette)) {
     }
 }
 const codes = Object.keys(codeToHex).sort();
-const families = {};
-for (const code of codes) {
-    (families[code.slice(0, 2)] = families[code.slice(0, 2)] || []).push(code.slice(2) + "=" + codeToHex[code].slice(1));
-}
-const paletteLines = Object.keys(families).sort().map((family) => family + ": " + families[family].join(" ")).join("\n");
 
 const drive = { __rl: true, mode: "list", value: "My Drive" };
 const byId = (value) => ({ __rl: true, mode: "id", value });
@@ -109,89 +103,23 @@ node("Save reference (Artwork Ref)", "n8n-nodes-base.googleDrive", 3, [660, 0], 
 });
 connect("Prepare", "Save reference (Artwork Ref)");
 
-node("Photo for the agent", "n8n-nodes-base.code", 2, [880, 0], {
-    jsCode: `// The Drive node returns file metadata only: hand the reference image to the AI agent again
-return [{ json: { referenceFileId: $input.first().json.id }, binary: $('Prepare').first().binary }];`,
-});
-connect("Save reference (Artwork Ref)", "Photo for the agent");
-
-// ---- 2. AI agent ---------------------------------------------------------------------------
-node("AI Agent (art director)", "@n8n/n8n-nodes-langchain.agent", 2.2, [1100, 0], {
-    promptType: "define",
-    text: "=Number of colors N = {{ $('Settings').first().json.colors }}.\nPrepare the artwork brief for the attached reference image.",
-    hasOutputParser: true,
-    options: {
-        systemMessage: `You are the art director of Darl'Art, a paint-by-numbers brand. You receive a reference image and a number of colors N. You never draw: you write the brief a painter will follow.
-
-DARL'ART PALETTE: the only paint colors that exist.
-Each line is a family "FF: SS=HEX ...": the color ID is family + shade, e.g. "01: 05=FC6286" means ID 0105 = #FC6286. Shades 01 to 10 go from very light to vivid, 11 to 15 from dark to darkest.
-${paletteLines}
-
-YOUR TASKS
-1. SCENE: describe everything visible in the reference in rich detail, so nothing is lost: the subject(s), faces and expressions, poses, hands, hair, clothing and its folds, objects, the background, the light direction, the framing. 80 to 160 words. Never name a real person.
-2. ORIENTATION: landscape, portrait or square, from the reference's shape.
-3. PALETTE: exactly N distinct IDs from the palette above that together can paint this image faithfully: cover the lightest highlights, the darkest shadows, every important hue, and several tone steps for large areas (skin, sky, foliage...). For each: the ID and where it goes. Largest area first. Only IDs that exist in the list.`,
-        passthroughBinaryImages: true,
-    },
-});
-connect("Photo for the agent", "AI Agent (art director)");
-
-node("Art director model", "@n8n/n8n-nodes-langchain.lmChatOpenAi", 1.2, [1060, 220], { model: { __rl: true, value: "gpt-5", mode: "id" }, options: {} });
-connect("Art director model", "AI Agent (art director)", 0, "ai_languageModel");
-
-node("Brief format", "@n8n/n8n-nodes-langchain.outputParserStructured", 1.2, [1240, 220], {
-    schemaType: "manual",
-    inputSchema: JSON.stringify({
-        type: "object",
-        properties: {
-            scene: { type: "string" },
-            orientation: { type: "string", enum: ["landscape", "portrait", "square"] },
-            palette: {
-                type: "array",
-                description: "Exactly N distinct Darl'Art IDs, largest area first",
-                items: {
-                    type: "object",
-                    properties: { id: { type: "string", description: "4-digit Darl'Art ID, e.g. 0105" }, use: { type: "string", description: "Where the color goes" } },
-                    required: ["id", "use"],
-                },
-            },
-        },
-        required: ["scene", "orientation", "palette"],
-    }, null, 2),
-});
-connect("Brief format", "AI Agent (art director)", 0, "ai_outputParser");
-
-node("Build image prompt", "n8n-nodes-base.code", 2, [1400, 0], {
-    jsCode: `// Keeps only real Darl'Art IDs (the HEX always comes from the palette, never from the model) and writes the image prompt.
-// The final colors are enforced later by "Snap to palette": this list only steers the painter toward them.
-const PALETTE = ${JSON.stringify(codeToHex)};
-const brief = $json.output || {};
-const seen = new Set();
-const colors = [];
-for (const c of brief.palette || []) {
-    const id = String(c.id || "").replace(/\\D/g, "").padStart(4, "0");
-    if (!PALETTE[id] || seen.has(id)) continue;
-    seen.add(id);
-    colors.push({ id, hex: PALETTE[id], use: String(c.use || "").trim() });
-}
-const orientation = ["landscape", "portrait", "square"].includes(brief.orientation) ? brief.orientation : "square";
-const size = { landscape: "1536x1024", portrait: "1024x1536", square: "1024x1024" }[orientation];
+// ---- 2. image prompt ------------------------------------------------------------------------
+// No color instructions: the model paints the reference's own colors, and "Snap to palette" then picks the
+// 48 Darl'Art colors that fit the painting best. Palette lists in the prompt risk swatches painted into the image.
+node("Build image prompt", "n8n-nodes-base.code", 2, [880, 0], {
+    jsCode: `// A fixed prompt: the model sees the reference itself (high input fidelity), so no scene description is needed
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
-    "Keep everything from the image: " + String(brief.scene || "").trim(),
-    orientation.charAt(0).toUpperCase() + orientation.slice(1) + " composition, the same framing as the reference.",
+    "Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.",
+    "Keep the original colors of the image.",
     "Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.",
-    "Preserve every fine detail: facial features and expressions, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture. Faithful likeness and realistic proportions.",
-    colors.length ? "Use only this limited set of paint colors, each for the areas listed: " + colors.map((c) => c.hex + " (" + c.use + ")").join(", ") + ". No other color." : "",
+    "Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.",
     "Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.",
     "The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.",
-].filter(Boolean).join("\\n");
-return [{
-    json: { orientation, size, suggestedColors: colors, imagePrompt },
-    binary: $('Prepare').first().binary,
-}];`,
+].join("\\n");
+return [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];`,
 });
-connect("AI Agent (art director)", "Build image prompt");
+connect("Save reference (Artwork Ref)", "Build image prompt");
 
 // ---- 3. paint + check ------------------------------------------------------------------------
 node("Generate ART", "n8n-nodes-base.httpRequest", 4.2, [1620, 0], {
@@ -205,7 +133,7 @@ node("Generate ART", "n8n-nodes-base.httpRequest", 4.2, [1620, 0], {
         parameters: [
             { name: "model", value: "={{ $('Settings').first().json.imageModel }}" },
             { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt }}" },
-            { name: "size", value: "={{ $('Build image prompt').last().json.size }}" },
+            { name: "size", value: "auto" },
             { name: "quality", value: "={{ $('Settings').first().json.imageQuality }}" },
             { name: "input_fidelity", value: "high" },
             { name: "output_format", value: "png" },
@@ -428,6 +356,8 @@ connect("Build result page", "Page: result");
 
 // "Build result page" runs once per uploaded file otherwise: execute it once
 nodes.find((n) => n.name === "Build result page").executeOnce = true;
+
+for (const n of nodes) { if (n.position[0] >= 1600) { n.position[0] -= 520; } }
 
 const workflow = { name: "Darl'Art Artwork Agent", nodes, connections, settings: { executionOrder: "v1", timezone: SETTINGS.timezone }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-artwork-agent.json");
