@@ -268,8 +268,8 @@
     let cropper = null;
     let allowZoomFromSlider = false;
     let baseZoomRatio = 1; // ratio used when slider is at 100%
-    let currentAspect = 4/5; // default aspect ratio
-    let currentCanvasSize = '40x50';
+    let currentAspect = 4/5; // default aspect ratio (60x75)
+    let currentCanvasSize = '60x75';
     let currentOrientation = 'portrait';
     let pendingObjectUrl = null;
 
@@ -338,10 +338,10 @@
         cropImgEl.onload = () => {
             const isLandscape = (cropImgEl.naturalWidth || 1) >= (cropImgEl.naturalHeight || 1);
             if (isLandscape) {
-                currentCanvasSize = '50x40';
+                currentCanvasSize = '75x60';
                 currentOrientation = 'landscape';
             } else {
-                currentCanvasSize = '40x50';
+                currentCanvasSize = '60x75';
                 currentOrientation = 'portrait';
             }
             updateCropAspect(false);
