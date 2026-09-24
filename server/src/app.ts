@@ -6,6 +6,7 @@
  * GET  /v1/jobs/:id/files/:name    download template.pdf, template.svg, preview.png or palette.json
  * POST /v1/analyze                 photo complexity, suggested difficulty and a crop suggestion
  * POST /v1/recolor                 repaint an image with exactly N palette colors (PNG as base64 + the colors used)
+ * POST /v1/featured                featured product image: the artwork on a canvas photo (JPEG as base64)
  * GET  /v1/palettes                available palettes
  * GET  /health                     liveness check (no API key)
  */
@@ -23,6 +24,7 @@ import { OUTPUT_FILES } from "./generate";
 import { assertReadableImage, attentionCrop, CROP_MODES, CropMode, loadForAnalysis } from "./image";
 import { JobManager, JobOptions, publicJob } from "./jobs";
 import { isValidPaletteId, listPalettes, loadPalette, NO_PALETTE } from "./palettes";
+import { buildFeatured } from "./mockup";
 import { recolorToPalette } from "./recolor";
 
 class HttpError extends Error {
@@ -379,6 +381,24 @@ export async function buildApp(jobs: JobManager) {
             colors: result.colors,
             image: result.png.toString("base64"),
         };
+    });
+
+    // The artwork (multipart "image" or "imageUrl") placed on the portrait or landscape canvas photo, whichever
+    // matches its shape (a square artwork is portrait). Optional "size": the square image's side, 800 to 3000.
+    app.post("/v1/featured", async (request) => {
+        const { fields, image } = await readInput(request);
+        const size = Number(asString(fields.size) || "1600");
+        if (!Number.isInteger(size) || size < 800 || size > 3000) {
+            throw new HttpError(400, "Invalid request", ["size must be an integer between 800 and 3000"]);
+        }
+        const resolved = await resolveImage(fields, image);
+        let result;
+        try {
+            result = await buildFeatured(resolved.image, size);
+        } catch (e) {
+            throw new HttpError(422, e instanceof Error ? e.message : String(e));
+        }
+        return { template: result.template.name, width: size, height: size, contentType: "image/jpeg", image: result.jpeg.toString("base64") };
     });
 
     return app;

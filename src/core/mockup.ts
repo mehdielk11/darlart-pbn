@@ -122,6 +122,45 @@ export function coverSource(sourceWidth: number, sourceHeight: number, boxWidth:
     return { left: (sourceWidth - width) / 2, top: (sourceHeight - height) / 2, width, height };
 }
 
+/**
+ * The featured product image: the artwork alone, as a stretched canvas on a light wall. Two photos, one per
+ * orientation, whose painting face is a 4:5 upright rectangle; prepare-mockups.js paints the face blank.
+ */
+export interface FeaturedTemplate {
+    name: "landscape" | "portrait";
+    /** The original photo, only read by prepare-mockups.js */
+    source: string;
+    /** The photo with a blank canvas face */
+    blank: string;
+    /** Width and height of the photo */
+    size: number;
+    /** The canvas face, measured on the photo */
+    face: MockupBox;
+}
+
+/** Face positions, measured on the 800 x 800 photos */
+export const FEATURED_TEMPLATES: { [name in "landscape" | "portrait"]: FeaturedTemplate } = {
+    landscape: {
+        name: "landscape",
+        source: "featured-landscape.webp",
+        blank: "featured-landscape-blank.webp",
+        size: 800,
+        face: { left: 23, top: 99, width: 754, height: 603 },
+    },
+    portrait: {
+        name: "portrait",
+        source: "featured-portrait.webp",
+        blank: "featured-portrait-blank.webp",
+        size: 800,
+        face: { left: 98, top: 24, width: 603, height: 754 },
+    },
+};
+
+/** Landscape for an artwork wider than tall, portrait otherwise (a square artwork is portrait) */
+export function pickFeaturedTemplate(aspect: number): FeaturedTemplate {
+    return aspect > 1 ? FEATURED_TEMPLATES.landscape : FEATURED_TEMPLATES.portrait;
+}
+
 /** Where a kit's script (see MockupTemplate.script) puts its layers, as data URLs */
 export const MOCKUP_KITS_GLOBAL = "DARLART_MOCKUP_KITS";
 

@@ -3,8 +3,9 @@
  *
  *   Print Agent finished / Run now / every day -> prices Google Sheet (Drive) + Drive "Artwork Agent" folders
  *   -> folders that have a product JSON, an artwork and a mockup but no <date+time>_shopify.json yet, one by one:
- *      upload the artwork + mockup to Shopify -> draft product (texts from the product JSON, variants and prices
- *      from the CSV, images: artwork, mockup, then the shared images) -> <date+time>_shopify.json in the folder
+ *      featured image (pbn API: the artwork on a canvas photo, saved once as <date+time>_featured.jpg) -> upload the
+ *      featured image, artwork and mockup to Shopify -> draft product (texts from the product JSON, variants and
+ *      prices from the sheet, images: featured, artwork, mockup, then the shared images) -> <date+time>_shopify.json
  *
  * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
  * applies to every product uploaded after the change. Columns: canvas_type,size,colors,price[,compare_at_price].
@@ -31,6 +32,7 @@ const SETTINGS = {
     // 3_package-kit, 4_rolled-stretched, 5_order-package
     sharedImages: "gid://shopify/MediaImage/53174515335449,gid://shopify/MediaImage/53174515302681,gid://shopify/MediaImage/53174515368217",
     maxPerRun: 10, // folders handled per run, the rest wait for the next run
+    pbnApiUrl: "http://127.0.0.1:3000", // makes the featured image (POST /v1/featured)
 };
 // ============================================================================================
 
@@ -256,8 +258,9 @@ $input.all().forEach((item, i) => {
     const product = find("_product.json");
     const mockup = find("_mockup.png");
     const markerName = stamp + "_shopify.json";
+    const featuredName = stamp + "_featured.jpg";
     if (!product || !mockup || find("_shopify.json")) return;
-    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, markerName } });
+    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredName, hasFeatured: !!find("_featured.jpg"), markerName } });
 });
 return pending.slice(0, Number(settings.maxPerRun) || 10);`);
 connect("List folder files", "Pending folders");
@@ -273,7 +276,8 @@ shopify("Stage uploads", [2640, 300], `={{ JSON.stringify({
   query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',
   variables: { input: [
     { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-artwork.png', mimeType: 'image/png', httpMethod: 'PUT' },
-    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.png', mimeType: 'image/png', httpMethod: 'PUT' }
+    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.png', mimeType: 'image/png', httpMethod: 'PUT' },
+    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-featured.jpg', mimeType: 'image/jpeg', httpMethod: 'PUT' }
   ] }
 }) }}`);
 connect("Download product JSON", "Stage uploads");
@@ -284,11 +288,65 @@ const errors = [...(response.errors || []), ...(((response.data || {}).stagedUpl
 if (errors.length) throw new Error("Shopify staged upload: " + errors.join("; "));
 const targets = response.data.stagedUploadsCreate.stagedTargets;
 const target = (t) => ({ url: t.url, resourceUrl: t.resourceUrl, headers: Object.fromEntries(t.parameters.map((p) => [p.name, p.value])) });
-return [{ json: { art: target(targets[0]), mockup: target(targets[1]) } }];`);
+return [{ json: { art: target(targets[0]), mockup: target(targets[1]), featured: target(targets[2]) } }];`);
 connect("Stage uploads", "Upload targets");
 
+// the featured image: the artwork on the canvas photo of its orientation, made by the pbn API
+driveDownload("Artwork for featured", [3080, 520], "$('Loop over folders').first().json.artworkId", "art");
+connect("Upload targets", "Artwork for featured");
+
+node("Make featured image", "n8n-nodes-base.httpRequest", 4.2, [3300, 520], {
+    method: "POST",
+    url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/featured",
+    authentication: "genericCredentialType",
+    genericAuthType: "httpHeaderAuth",
+    sendBody: true,
+    contentType: "multipart-form-data",
+    bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "art" }] },
+    options: { timeout: 120000 },
+});
+connect("Artwork for featured", "Make featured image");
+
+code("Featured file", [3520, 520], `// The API's JPEG (base64) as the binary "featured", for Shopify and for Drive
+const folder = $('Loop over folders').first().json;
+const result = $('Make featured image').first().json;
+if (!result.image) throw new Error("Folder " + folder.folder + ": the pbn API returned no featured image");
+return [{
+    json: { template: result.template, featuredName: folder.featuredName },
+    binary: { featured: { data: result.image, mimeType: "image/jpeg", fileName: folder.featuredName, fileExtension: "jpg" } },
+}];`);
+connect("Make featured image", "Featured file");
+
+stagedPut("Upload featured", [3740, 520], "featured", "featured");
+connect("Featured file", "Upload featured");
+
+node("Featured in Drive?", "n8n-nodes-base.if", 2, [3960, 520], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "featuredindrive", leftValue: "={{ $('Loop over folders').first().json.hasFeatured }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Upload featured", "Featured in Drive?");
+
+// saved next to the artwork once: a later run makes the same image again for Shopify and keeps this file
+code("Featured for Drive", [4180, 640], `const featured = $('Featured file').first();
+return [{ json: featured.json, binary: featured.binary }];`);
+connect("Featured in Drive?", "Featured for Drive", 1);
+
+node("Save featured image", "n8n-nodes-base.googleDrive", 3, [4400, 640], {
+    name: "={{ $('Loop over folders').first().json.featuredName }}",
+    driveId: drive,
+    folderId: byId("={{ $('Loop over folders').first().json.folderId }}"),
+    inputDataFieldName: "featured",
+    options: {},
+});
+connect("Featured for Drive", "Save featured image");
+
 driveDownload("Download artwork", [3080, 300], "$('Loop over folders').first().json.artworkId", "art");
-connect("Upload targets", "Download artwork");
+connect("Featured in Drive?", "Download artwork", 0);
+connect("Save featured image", "Download artwork");
 stagedPut("Upload artwork", [3300, 300], "art", "art");
 connect("Download artwork", "Upload artwork");
 
@@ -314,10 +372,11 @@ const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/
 const descriptionHtml = String(product.description || "").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)
     .map((p) => "<p>" + escape(p).replace(/\\n/g, "<br>") + "</p>").join("\\n");
 
-// the image order is enforced after creation (Image order): 1 artwork, 2 mockup, then the shared images.
+// the image order is enforced after creation (Image order): 1 featured image, 2 artwork, 3 mockup, then the shared images.
 // Each image gets its own alt text, so it can be recognized among the product's media.
-const alts = { art: title, mockup: title + " - finished painting on the wall" };
+const alts = { featured: title + " - paint by numbers canvas", art: title, mockup: title + " - finished painting on the wall" };
 const files = [
+    { originalSource: targets.featured.resourceUrl, contentType: "IMAGE", alt: alts.featured },
     { originalSource: targets.art.resourceUrl, contentType: "IMAGE", alt: alts.art },
     { originalSource: targets.mockup.resourceUrl, contentType: "IMAGE", alt: alts.mockup },
 ];
@@ -366,7 +425,7 @@ shopify("Create draft product", [4180, 300], `={{ JSON.stringify({
 }) }}`);
 connect("Build product", "Create draft product");
 
-code("Image order", [4400, 300], `// Enforced image order: 1 artwork, 2 mockup, 3+ the shared images (in the Settings order), anything else after them
+code("Image order", [4400, 300], `// Enforced image order: 1 featured image, 2 artwork, 3 mockup, 4+ the shared images (in the Settings order), anything else after them
 const folder = $('Loop over folders').first().json;
 const built = $('Build product').first().json;
 const response = $input.first().json;
@@ -381,16 +440,17 @@ const pick = (match) => {
     if (found) used.add(found.id);
     return found;
 };
+const featured = pick((m) => m.alt === built.alts.featured);
 const art = pick((m) => m.alt === built.alts.art);
 const mockup = pick((m) => m.alt === built.alts.mockup);
-if (!art || !mockup) throw new Error("Folder " + folder.folder + ": the artwork or the mockup is missing from the product's images");
+if (!featured || !art || !mockup) throw new Error("Folder " + folder.folder + ": the featured image, the artwork or the mockup is missing from the product's images");
 const shared = built.shared.map((s) => pick((m) => (s.id ? m.id === s.id : m.alt === s.alt)));
-// a shared image Shopify attached under a new ID: the next image that is neither the artwork nor the mockup
+// a shared image Shopify attached under a new ID: the next image not picked yet
 for (let i = 0; i < shared.length; i++) {
     if (!shared[i]) shared[i] = pick(() => true);
 }
 if (shared.some((m) => !m)) throw new Error("Folder " + folder.folder + ": " + built.shared.length + " shared images expected, some are missing from the product");
-const wanted = [art, mockup, ...shared].map((m) => m.id);
+const wanted = [featured, art, mockup, ...shared].map((m) => m.id);
 const order = [...wanted, ...media.filter((m) => !used.has(m.id)).map((m) => m.id)];
 return [{ json: { productId: product.id, product, wanted, startedAt: Date.now(), moves: order.map((id, i) => ({ id, newPosition: String(i) })) } }];`);
 connect("Create draft product", "Image order");
@@ -419,7 +479,7 @@ shopify("Read image order", [5280, 300], `={{ JSON.stringify({
 }) }}`);
 connect("Wait for reorder", "Read image order");
 
-code("Order confirmed?", [5500, 300], `// The first images must be exactly: artwork, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.
+code("Order confirmed?", [5500, 300], `// The first images must be exactly: featured image, artwork, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.
 const MAX_SECONDS = 30;
 const wanted = $('Image order').first().json.wanted;
 const media = ((($input.first().json.data || {}).product || {}).media || {}).nodes || [];
@@ -452,7 +512,7 @@ connect("Check again?", "Wait for reorder", 0);
 
 code("Images out of order", [6160, 560], `// Stops the run: the folder gets no marker, so the next run uploads it again (same draft, reordered again)
 const folder = $('Loop over folders').first().json;
-throw new Error("Folder " + folder.folder + ": Shopify did not apply the image order (artwork, mockup, shared images) after " + $json.seconds + " seconds");`);
+throw new Error("Folder " + folder.folder + ": Shopify did not apply the image order (featured image, artwork, mockup, shared images) after " + $json.seconds + " seconds");`);
 connect("Check again?", "Images out of order", 1);
 
 code("Shopify marker", [5940, 200], `// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)

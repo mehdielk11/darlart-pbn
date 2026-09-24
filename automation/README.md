@@ -155,6 +155,7 @@ Downloads one file:
 ### Other endpoints
 
 - `POST /v1/analyze`: detail score, suggested difficulty and an automatic crop suggestion for a photo. The workflow doesn't use it.
+- `POST /v1/featured`: the featured product image: the artwork (multipart `image` or `imageUrl`) on the blank canvas of the portrait or landscape wall photo, whichever matches its shape (square is portrait). Optional `size` (800-3000, default 1600). Returns `{ template, width, height, contentType: "image/jpeg", image }` with the JPEG as base64. Used by the Shopify Uploader (`SHOPIFY-UPLOADER.md`).
 - `POST /v1/recolor`: repaints an image with exactly `colors` palette colors (default 48, `palette` default darlart-v3, `exclude` = comma-separated codes never to use, `smooth` 0/3/5 median filter, `maxSide` default 2048, optional `canvasSize` + `orientation` to crop first, never stretch, to an exact canvas ratio such as 60x75). Multipart `image` file or `imageUrl`. Returns `{ colorCount, width, height, colors: [{ code, hex, rgb, pixels, percent }], image }` with the PNG as base64: every pixel of that PNG is one of the listed colors. Used by the Artwork Agent workflow (`ARTWORK-AGENT.md`).
 - `GET /v1/palettes`: the palettes available on the server.
 - `GET /health`: liveness check, no API key needed.

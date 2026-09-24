@@ -7,7 +7,7 @@
  */
 import path from "path";
 import sharp from "sharp";
-import { containBox, insetBox, MOCKUP_STYLE, MockupTemplate, pickMockupTemplate, sheetGeometry } from "../../src/core/mockup";
+import { containBox, FeaturedTemplate, insetBox, MOCKUP_STYLE, MockupTemplate, pickFeaturedTemplate, pickMockupTemplate, sheetGeometry } from "../../src/core/mockup";
 import { config } from "./config";
 
 export interface MockupRequest {
@@ -63,4 +63,35 @@ export async function buildMockup(request: MockupRequest, template: MockupTempla
         ])
         .png({ compressionLevel: 9 })
         .toBuffer();
+}
+
+/** Size of the featured product image (square), in pixels */
+export const FEATURED_SIZE = 1600;
+
+/**
+ * Featured product image: the artwork on the blank canvas of the wall photo matching its orientation (landscape
+ * when wider than tall, portrait otherwise). The artwork fills the canvas face without distortion (cover): a 4:5
+ * artwork fits it exactly. The photo is enlarged to `size` first, so the artwork keeps its own resolution.
+ */
+export async function buildFeatured(artwork: Buffer, size: number = FEATURED_SIZE): Promise<{ jpeg: Buffer; template: FeaturedTemplate }> {
+    const art = sharp(artwork, { limitInputPixels: 100 * 1000 * 1000 }).rotate();
+    const meta = await art.metadata();
+    const swapped = (meta.orientation || 1) >= 5; // EXIF orientations 5-8 swap width and height
+    const width = swapped ? meta.height! : meta.width!;
+    const height = swapped ? meta.width! : meta.height!;
+    const template = pickFeaturedTemplate(width / height);
+    const scale = size / template.size;
+    // the face plus the 1 px anti-aliased fringe the blank photo paints over
+    const face = template.face;
+    const left = Math.round((face.left - 1) * scale);
+    const top = Math.round((face.top - 1) * scale);
+    const box = { width: Math.round((face.left + face.width + 1) * scale) - left, height: Math.round((face.top + face.height + 1) * scale) - top };
+    const artLayer = await art.resize(box.width, box.height, { fit: "cover", position: "centre" }).removeAlpha().png().toBuffer();
+    // a JPEG: a photo-like product image, about 10 times smaller than a PNG
+    const jpeg = await sharp(path.join(config.mockupsDir, template.blank))
+        .resize(size, size, { kernel: "lanczos3" })
+        .composite([{ input: artLayer, left, top }])
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+    return { jpeg, template };
 }

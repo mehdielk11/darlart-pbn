@@ -2,17 +2,20 @@
 // - "<kit>-blank.webp": the reference sheet blanked, i.e. the drawing printed on it erased by a median filter,
 //   which keeps the paper's shading and the canvas' shadow;
 // - "<kit>-overlay.png": what lies on top of the sheet (brushes, callout arcs and their lettering), transparent elsewhere;
-// - "<kit>.js": both as data URLs for the website. An <img> from disk would block the canvas export when the page is
+// - "featured-<orientation>-blank.webp": the featured product photo with a blank canvas face;
+// - "<kit>.js": both kit layers as data URLs for the website. An <img> from disk would block the canvas export when the page is
 //   opened as a file, a script doesn't.
 // Run it after replacing a kit photo or changing its geometry in src/core/mockup.ts: npm run prepare:mockups
 const path = require("path");
 const sharp = require("sharp");
 const fs = require("fs");
-const { MOCKUP_KITS_GLOBAL, MOCKUP_TEMPLATES } = require("../dist/src/core/mockup");
+const { FEATURED_TEMPLATES, MOCKUP_KITS_GLOBAL, MOCKUP_TEMPLATES } = require("../dist/src/core/mockup");
 
 const dir = path.join(__dirname, "../../mockups");
 /** Median filter size: wide enough to erase the sheet's lines and digits */
 const CLEANUP = 15;
+/** Blank canvas color of the featured photos */
+const FEATURED_BLANK = "#f4f3f0";
 
 function insidePolygon(x, y, points) {
     let inside = false;
@@ -74,9 +77,24 @@ async function prepare(template) {
     console.log(`${template.name}: ${template.blank}, ${template.overlay}, ${template.script} (${kept} overlay pixels)`);
 }
 
+/** Featured photos: the painting face (and the 1 px anti-aliased fringe around it) painted blank canvas white */
+async function prepareFeatured(template) {
+    const f = template.face;
+    const face = { left: f.left - 1, top: f.top - 1, width: f.width + 2, height: f.height + 2 };
+    const blank = await sharp({ create: { width: face.width, height: face.height, channels: 3, background: FEATURED_BLANK } }).png().toBuffer();
+    await sharp(path.join(dir, template.source))
+        .composite([{ input: blank, left: face.left, top: face.top }])
+        .webp({ quality: 95 })
+        .toFile(path.join(dir, template.blank));
+    console.log(`featured ${template.name}: ${template.blank}`);
+}
+
 (async () => {
     for (const template of Object.values(MOCKUP_TEMPLATES)) {
         await prepare(template);
+    }
+    for (const template of Object.values(FEATURED_TEMPLATES)) {
+        await prepareFeatured(template);
     }
 })().catch((e) => {
     console.error(e);

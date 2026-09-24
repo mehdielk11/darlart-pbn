@@ -17,6 +17,7 @@ const { decodeImage } = require(path.join(dist, "server/src/image"));
 const { generate } = require(path.join(dist, "server/src/generate"));
 const { recolorToPalette } = require(path.join(dist, "server/src/recolor"));
 const { fitToCanvas } = require(path.join(dist, "server/src/reference"));
+const { buildFeatured } = require(path.join(dist, "server/src/mockup"));
 
 const paletteText = fs.readFileSync(path.join(root, "server/palettes/darlart-v2.json"), "utf8");
 const simpleImage = path.join(root, "src-cli/testinput.png");
@@ -154,6 +155,24 @@ test("fitToCanvas crops to the exact canvas ratio without stretching", async () 
         assert.equal(fitted.label, "60x75");
         assert.ok(Math.abs(meta.width / meta.height - 0.8) < 0.002, `${w}x${h} -> ${meta.width}x${meta.height}`);
         assert.ok(meta.width <= w && meta.height <= h, "only cropped, never enlarged or stretched");
+    }
+});
+
+test("buildFeatured puts the artwork on the canvas photo of its orientation", async () => {
+    const sharp = require("sharp");
+    for (const [w, h, name] of [[1024, 1280, "portrait"], [1280, 1024, "landscape"], [1024, 1024, "portrait"]]) {
+        const art = await sharp({ create: { width: w, height: h, channels: 3, background: "#cc2200" } }).png().toBuffer();
+        const featured = await buildFeatured(art, 800);
+        assert.equal(featured.template.name, name, `${w}x${h}`);
+        const { data, info } = await sharp(featured.jpeg).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        assert.equal(info.width, 800);
+        assert.equal(info.height, 800);
+        const face = featured.template.face;
+        const at = (x, y) => Array.from(data.subarray((y * info.width + x) * 3, (y * info.width + x) * 3 + 3));
+        const [r, g, b] = at(Math.round(face.left + face.width / 2), Math.round(face.top + face.height / 2));
+        assert.ok(r > 180 && g < 60 && b < 40, "the artwork fills the canvas face");
+        const corner = at(5, 5);
+        assert.ok(corner[0] > 180 && Math.abs(corner[0] - corner[2]) < 12, "the wall stays grey");
     }
 });
 
