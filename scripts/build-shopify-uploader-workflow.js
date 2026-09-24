@@ -19,7 +19,7 @@ const root = path.join(__dirname, "..");
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent"
-    pricesSheetId: "1279ywKi2r5Y5ovUIaZs6kXoIv5QmP4V0BPg9ZJtZypk", // Google Sheet "Darl'Art Prices" (its first tab is read)
+    pricesSheetId: "1iv2qOUSHPMWgdlZ5ZoCxx9WPljK9V3eWKZp7cYlB9Pk", // Google Sheet "Darl'Art Prices" (its first tab is read)
     shopDomain: "smgi0i-0a.myshopify.com", // darlart.ma
     apiVersion: "2026-07",
     status: "DRAFT",
