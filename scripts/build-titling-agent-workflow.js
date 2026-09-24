@@ -5,7 +5,7 @@
  *   -> folders that have an artwork but no product JSON yet, one by one:
  *      download the artwork -> AI agent (title, description, tags, themes) -> <date+time>_product.json in the same folder
  *
- * The JSON follows Shopify's product fields (title, handle, productType, vendor, category, collections, tags) and a
+ * The JSON follows Shopify's product fields (title, handle, productType, vendor, collections, tags) and a
  * plain-text description (wrap its paragraphs in <p> for Shopify's descriptionHtml).
  */
 const fs = require("fs");
@@ -23,8 +23,6 @@ const SETTINGS = {
     productType: "Paint by Numbers Kit",
     vendor: "Darl'Art",
     baseTags: "paint-by-numbers", // always added, comma-separated
-    categoryId: "gid://shopify/TaxonomyCategory/tg-5-2-5",
-    categoryName: "Toys & Games > Toys > Drawing & Painting Toys > Paint by Number Kits",
     // collections that are not themes: never proposed to the agent
     skipCollections: "all-kits,Best Sellers,Extras,Mini Kits",
 };
@@ -111,7 +109,8 @@ for (const c of collections) {
     theme.collections.push({ id: c.id, title: c.title, handle: c.handle });
     if (c.title.trim() === name) theme.tag = c.handle; // the main collection's handle
 }
-const list = Object.values(themes).sort((a, b) => a.name.localeCompare(b.name));
+// only themes with a main collection (e.g. "Animals"): a product never goes into a Mini Kits or Kids Kits collection by hand
+const list = Object.values(themes).filter((t) => t.collections.some((c) => c.title.trim() === t.name)).sort((a, b) => a.name.localeCompare(b.name));
 if (!list.length) throw new Error("No theme collections found in Shopify");
 return [{ json: { themes: list, names: list.map((t) => t.name) } }];`,
 });
@@ -174,7 +173,7 @@ node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
 1. TITLE: 2 to 5 words naming what the painting shows, evocative and specific, in Title Case (e.g. "Blue Iris", "Red Umbrella", "Lanterns of Fes", "Golden Hour Camel Ride"). Never "paint by numbers", "kit" or the brand. Never a real person's name, a brand or a trademarked character.
 2. DESCRIPTION: plain text, no HTML, two short paragraphs separated by a blank line, 50 to 90 words in all. First: what the finished painting shows and its mood. Second: why it is a pleasure to paint and who it suits (a relaxing hobby, a gift, which room it brightens). Warm and simple, no emojis, no prices, no sizes, no number of colors.
 3. TAGS: 6 to 12 lowercase keywords for the store search: the subject, its elements, the style, the mood, the main colors, where it fits (e.g. "iris", "blue flowers", "botanical", "calm", "living room decor"). No brand, no "paint by numbers".
-4. THEMES: 1 or 2 names copied exactly from the theme list in the prompt, the ones this painting belongs to. Only names from that list.`,
+4. THEMES: the store collections this painting belongs to, 1 to 3 names copied exactly from the theme list in the prompt, the best fit first. Pick every theme that genuinely fits and only those: a theme fits when a shopper browsing that collection would expect to find this painting there (an eagle belongs in Animals, a sunset over the sea in Sunsets, a couple in Romance). Judge by the main subject and the overall scene, never by a small detail in the background. Only names from that list.`,
         passthroughBinaryImages: true,
     },
 });
@@ -191,7 +190,7 @@ node("Listing format", "@n8n/n8n-nodes-langchain.outputParserStructured", 1.2, [
             title: { type: "string" },
             description: { type: "string", description: "Plain text, two paragraphs separated by a blank line" },
             tags: { type: "array", items: { type: "string" } },
-            themes: { type: "array", items: { type: "string" }, description: "1 or 2 names from the theme list" },
+            themes: { type: "array", items: { type: "string" }, description: "1 to 3 names from the theme list, best fit first" },
         },
         required: ["title", "description", "tags", "themes"],
     }, null, 2),
@@ -234,7 +233,6 @@ const product = {
     description,
     productType: settings.productType,
     vendor: settings.vendor,
-    category: { id: settings.categoryId, name: settings.categoryName },
     themes: chosen.map((t) => t.name),
     collections: collections.map((c) => ({ id: c.id, title: c.title, handle: c.handle })),
     tags,

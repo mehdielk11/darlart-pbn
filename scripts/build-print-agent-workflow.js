@@ -30,6 +30,8 @@ const SETTINGS = {
     maxPerRun: 5, // folders per run; the next run starts by itself when work remains
     lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
 };
+// the "Darl'Art Shopify Uploader" workflow, started when a run saved new files
+const SHOPIFY_UPLOADER_WORKFLOW_ID = "XAwk67SiWmvVSu1d";
 // ============================================================================================
 const LOCK_PREFIX = "_print-agent.lock";
 
@@ -392,6 +394,15 @@ node("Start next run", "n8n-nodes-base.executeWorkflow", 1.2, [5500, -300], {
     options: { waitForSubWorkflow: false },
 }, { executeOnce: true, onError: "continueRegularOutput" });
 connect("Start again?", "Start next run", 0);
+
+// New mockups were saved: the Shopify Uploader turns the finished folders into draft products, without waiting
+node("Run Shopify Uploader", "n8n-nodes-base.executeWorkflow", 1.2, [5500, -120], {
+    source: "database",
+    workflowId: { __rl: true, mode: "id", value: SHOPIFY_UPLOADER_WORKFLOW_ID },
+    mode: "once",
+    options: { waitForSubWorkflow: false },
+}, { executeOnce: true, onError: "continueRegularOutput" });
+connect("Start again?", "Run Shopify Uploader", 0);
 
 const workflow = { name: "Darl'Art Print Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-print-agent.json");

@@ -1009,6 +1009,30 @@
       },
       "executeOnce": true,
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000040-0000-4000-8000-000000000000",
+      "name": "Run Shopify Uploader",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5500,
+        -120
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "XAwk67SiWmvVSu1d"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -1444,6 +1468,11 @@
         [
           {
             "node": "Start next run",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Shopify Uploader",
             "type": "main",
             "index": 0
           }

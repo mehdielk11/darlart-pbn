@@ -16,8 +16,7 @@ Result: `Artwork Agent/1xxx` = Artwork Ref + Artwork Gen + palette JSON + produc
 Shopify's own field names, so a later workflow can create the product as is:
 - `title`, `handle`, `descriptionHtml` (two paragraphs);
 - `productType` "Paint by Numbers Kit", `vendor` "Darl'Art";
-- `category`: Shopify standard taxonomy "Paint by Number Kits" (`gid://shopify/TaxonomyCategory/tg-5-2-5`);
-- `themes` and `collections`: 1 or 2 themes chosen from the store's live collections (Animals, Flowers, Morocco...), with the main collection's id;
+- `themes` and `collections`: 1 to 3 collections that genuinely fit the painting, best fit first, chosen from the store's live main collections (Animals, Flowers, Morocco...). A theme with only Mini Kits / Kids Kits collections (e.g. Nature, Cities) is not offered: create its main collection to make it available;
 - `tags`: `paint-by-numbers`, the theme tags (the Kids Kits smart collections match on them, e.g. `animals`) and the agent's keywords;
 - `needsReview`: set when no store theme matched;
 - `source`: the folder and its artwork, reference and palette files.
