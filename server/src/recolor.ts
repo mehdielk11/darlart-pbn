@@ -14,6 +14,7 @@
 import sharp from "sharp";
 import { parseCustomColors } from "../../src/core/settings";
 import { rgb2lab } from "../../src/lib/colorconversion";
+import { fitToCanvas } from "./reference";
 
 export interface RecolorOptions {
     colors: number;
@@ -25,6 +26,9 @@ export interface RecolorOptions {
     maxSide: number;
     /** Median filter size before recoloring, softens anti-aliasing speckles (0 or 1 = off) */
     smooth: number;
+    /** When set (e.g. "60x75"), the image is first cropped (never stretched) to this canvas ratio */
+    canvasSize?: string;
+    orientation?: "auto" | "portrait" | "landscape";
 }
 
 export interface RecolorColor {
@@ -105,6 +109,9 @@ export async function recolorToPalette(input: Buffer, options: RecolorOptions): 
         throw new Error(`The palette has ${palette.length} usable colors, fewer than the ${options.colors} requested`);
     }
 
+    if (options.canvasSize) {
+        input = (await fitToCanvas(input, options.canvasSize, options.orientation || "auto")).image;
+    }
     let pipeline = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS })
         .rotate()
         .flatten({ background: "#ffffff" })

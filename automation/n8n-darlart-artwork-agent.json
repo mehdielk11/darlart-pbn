@@ -98,6 +98,24 @@
             },
             {
               "id": "set9",
+              "name": "canvasSize",
+              "value": "60x75",
+              "type": "string"
+            },
+            {
+              "id": "set10",
+              "name": "orientation",
+              "value": "portrait",
+              "type": "string"
+            },
+            {
+              "id": "set11",
+              "name": "imageSize",
+              "value": "1024x1280",
+              "type": "string"
+            },
+            {
+              "id": "set12",
               "name": "timezone",
               "value": "Africa/Casablanca",
               "type": "string"
@@ -109,6 +127,67 @@
     },
     {
       "id": "aa000003-0000-4000-8000-000000000000",
+      "name": "Check upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        110,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "// Only JPG, PNG or WEBP images up to MAX_MB are accepted. The format is read from the file's first bytes,\n// so a renamed file (e.g. a PDF called photo.jpg) is refused. Nothing else runs for a refused file.\nconst MAX_MB = 5;\nconst item = $input.first();\nconst key = Object.keys(item.binary || {})[0];\nif (!key) return [{ json: { valid: false, reason: \"No file was uploaded.\" } }];\nconst file = item.binary[key];\nconst bytes = await this.helpers.getBinaryDataBuffer(0, key);\nconst size = bytes.length;\nconst head = bytes.subarray(0, 12);\nconst ascii = (from, to) => head.subarray(from, to).toString(\"latin1\");\nlet format = \"\";\nif (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) format = \"jpg\";\nelse if (head[0] === 0x89 && ascii(1, 4) === \"PNG\") format = \"png\";\nelse if (ascii(0, 4) === \"RIFF\" && ascii(8, 12) === \"WEBP\") format = \"webp\";\nconst mb = (size / 1024 / 1024).toFixed(1);\nlet reason = \"\";\nif (!format) reason = \"This file is not a JPG, PNG or WEBP image. Please upload a photo in one of these formats.\";\nelse if (size > MAX_MB * 1024 * 1024) reason = \"The image is \" + mb + \" MB. The maximum is \" + MAX_MB + \" MB: please upload a smaller or compressed image.\";\nelse if (size < 100) reason = \"The image is empty or damaged. Please upload another file.\";\nconst mimeType = { jpg: \"image/jpeg\", png: \"image/png\", webp: \"image/webp\" }[format] || file.mimeType;\nreturn [{\n    json: { valid: !reason, reason, format, extension: format, bytes: size, fileName: file.fileName || \"\" },\n    // the file goes on with its real type\n    binary: { [key]: { ...file, mimeType, fileExtension: format || file.fileExtension } },\n}];"
+      }
+    },
+    {
+      "id": "aa000004-0000-4000-8000-000000000000",
+      "name": "Upload OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        330,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "uploadok",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aa000005-0000-4000-8000-000000000000",
+      "name": "Page: invalid upload",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        550,
+        -360
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "=<div style=\"font-family:system-ui,sans-serif;text-align:center\"><h2>This file can't be used</h2><p>{{ $json.reason }}</p><p><a href=\"javascript:history.back()\">Try again</a></p></div>"
+      }
+    },
+    {
+      "id": "aa000006-0000-4000-8000-000000000000",
       "name": "Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -117,11 +196,11 @@
         0
       ],
       "parameters": {
-        "jsCode": "// The uploaded image becomes the \"reference\" file, and the run gets its date+time stamp\nconst settings = $('Settings').first().json;\nconst binary = $('Formulaire').first().binary || {};\nconst key = Object.keys(binary)[0];\nif (!key) throw new Error(\"No image in the form submission\");\nconst file = binary[key];\nconst extension = ((file.fileName || \"\").match(/\\.([a-z0-9]+)$/i) || [, (file.fileExtension || \"jpg\")])[1].toLowerCase();\nconst stamp = $now.setZone(settings.timezone).toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nreturn [{\n    json: {\n        stamp,\n        referenceName: stamp + \"_ref.\" + extension,\n        artworkName: stamp + \"_art.png\",\n        paletteName: stamp + \"_palette.json\",\n    },\n    binary: { reference: file },\n}];"
+        "jsCode": "// The uploaded image becomes the \"reference\" file, and the run gets its date+time stamp\nconst settings = $('Settings').first().json;\nconst checked = $('Check upload').first();\nconst key = Object.keys(checked.binary || {})[0];\nif (!key) throw new Error(\"No image in the form submission\");\nconst file = checked.binary[key];\nconst extension = checked.json.extension; // the real format, read from the file's bytes\nconst stamp = $now.setZone(settings.timezone).toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nreturn [{\n    json: {\n        stamp,\n        referenceName: stamp + \"_ref.\" + extension,\n        artworkName: stamp + \"_art.png\",\n        paletteName: stamp + \"_palette.json\",\n    },\n    binary: { reference: file },\n}];"
       }
     },
     {
-      "id": "aa000004-0000-4000-8000-000000000000",
+      "id": "aa000007-0000-4000-8000-000000000000",
       "name": "Save reference (Artwork Ref)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -146,7 +225,7 @@
       }
     },
     {
-      "id": "aa000005-0000-4000-8000-000000000000",
+      "id": "aa000008-0000-4000-8000-000000000000",
       "name": "Build image prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -155,11 +234,11 @@
         0
       ],
       "parameters": {
-        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
+        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
       }
     },
     {
-      "id": "aa000006-0000-4000-8000-000000000000",
+      "id": "aa000009-0000-4000-8000-000000000000",
       "name": "Generate ART",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -186,7 +265,7 @@
             },
             {
               "name": "size",
-              "value": "auto"
+              "value": "={{ $('Settings').first().json.imageSize }}"
             },
             {
               "name": "quality",
@@ -213,7 +292,7 @@
       }
     },
     {
-      "id": "aa000007-0000-4000-8000-000000000000",
+      "id": "aa000010-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -232,7 +311,7 @@
       }
     },
     {
-      "id": "aa000008-0000-4000-8000-000000000000",
+      "id": "aa000011-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -251,7 +330,7 @@
       }
     },
     {
-      "id": "aa000009-0000-4000-8000-000000000000",
+      "id": "aa000012-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -269,7 +348,7 @@
       }
     },
     {
-      "id": "aa000010-0000-4000-8000-000000000000",
+      "id": "aa000013-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -283,7 +362,7 @@
       }
     },
     {
-      "id": "aa000011-0000-4000-8000-000000000000",
+      "id": "aa000014-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -316,7 +395,7 @@
       }
     },
     {
-      "id": "aa000012-0000-4000-8000-000000000000",
+      "id": "aa000015-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -329,7 +408,7 @@
       }
     },
     {
-      "id": "aa000013-0000-4000-8000-000000000000",
+      "id": "aa000016-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -362,7 +441,7 @@
       }
     },
     {
-      "id": "aa000014-0000-4000-8000-000000000000",
+      "id": "aa000017-0000-4000-8000-000000000000",
       "name": "Page: artwork failed",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
@@ -377,7 +456,7 @@
       }
     },
     {
-      "id": "aa000015-0000-4000-8000-000000000000",
+      "id": "aa000018-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -411,6 +490,14 @@
               "value": "3"
             },
             {
+              "name": "canvasSize",
+              "value": "={{ $('Settings').first().json.canvasSize }}"
+            },
+            {
+              "name": "orientation",
+              "value": "={{ $('Settings').first().json.orientation }}"
+            },
+            {
               "parameterType": "formBinaryData",
               "name": "image",
               "inputDataFieldName": "artwork"
@@ -423,7 +510,7 @@
       }
     },
     {
-      "id": "aa000016-0000-4000-8000-000000000000",
+      "id": "aa000019-0000-4000-8000-000000000000",
       "name": "Approved artwork",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -436,7 +523,7 @@
       }
     },
     {
-      "id": "aa000017-0000-4000-8000-000000000000",
+      "id": "aa000020-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -449,7 +536,7 @@
       }
     },
     {
-      "id": "aa000018-0000-4000-8000-000000000000",
+      "id": "aa000021-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -468,7 +555,7 @@
       }
     },
     {
-      "id": "aa000019-0000-4000-8000-000000000000",
+      "id": "aa000022-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -511,7 +598,7 @@
       }
     },
     {
-      "id": "aa000020-0000-4000-8000-000000000000",
+      "id": "aa000023-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -524,7 +611,7 @@
       }
     },
     {
-      "id": "aa000021-0000-4000-8000-000000000000",
+      "id": "aa000024-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -549,7 +636,7 @@
       }
     },
     {
-      "id": "aa000022-0000-4000-8000-000000000000",
+      "id": "aa000025-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -562,7 +649,7 @@
       }
     },
     {
-      "id": "aa000023-0000-4000-8000-000000000000",
+      "id": "aa000026-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -587,7 +674,7 @@
       }
     },
     {
-      "id": "aa000024-0000-4000-8000-000000000000",
+      "id": "aa000027-0000-4000-8000-000000000000",
       "name": "Build result page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -601,7 +688,7 @@
       "executeOnce": true
     },
     {
-      "id": "aa000025-0000-4000-8000-000000000000",
+      "id": "aa000028-0000-4000-8000-000000000000",
       "name": "Run Titling Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -625,7 +712,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "aa000026-0000-4000-8000-000000000000",
+      "id": "aa000029-0000-4000-8000-000000000000",
       "name": "Run Print Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -649,7 +736,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "aa000027-0000-4000-8000-000000000000",
+      "id": "aa000030-0000-4000-8000-000000000000",
       "name": "Page: result",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
@@ -669,7 +756,36 @@
       "main": [
         [
           {
+            "node": "Check upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check upload": {
+      "main": [
+        [
+          {
+            "node": "Upload OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload OK?": {
+      "main": [
+        [
+          {
             "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Page: invalid upload",
             "type": "main",
             "index": 0
           }

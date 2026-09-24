@@ -5,7 +5,7 @@
  *   -> queue lock (one worker at a time, a Drive lock file with a heartbeat)
  *   -> folders "Artwork Agent/1xxx" still missing print files
  *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 60x75 (portrait or landscape from the artwork itself)
- *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf, 1xxx/<stamp>_<size>_<N>_user.pdf, and one 1xxx/<stamp>_mockup.png
+ *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
  *
  * Rebuild with `node scripts/build-print-agent-workflow.js`, then re-import the workflow.
@@ -187,16 +187,14 @@ $input.all().forEach((item, i) => {
     const state = states[i].json;
     if (state.none || folderCount >= Number(settings.maxPerRun)) return;
     const printFiles = new Set((item.json.files || []).map((f) => f.name));
-    const rootFiles = new Set(state.rootFiles);
-    const inSet = (set, size, n, suffix) => set.has(state.stamp + "_" + size + "_" + n + suffix) || set.has(state.stamp + "_" + flip(size) + "_" + n + suffix);
-    const has = (size, n, suffix) => inSet(printFiles, size, n, suffix);
+    const has = (size, n, suffix) => printFiles.has(state.stamp + "_" + size + "_" + n + suffix) || printFiles.has(state.stamp + "_" + flip(size) + "_" + n + suffix);
     const needMockupFile = !state.rootFiles.includes(state.stamp + "_mockup.png");
     const folderJobs = [];
     sizes.forEach((size, s) => {
         for (const n of colors) {
             const needSvg = !has(size, n, "_blank.svg");
             const needPdf = !has(size, n, "_catalog.pdf");
-            const needUser = !inSet(rootFiles, size, n, "_user.pdf");
+            const needUser = !has(size, n, "_user.pdf");
             const needMockup = needMockupFile && s === 0 && n === mockupColors;
             if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });
         }
@@ -329,7 +327,7 @@ if (task.needPdf) {
     files.push({ url: url("painting.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_catalog.pdf", parent: task.printFolderId, mimeType: "application/pdf" });
 }
 if (task.needUser) {
-    files.push({ url: url("template.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_user.pdf", parent: task.folderId, mimeType: "application/pdf" });
+    files.push({ url: url("template.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_user.pdf", parent: task.printFolderId, mimeType: "application/pdf" });
 }
 if (task.needMockup) {
     files.push({ url: url("mockup.png"), name: task.stamp + "_mockup.png", parent: task.folderId, mimeType: "image/png" });

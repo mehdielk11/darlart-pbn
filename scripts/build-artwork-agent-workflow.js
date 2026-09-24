@@ -26,6 +26,11 @@ const SETTINGS = {
     firstFolderNumber: 1001,
     imageModel: "gpt-image-2",
     imageQuality: "medium", // "high" costs ~4x more; the 48-color snap removes the fine texture it adds
+    // the artwork is always this canvas: the model paints at imageSize (same 4:5 ratio as 60x75) and the snap
+    // step crops (never stretches) to the exact ratio
+    canvasSize: "60x75",
+    orientation: "portrait",
+    imageSize: "1024x1280", // multiples of 16, exactly 4:5
     timezone: "Africa/Casablanca",
 };
 // ============================================================================================
@@ -73,16 +78,63 @@ node("Settings", "n8n-nodes-base.set", 3.4, [220, 0], {
     },
     options: {},
 });
-connect("Formulaire", "Settings");
+// ---- upload check: real image format (from the file's bytes, not its name) and size, before anything runs ----
+node("Check upload", "n8n-nodes-base.code", 2, [110, -200], {
+    jsCode: `// Only JPG, PNG or WEBP images up to MAX_MB are accepted. The format is read from the file's first bytes,
+// so a renamed file (e.g. a PDF called photo.jpg) is refused. Nothing else runs for a refused file.
+const MAX_MB = 5;
+const item = $input.first();
+const key = Object.keys(item.binary || {})[0];
+if (!key) return [{ json: { valid: false, reason: "No file was uploaded." } }];
+const file = item.binary[key];
+const bytes = await this.helpers.getBinaryDataBuffer(0, key);
+const size = bytes.length;
+const head = bytes.subarray(0, 12);
+const ascii = (from, to) => head.subarray(from, to).toString("latin1");
+let format = "";
+if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) format = "jpg";
+else if (head[0] === 0x89 && ascii(1, 4) === "PNG") format = "png";
+else if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") format = "webp";
+const mb = (size / 1024 / 1024).toFixed(1);
+let reason = "";
+if (!format) reason = "This file is not a JPG, PNG or WEBP image. Please upload a photo in one of these formats.";
+else if (size > MAX_MB * 1024 * 1024) reason = "The image is " + mb + " MB. The maximum is " + MAX_MB + " MB: please upload a smaller or compressed image.";
+else if (size < 100) reason = "The image is empty or damaged. Please upload another file.";
+const mimeType = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" }[format] || file.mimeType;
+return [{
+    json: { valid: !reason, reason, format, extension: format, bytes: size, fileName: file.fileName || "" },
+    // the file goes on with its real type
+    binary: { [key]: { ...file, mimeType, fileExtension: format || file.fileExtension } },
+}];`,
+});
+connect("Formulaire", "Check upload");
+
+node("Upload OK?", "n8n-nodes-base.if", 2, [330, -200], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "uploadok", leftValue: "={{ $json.valid }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Check upload", "Upload OK?");
+connect("Upload OK?", "Settings", 0);
+
+node("Page: invalid upload", "n8n-nodes-base.form", 2.3, [550, -360], {
+    operation: "completion",
+    respondWith: "showText",
+    responseText: "=<div style=\"font-family:system-ui,sans-serif;text-align:center\"><h2>This file can't be used</h2><p>{{ $json.reason }}</p><p><a href=\"javascript:history.back()\">Try again</a></p></div>",
+});
+connect("Upload OK?", "Page: invalid upload", 1);
 
 node("Prepare", "n8n-nodes-base.code", 2, [440, 0], {
     jsCode: `// The uploaded image becomes the "reference" file, and the run gets its date+time stamp
 const settings = $('Settings').first().json;
-const binary = $('Formulaire').first().binary || {};
-const key = Object.keys(binary)[0];
+const checked = $('Check upload').first();
+const key = Object.keys(checked.binary || {})[0];
 if (!key) throw new Error("No image in the form submission");
-const file = binary[key];
-const extension = ((file.fileName || "").match(/\\.([a-z0-9]+)$/i) || [, (file.fileExtension || "jpg")])[1].toLowerCase();
+const file = checked.binary[key];
+const extension = checked.json.extension; // the real format, read from the file's bytes
 const stamp = $now.setZone(settings.timezone).toFormat("yyyy-MM-dd_HH-mm-ss");
 return [{
     json: {
@@ -112,7 +164,9 @@ node("Build image prompt", "n8n-nodes-base.code", 2, [880, 0], {
     jsCode: `// A fixed prompt: the model sees the reference itself, so no scene description is needed
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
-    "Keep everything from the image exactly: the same subjects, likeness, expressions, poses, objects, background and framing, with realistic proportions.",
+    "The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
+    "Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.",
+    "Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.",
     "Keep the original colors of the image.",
     "Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.",
     "Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.",
@@ -135,7 +189,7 @@ node("Generate ART", "n8n-nodes-base.httpRequest", 4.2, [1620, 0], {
         parameters: [
             { name: "model", value: "={{ $('Settings').first().json.imageModel }}" },
             { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt }}" },
-            { name: "size", value: "auto" },
+            { name: "size", value: "={{ $('Settings').first().json.imageSize }}" },
             { name: "quality", value: "={{ $('Settings').first().json.imageQuality }}" },
             { name: "output_format", value: "png" },
             { name: "n", value: "1" },
@@ -219,6 +273,9 @@ node("Snap to palette (48 colors)", "n8n-nodes-base.httpRequest", 4.2, [2820, -2
             { name: "palette", value: "={{ $('Settings').first().json.paletteId }}" },
             { name: "exclude", value: "={{ $('Settings').first().json.exclude }}" },
             { name: "smooth", value: "3" },
+            // the final artwork always has the exact canvas ratio (cropped, never stretched)
+            { name: "canvasSize", value: "={{ $('Settings').first().json.canvasSize }}" },
+            { name: "orientation", value: "={{ $('Settings').first().json.orientation }}" },
             { parameterType: "formBinaryData", name: "image", inputDataFieldName: "artwork" },
         ],
     },

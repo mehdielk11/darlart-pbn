@@ -355,10 +355,18 @@ export async function buildApp(jobs: JobManager) {
             throw new HttpError(400, e instanceof Error ? e.message : String(e));
         }
         const exclude = (asString(fields.exclude) || "").split(/[\s,;]+/).filter((code) => code);
+        const canvasSize = asString(fields.canvasSize);
+        if (canvasSize && !parseCanvasSize(canvasSize)) {
+            throw new HttpError(400, "Invalid request", ["canvasSize must look like \"60x75\""]);
+        }
+        const orientation = (asString(fields.orientation) || "auto").toLowerCase() as "auto" | "portrait" | "landscape";
+        if (!["auto", "portrait", "landscape"].includes(orientation)) {
+            throw new HttpError(400, "Invalid request", ["orientation must be auto, portrait or landscape"]);
+        }
         const resolved = await resolveImage(fields, image);
         let result;
         try {
-            result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth });
+            result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth, canvasSize, orientation });
         } catch (e) {
             throw new HttpError(422, e instanceof Error ? e.message : String(e));
         }

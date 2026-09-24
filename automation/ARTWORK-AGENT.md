@@ -3,10 +3,11 @@
 `n8n-darlart-artwork-agent.json`: upload a reference image in a form, get a painted artwork that uses **exactly 48 Darl'Art colors**, saved in Google Drive.
 
 ```
-Formulaire (upload) -> Save reference (Drive "Artwork Ref")
-  -> Generate ART (gpt-image-2: reference + fixed prompt, the reference's own colors)
+Formulaire (upload) -> Check upload (JPG/PNG/WEBP from the file's bytes, max 5 MB; else an error page)
+  -> Save reference (Drive "Artwork Ref")
+  -> Generate ART (gpt-image-2 at 1024x1280 = 4:5: reference + fixed prompt, the reference's own colors)
   -> Check artwork (gpt-5-mini: no swatches/text/border, up to 3 tries)
-  -> Snap to palette (pbn API /v1/recolor: every pixel -> one of 48 Darl'Art colors)
+  -> Snap to palette (pbn API /v1/recolor: exact 60x75 ratio, cropped never stretched; every pixel -> one of 48 Darl'Art colors)
   -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON -> result page
                                                                          -> Run Titling Agent (product JSON, not awaited)
                                                                          -> Run Print Agent (print files + mockup, queued, not awaited)
@@ -15,6 +16,12 @@ Formulaire (upload) -> Save reference (Drive "Artwork Ref")
 ## Why the palette is strict
 
 An image model cannot be forced to use exact HEX values (and palette lists in the prompt get painted into the image as swatches), so it paints the reference's own colors. The **Snap to palette** step then measures the painting and repaints every pixel with the 48 distinct Darl'Art colors that represent it best (k-means in Lab, snapped to the palette, refined). "Check palette" stops the run if the result has anything other than 48 valid Darl'Art colors, so a saved artwork is always compliant. Codes 3801 (white) and 3811 (near black) are excluded; change `exclude` in **Settings** to allow them.
+
+## Canvas ratio
+
+Every artwork is a **60x75 cm portrait** (4:5), whatever the reference's shape: `canvasSize`, `orientation` and `imageSize` in **Settings**.
+- The reference is sent to the model as uploaded. The model paints at `imageSize` (1024x1280, exactly 4:5) and the prompt tells it to recompose the scene for the 60x75 frame, never stretch it, and paint only the artwork, ignoring any background, wall, shadow, frame or canvas edge around it in the reference.
+- **Snap to palette** then crops to the exact 60x75 ratio (keeping the most interesting area) if the model's image is off by any pixel. Nothing is ever stretched.
 
 ## Output
 

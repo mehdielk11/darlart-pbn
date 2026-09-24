@@ -16,6 +16,7 @@ const { findPaletteFamily } = require(path.join(dist, "src/palettefamilies"));
 const { decodeImage } = require(path.join(dist, "server/src/image"));
 const { generate } = require(path.join(dist, "server/src/generate"));
 const { recolorToPalette } = require(path.join(dist, "server/src/recolor"));
+const { fitToCanvas } = require(path.join(dist, "server/src/reference"));
 
 const paletteText = fs.readFileSync(path.join(root, "server/palettes/darlart-v2.json"), "utf8");
 const simpleImage = path.join(root, "src-cli/testinput.png");
@@ -140,6 +141,18 @@ test("recolorToPalette paints a photo with exactly N palette colors, never an ex
     }
     assert.deepEqual([...seen].sort(), [...listed].sort());
     assert.equal(Math.round(result.colors.reduce((sum, c) => sum + c.percent, 0)), 100);
+});
+
+test("fitToCanvas crops to the exact canvas ratio without stretching", async () => {
+    const sharp = require("sharp");
+    for (const [w, h] of [[1024, 1536], [1536, 1024], [1024, 1280]]) {
+        const img = await sharp({ create: { width: w, height: h, channels: 3, background: "#888888" } }).png().toBuffer();
+        const fitted = await fitToCanvas(img, "60x75", "portrait");
+        const meta = await sharp(fitted.image).metadata();
+        assert.equal(fitted.label, "60x75");
+        assert.ok(Math.abs(meta.width / meta.height - 0.8) < 0.002, `${w}x${h} -> ${meta.width}x${meta.height}`);
+        assert.ok(meta.width <= w && meta.height <= h, "only cropped, never enlarged or stretched");
+    }
 });
 
 test("fadeColors mixes each color toward white", () => {
