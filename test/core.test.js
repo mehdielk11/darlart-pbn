@@ -99,6 +99,8 @@ test("palettes without Darl'Art colors are split in unlabelled rows", () => {
 test("resolveCanvasSize follows the photo orientation", () => {
     assert.deepEqual(resolveCanvasSize("30x40", "auto", 1366, 768), { widthCm: 40, heightCm: 30, orientation: "landscape", aspect: 4 / 3, label: "40x30" });
     assert.equal(resolveCanvasSize("40x30", "auto", 600, 900).label, "30x40");
+    // a square photo is portrait
+    assert.equal(resolveCanvasSize("60x75", "auto", 1024, 1024).label, "60x75");
     assert.equal(resolveCanvasSize("40x50", "landscape", 600, 900).label, "50x40");
     assert.equal(resolveCanvasSize("50x50", "portrait", 600, 900).orientation, "square");
     assert.throws(() => resolveCanvasSize("big", "auto", 10, 10));

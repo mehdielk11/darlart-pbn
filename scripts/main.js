@@ -4873,7 +4873,8 @@ define("core/crop", ["require", "exports"], function (require, exports) {
     }
     /**
      * Resolves the canvas dimensions for a size like "40x50" and an orientation.
-     * "auto" follows the photo: landscape when it's at least as wide as it is tall (same rule as the crop dialog).
+     * "auto" follows the photo: landscape when it's wider than it is tall, portrait otherwise, a square photo
+     * included (same rule as the crop dialog).
      */
     function resolveCanvasSize(size, orientation, imageWidth, imageHeight) {
         const parsed = parseCanvasSize(size);
@@ -4887,7 +4888,7 @@ define("core/crop", ["require", "exports"], function (require, exports) {
             resolved = "square";
         }
         else if (orientation === "auto") {
-            resolved = imageWidth >= imageHeight ? "landscape" : "portrait";
+            resolved = imageWidth > imageHeight ? "landscape" : "portrait";
         }
         else {
             resolved = orientation;

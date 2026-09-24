@@ -336,7 +336,8 @@
         // Create cropper when image is ready
         if (cropper) { try { cropper.destroy(); } catch(e){} finally { cropper = null; } }
         cropImgEl.onload = () => {
-            const isLandscape = (cropImgEl.naturalWidth || 1) >= (cropImgEl.naturalHeight || 1);
+            // a square image opens in portrait
+            const isLandscape = (cropImgEl.naturalWidth || 1) > (cropImgEl.naturalHeight || 1);
             if (isLandscape) {
                 currentCanvasSize = '75x60';
                 currentOrientation = 'landscape';
