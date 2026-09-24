@@ -4,7 +4,7 @@
  *   Artwork Agent finished / Run now / every day
  *   -> queue lock (one worker at a time, a Drive lock file with a heartbeat)
  *   -> folders "Artwork Agent/1xxx" still missing print files
- *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 40x50 + 32x40 + 20x25 (portrait or landscape from the artwork itself)
+ *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 60x75 + 40x50 + 32x40 + 20x25 (portrait or landscape from the artwork itself)
  *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
  *
@@ -20,7 +20,7 @@ const SETTINGS = {
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent"
     pbnApiUrl: "http://127.0.0.1:3000",
     colorsList: "12,24,36,48",
-    canvasSizes: "40x50,32x40,20x25", // the sizes sold, comma-separated; each is orientation-neutral (40x50 = 50x40)
+    canvasSizes: "60x75,40x50,32x40,20x25", // comma-separated, 60x75 first (the mockup size); each is orientation-neutral (60x75 = 75x60)
     difficulty: "hard",
     orientation: "auto", // portrait or landscape from the artwork's own shape
     palette: "darlart-v3",

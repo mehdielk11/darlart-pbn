@@ -26,9 +26,9 @@ const SETTINGS = {
     firstFolderNumber: 1001,
     imageModel: "gpt-image-2",
     imageQuality: "medium", // "high" costs ~4x more; the 48-color snap removes the fine texture it adds
-    // the artwork is always this canvas: the model paints at imageSize (same 4:5 ratio as 40x50) and the snap
+    // the artwork is always this canvas: the model paints at imageSize (same 4:5 ratio as 60x75) and the snap
     // step crops (never stretches) to the exact ratio
-    canvasSize: "40x50",
+    canvasSize: "60x75",
     orientation: "portrait",
     imageSize: "1024x1280", // multiples of 16, exactly 4:5
     timezone: "Africa/Casablanca",
@@ -164,7 +164,7 @@ node("Build image prompt", "n8n-nodes-base.code", 2, [880, 0], {
     jsCode: `// A fixed prompt: the model sees the reference itself, so no scene description is needed
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
-    "The output is a vertical canvas painting in a 4:5 ratio (40 x 50 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
+    "The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
     "Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.",
     "Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.",
     "Keep the original colors of the image.",

@@ -32,7 +32,7 @@ In the Drive "Artwork Agent" folder (`pricesSheetId` in Settings). Its first tab
 - `canvas_type`: `Rolled` becomes "Rolled Canvas" (the store's wording).
 - `price`: 179, 179.00 or 179,00 all work.
 - `compare_at_price`: optional. Without it the compare-at price is `price x compareAtMultiplier` (2).
-- Each row of a size listed in `sizes` (Settings) becomes one variant (Shopify allows 100 at most). Rows of other sizes (e.g. 60x75, kept for the PBN generator only) are skipped, and every size in `sizes` must have prices. Empty rows are ignored; a wrong row stops the run with its line number.
+- Each row of a size listed in `sizes` (Settings) becomes one variant (Shopify allows 100 at most). Rows of other sizes (e.g. 60x75: the Print Agent still makes its files, it is just not sold) are skipped, and every size in `sizes` must have prices. Empty rows are ignored; a wrong row stops the run with its line number.
 - Keep the column names in row 1 and the prices on the first tab.
 
 ## Shared images

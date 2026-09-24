@@ -23,7 +23,7 @@ const SETTINGS = {
     shopDomain: "smgi0i-0a.myshopify.com", // darlart.ma
     apiVersion: "2026-07",
     status: "DRAFT",
-    // the sizes sold: sheet rows of any other size (e.g. 60x75, kept for the PBN generator only) are skipped
+    // the sizes sold: sheet rows of any other size (e.g. 60x75: its print files are still made, it is just not sold) are skipped
     sizes: "20x25,32x40,40x50",
     compareAtMultiplier: 2, // compare-at price = price x this, when the CSV has no compare_at_price
     // the images shown on every product after the artwork and the mockup: Shopify Files URLs

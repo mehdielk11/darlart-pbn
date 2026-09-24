@@ -7,7 +7,7 @@ Formulaire (upload) -> Check upload (JPG/PNG/WEBP from the file's bytes, max 5 M
   -> Save reference (Drive "Artwork Ref")
   -> Generate ART (gpt-image-2 at 1024x1280 = 4:5: reference + fixed prompt, the reference's own colors)
   -> Check artwork (gpt-5-mini: no swatches/text/border, up to 3 tries)
-  -> Snap to palette (pbn API /v1/recolor: exact 4:5 ratio, cropped never stretched; every pixel -> one of 48 Darl'Art colors)
+  -> Snap to palette (pbn API /v1/recolor: exact 60x75 ratio, cropped never stretched; every pixel -> one of 48 Darl'Art colors)
   -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON -> result page
                                                                          -> Run Titling Agent (product JSON, not awaited)
                                                                          -> Run Print Agent (print files + mockup, queued, not awaited)
@@ -19,9 +19,9 @@ An image model cannot be forced to use exact HEX values (and palette lists in th
 
 ## Canvas ratio
 
-Every artwork is a **4:5 portrait** (the ratio of every size sold: 20x25, 32x40, 40x50; `canvasSize` 40x50), whatever the reference's shape: `canvasSize`, `orientation` and `imageSize` in **Settings**.
-- The reference is sent to the model as uploaded. The model paints at `imageSize` (1024x1280, exactly 4:5) and the prompt tells it to recompose the scene for the 4:5 frame, never stretch it, and paint only the artwork, ignoring any background, wall, shadow, frame or canvas edge around it in the reference.
-- **Snap to palette** then crops to the exact 4:5 ratio (keeping the most interesting area) if the model's image is off by any pixel. Nothing is ever stretched.
+Every artwork is a **60x75 cm portrait** (4:5), whatever the reference's shape: `canvasSize`, `orientation` and `imageSize` in **Settings**.
+- The reference is sent to the model as uploaded. The model paints at `imageSize` (1024x1280, exactly 4:5) and the prompt tells it to recompose the scene for the 60x75 frame, never stretch it, and paint only the artwork, ignoring any background, wall, shadow, frame or canvas edge around it in the reference.
+- **Snap to palette** then crops to the exact 60x75 ratio (keeping the most interesting area) if the model's image is off by any pixel. Nothing is ever stretched.
 
 ## Output
 
