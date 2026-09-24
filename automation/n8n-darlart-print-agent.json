@@ -129,6 +129,12 @@
               "name": "lockStaleMinutes",
               "value": 45,
               "type": "number"
+            },
+            {
+              "id": "set12",
+              "name": "telegramChatId",
+              "value": "-5252292447",
+              "type": "string"
             }
           ]
         },
@@ -230,7 +236,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1100,
+        1760,
         360
       ],
       "parameters": {}
@@ -368,6 +374,67 @@
     },
     {
       "id": "cc000014-0000-4000-8000-000000000000",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        440
+      ],
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      }
+    },
+    {
+      "id": "cc000015-0000-4000-8000-000000000000",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        440
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000016-0000-4000-8000-000000000000",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        520
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "cc000017-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -410,7 +477,7 @@
       }
     },
     {
-      "id": "cc000015-0000-4000-8000-000000000000",
+      "id": "cc000018-0000-4000-8000-000000000000",
       "name": "Folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -423,7 +490,7 @@
       }
     },
     {
-      "id": "cc000016-0000-4000-8000-000000000000",
+      "id": "cc000019-0000-4000-8000-000000000000",
       "name": "List folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -466,7 +533,7 @@
       }
     },
     {
-      "id": "cc000017-0000-4000-8000-000000000000",
+      "id": "cc000020-0000-4000-8000-000000000000",
       "name": "Folder states",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -479,7 +546,7 @@
       }
     },
     {
-      "id": "cc000018-0000-4000-8000-000000000000",
+      "id": "cc000021-0000-4000-8000-000000000000",
       "name": "List Print files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -522,7 +589,180 @@
       }
     },
     {
-      "id": "cc000019-0000-4000-8000-000000000000",
+      "id": "cc000022-0000-4000-8000-000000000000",
+      "name": "Featured to make",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "// Folders with an artwork and no <date+time>_featured.png yet (at most maxPerRun per run)\nconst settings = $('Settings').first().json;\nconst todo = $('Folder states').all().map((item) => item.json)\n    .filter((state) => !state.none && !state.rootFiles.includes(state.stamp + \"_featured.png\"))\n    .slice(0, Number(settings.maxPerRun) || 5)\n    .map((state) => ({ json: { folderId: state.folderId, folder: state.folder, artworkId: state.artworkId, name: state.stamp + \"_featured.png\" } }));\nreturn todo.length ? todo : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "cc000023-0000-4000-8000-000000000000",
+      "name": "Featured to make?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Featuredtomake",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000024-0000-4000-8000-000000000000",
+      "name": "Artwork for featured",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        -420
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.artworkId }}?alt=media&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "image"
+            }
+          },
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "cc000025-0000-4000-8000-000000000000",
+      "name": "Make featured image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        -420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/featured",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "image"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000026-0000-4000-8000-000000000000",
+      "name": "Featured files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "// The API's PNGs (base64) as files; a folder whose image failed is retried by the next run\nconst todo = $('Featured to make').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n    const folder = todo[i].json;\n    if (!item.json.image) return;\n    out.push({ json: folder, binary: { data: { data: item.json.image, mimeType: \"image/png\", fileName: folder.name, fileExtension: \"png\" } } });\n});\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "cc000027-0000-4000-8000-000000000000",
+      "name": "Any featured image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anyfeaturedimage",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000028-0000-4000-8000-000000000000",
+      "name": "Save featured image",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4180,
+        -500
+      ],
+      "parameters": {
+        "name": "={{ $json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.folderId }}"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000029-0000-4000-8000-000000000000",
       "name": "Plan jobs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -531,11 +771,12 @@
         40
       ],
       "parameters": {
-        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$input.all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    const has = (size, n, suffix) => printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
-      }
+        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$('List Print files').all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    const has = (size, n, suffix) => printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
+      },
+      "executeOnce": true
     },
     {
-      "id": "cc000020-0000-4000-8000-000000000000",
+      "id": "cc000030-0000-4000-8000-000000000000",
       "name": "Anything to do?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -568,7 +809,7 @@
       }
     },
     {
-      "id": "cc000021-0000-4000-8000-000000000000",
+      "id": "cc000031-0000-4000-8000-000000000000",
       "name": "Folders to prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -581,7 +822,7 @@
       }
     },
     {
-      "id": "cc000022-0000-4000-8000-000000000000",
+      "id": "cc000032-0000-4000-8000-000000000000",
       "name": "Ensure Print folder",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -603,7 +844,7 @@
       }
     },
     {
-      "id": "cc000023-0000-4000-8000-000000000000",
+      "id": "cc000033-0000-4000-8000-000000000000",
       "name": "Jobs ready",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -616,7 +857,7 @@
       }
     },
     {
-      "id": "cc000024-0000-4000-8000-000000000000",
+      "id": "cc000034-0000-4000-8000-000000000000",
       "name": "Loop over jobs",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -629,7 +870,7 @@
       }
     },
     {
-      "id": "cc000025-0000-4000-8000-000000000000",
+      "id": "cc000035-0000-4000-8000-000000000000",
       "name": "Heartbeat (refresh lock)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -652,7 +893,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000026-0000-4000-8000-000000000000",
+      "id": "cc000036-0000-4000-8000-000000000000",
       "name": "Download artwork",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -676,7 +917,7 @@
       }
     },
     {
-      "id": "cc000027-0000-4000-8000-000000000000",
+      "id": "cc000037-0000-4000-8000-000000000000",
       "name": "Create pbn job",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -743,7 +984,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000028-0000-4000-8000-000000000000",
+      "id": "cc000038-0000-4000-8000-000000000000",
       "name": "Job accepted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -776,7 +1017,7 @@
       }
     },
     {
-      "id": "cc000029-0000-4000-8000-000000000000",
+      "id": "cc000039-0000-4000-8000-000000000000",
       "name": "Wait for pbn job",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -797,7 +1038,7 @@
       "webhookId": "9a91f456-a1de-4a78-9791-1af5a8aad073"
     },
     {
-      "id": "cc000030-0000-4000-8000-000000000000",
+      "id": "cc000040-0000-4000-8000-000000000000",
       "name": "Files to save",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -806,11 +1047,11 @@
         0
       ],
       "parameters": {
-        "jsCode": "// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)\nconst task = $('Loop over jobs').first().json;\nconst result = ($json.body && $json.body.status === \"completed\" && $json.body.result) || null;\nif (!result) return [{ json: { skip: true, reason: ($json.body && ($json.body.error || $json.body.status)) || \"no answer from the pbn API within 30 minutes\" } }];\nconst url = (name) => (result.files.find((f) => f.name === name) || {}).url;\nconst label = (result.canvas && result.canvas.label) || task.size;\nconst files = [];\nif (task.needSvg) {\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    files.push({ url: url(\"blank.svg\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_blank.svg\", parent: task.printFolderId, mimeType: \"image/svg+xml\" });\n}\nif (task.needPdf) {\n    files.push({ url: url(\"painting.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_catalog.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needUser) {\n    files.push({ url: url(\"template.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_user.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needMockup) {\n    files.push({ url: url(\"mockup.png\"), name: task.stamp + \"_mockup.png\", parent: task.folderId, mimeType: \"image/png\" });\n}\nconst ready = files.filter((f) => f.url);\nif (ready.length !== files.length) return [{ json: { skip: true, reason: \"the pbn API result is missing a file\" } }];\nreturn ready.map((f) => ({ json: f }));"
+        "jsCode": "// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)\nconst task = $('Loop over jobs').first().json;\nconst result = ($json.body && $json.body.status === \"completed\" && $json.body.result) || null;\nif (!result) return [{ json: { skip: true, folder: task.folder, job: task.size + \" \" + task.colors + \" colors\", reason: ($json.body && ($json.body.error || $json.body.status)) || \"no answer from the pbn API within 30 minutes\" } }];\nconst url = (name) => (result.files.find((f) => f.name === name) || {}).url;\nconst label = (result.canvas && result.canvas.label) || task.size;\nconst files = [];\nif (task.needSvg) {\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    files.push({ url: url(\"blank.svg\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_blank.svg\", parent: task.printFolderId, mimeType: \"image/svg+xml\" });\n}\nif (task.needPdf) {\n    files.push({ url: url(\"painting.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_catalog.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needUser) {\n    files.push({ url: url(\"template.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_user.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needMockup) {\n    files.push({ url: url(\"mockup.png\"), name: task.stamp + \"_mockup.png\", parent: task.folderId, mimeType: \"image/png\" });\n}\nconst ready = files.filter((f) => f.url);\nif (ready.length !== files.length) return [{ json: { skip: true, folder: task.folder, job: task.size + \" \" + task.colors + \" colors\", reason: \"the pbn API result is missing a file\" } }];\nreturn ready.map((f) => ({ json: f }));"
       }
     },
     {
-      "id": "cc000031-0000-4000-8000-000000000000",
+      "id": "cc000041-0000-4000-8000-000000000000",
       "name": "Job done?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -843,7 +1084,7 @@
       }
     },
     {
-      "id": "cc000032-0000-4000-8000-000000000000",
+      "id": "cc000042-0000-4000-8000-000000000000",
       "name": "Download file",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -868,7 +1109,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000033-0000-4000-8000-000000000000",
+      "id": "cc000043-0000-4000-8000-000000000000",
       "name": "Save to Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -894,7 +1135,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000034-0000-4000-8000-000000000000",
+      "id": "cc000044-0000-4000-8000-000000000000",
       "name": "Run summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -903,11 +1144,11 @@
         -220
       ],
       "parameters": {
-        "jsCode": "// Files saved in this run (failed jobs are retried by the next run)\nconst saved = $input.all().filter((item) => item.json.id && item.json.name).map((item) => item.json.name);\nreturn [{ json: { saved: saved.length, files: saved } }];"
+        "jsCode": "// Files saved in this run, and the jobs that failed (retried by the next run)\nconst items = $input.all().map((item) => item.json);\nconst saved = items.filter((j) => j.id && j.name).map((j) => j.name);\nconst failed = items.filter((j) => j.skip).map((j) => ({ folder: j.folder || \"\", job: j.job || \"\", reason: j.reason || \"\" }));\n// a job the pbn API did not accept, or a file Drive refused, comes back as an error item\nconst errors = items.filter((j) => !j.skip && !(j.id && j.name)).map((j) => (j.error && (j.error.message || j.error)) || \"pbn job not accepted\");\nreturn [{ json: { saved: saved.length, files: saved, failed, errors } }];"
       }
     },
     {
-      "id": "cc000035-0000-4000-8000-000000000000",
+      "id": "cc000045-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -916,11 +1157,230 @@
         -220
       ],
       "parameters": {
-        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst saved = $('Run summary').isExecuted ? $('Run summary').first().json.saved : 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, saved } }));"
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst featured = $('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0;\nconst saved = ($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + featured;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, saved } }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000046-0000-4000-8000-000000000000",
+      "name": "Find print report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        -420
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_print-report.json' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
       }
     },
     {
-      "id": "cc000036-0000-4000-8000-000000000000",
+      "id": "cc000047-0000-4000-8000-000000000000",
+      "name": "Print report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "// This run's successful generations, added to the tally; sent once when a run finds nothing left to do\nconst settings = $('Settings').first().json;\nconst file = ($input.first().json.files || [])[0] || null;\nlet tally = { folders: {}, since: $now.toISO() };\ntry { if (file && file.description) tally = JSON.parse(file.description); } catch (e) {}\nconst stampToFolder = {};\nif ($('Plan jobs').isExecuted) for (const item of $('Plan jobs').all()) if (!item.json.none) stampToFolder[item.json.stamp] = item.json.folder;\nconst add = (folder, kind) => { const f = (tally.folders[folder] = tally.folders[folder] || {}); f[kind] = (f[kind] || 0) + 1; };\nlet made = 0;\nconst files = $('Run summary').isExecuted ? $('Run summary').first().json.files || [] : [];\nfor (const name of files) {\n    const kind = name.endsWith(\"_blank.svg\") ? \"blank SVG\" : name.endsWith(\"_catalog.pdf\") ? \"catalog PDF\" : name.endsWith(\"_user.pdf\") ? \"user PDF\" : name.endsWith(\"_mockup.png\") ? \"mockup\" : \"file\";\n    add(stampToFolder[name.slice(0, 19)] || name.slice(0, 19), kind);\n    made++;\n}\nif ($('Save featured image').isExecuted) {\n    const todo = $('Featured to make').all().map((item) => item.json);\n    for (const item of $('Save featured image').all()) {\n        if (!item.json.id) continue;\n        add((todo.find((t) => t.name === item.json.name) || {}).folder || item.json.name, \"featured image\");\n        made++;\n    }\n}\nconst telegram = String(settings.telegramChatId || \"\").trim() !== \"\";\nif (made) return [{ json: { action: \"save\", reportId: file ? file.id : \"\", description: JSON.stringify(tally) } }];\nconst folders = Object.keys(tally.folders);\nif (!file || !folders.length) return [{ json: { action: \"none\" } }];\nif (!telegram) return [{ json: { action: \"drop\", reportId: file.id } }];\nconst lines = [\"Print Agent: finished, \" + folders.length + \" folder\" + (folders.length === 1 ? \"\" : \"s\") + \" done\"];\nlet ready = 0;\nfor (const folder of folders.sort()) {\n    const kinds = tally.folders[folder];\n    const parts = [];\n    for (const kind of [\"blank SVG\", \"catalog PDF\", \"user PDF\", \"file\"]) if (kinds[kind]) parts.push(kinds[kind] + \" \" + kind);\n    if (kinds[\"mockup\"]) parts.push(\"mockup\");\n    if (kinds[\"featured image\"]) parts.push(\"featured image\");\n    if (kinds[\"mockup\"]) ready++;\n    lines.push(\"- \" + folder + \": \" + parts.join(\", \"));\n}\nif (ready) lines.push(\"\", ready + \" folder\" + (ready === 1 ? \"\" : \"s\") + \" ready for the Shopify draft.\");\nreturn [{ json: { action: \"send\", reportId: file.id, text: lines.join(\"\\n\").slice(0, 4000) } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000048-0000-4000-8000-000000000000",
+      "name": "Save the tally?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5060,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Savethetally",
+              "leftValue": "={{ $json.action === 'save' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000049-0000-4000-8000-000000000000",
+      "name": "Store print report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5280,
+        -500
+      ],
+      "parameters": {
+        "method": "={{ $json.reportId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.reportId ? '/' + $json.reportId : '') + '?supportsAllDrives=true&fields=id' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.reportId ? { description: $json.description } : { name: '_print-report.json', mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000050-0000-4000-8000-000000000000",
+      "name": "Send the report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        -340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Sendthereport",
+              "leftValue": "={{ $json.action === 'send' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000051-0000-4000-8000-000000000000",
+      "name": "Telegram: print report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5500,
+        -400
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000052-0000-4000-8000-000000000000",
+      "name": "Drop the tally?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        -260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Dropthetally",
+              "leftValue": "={{ $json.action === 'drop' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000053-0000-4000-8000-000000000000",
+      "name": "Drop print report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5720,
+        -340
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Print report').first().json.reportId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000054-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -940,7 +1400,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000037-0000-4000-8000-000000000000",
+      "id": "cc000055-0000-4000-8000-000000000000",
       "name": "More to do?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -954,7 +1414,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000038-0000-4000-8000-000000000000",
+      "id": "cc000056-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -987,7 +1447,7 @@
       }
     },
     {
-      "id": "cc000039-0000-4000-8000-000000000000",
+      "id": "cc000057-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1011,7 +1471,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000040-0000-4000-8000-000000000000",
+      "id": "cc000058-0000-4000-8000-000000000000",
       "name": "Run Shopify Uploader",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1113,7 +1573,7 @@
         ],
         [
           {
-            "node": "Busy: another run is working",
+            "node": "Busy: try again?",
             "type": "main",
             "index": 0
           }
@@ -1171,6 +1631,57 @@
         ]
       ]
     },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "List Artwork Agent folders": {
       "main": [
         [
@@ -1219,6 +1730,97 @@
       "main": [
         [
           {
+            "node": "Featured to make",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Featured to make": {
+      "main": [
+        [
+          {
+            "node": "Featured to make?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Featured to make?": {
+      "main": [
+        [
+          {
+            "node": "Artwork for featured",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artwork for featured": {
+      "main": [
+        [
+          {
+            "node": "Make featured image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make featured image": {
+      "main": [
+        [
+          {
+            "node": "Featured files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Featured files": {
+      "main": [
+        [
+          {
+            "node": "Any featured image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any featured image?": {
+      "main": [
+        [
+          {
+            "node": "Save featured image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plan jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save featured image": {
+      "main": [
+        [
+          {
             "node": "Plan jobs",
             "type": "main",
             "index": 0
@@ -1248,7 +1850,7 @@
         ],
         [
           {
-            "node": "Locks to delete",
+            "node": "Find print report",
             "type": "main",
             "index": 0
           }
@@ -1423,6 +2025,115 @@
       "main": [
         [
           {
+            "node": "Find print report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find print report": {
+      "main": [
+        [
+          {
+            "node": "Print report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Print report": {
+      "main": [
+        [
+          {
+            "node": "Save the tally?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save the tally?": {
+      "main": [
+        [
+          {
+            "node": "Store print report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send the report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store print report": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send the report?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: print report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drop the tally?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: print report": {
+      "main": [
+        [
+          {
+            "node": "Drop print report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop the tally?": {
+      "main": [
+        [
+          {
+            "node": "Drop print report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop print report": {
+      "main": [
+        [
+          {
             "node": "Locks to delete",
             "type": "main",
             "index": 0
@@ -1482,7 +2193,8 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Africa/Casablanca"
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1"
   },
   "pinData": {}
 }

@@ -115,7 +115,8 @@
           ]
         },
         "options": {}
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "bb000005-0000-4000-8000-000000000000",
@@ -141,6 +142,298 @@
     },
     {
       "id": "bb000006-0000-4000-8000-000000000000",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        -420
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_titling-agent.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "bb000007-0000-4000-8000-000000000000",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "// Another run holds a fresh lock (refreshed less than 15 min ago)\nconst limit = Date.now() - 15 * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      }
+    },
+    {
+      "id": "bb000008-0000-4000-8000-000000000000",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bb000009-0000-4000-8000-000000000000",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -500
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_titling-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "bb000010-0000-4000-8000-000000000000",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -500
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_titling-agent.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "bb000011-0000-4000-8000-000000000000",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -500
+      ],
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst limit = Date.now() - 15 * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      }
+    },
+    {
+      "id": "bb000012-0000-4000-8000-000000000000",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bb000013-0000-4000-8000-000000000000",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -360
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000014-0000-4000-8000-000000000000",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -240
+      ],
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      }
+    },
+    {
+      "id": "bb000015-0000-4000-8000-000000000000",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bb000016-0000-4000-8000-000000000000",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -140
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "bb000017-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        -300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "bb000018-0000-4000-8000-000000000000",
       "name": "Themes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -153,7 +446,7 @@
       }
     },
     {
-      "id": "bb000007-0000-4000-8000-000000000000",
+      "id": "bb000019-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -196,7 +489,7 @@
       }
     },
     {
-      "id": "bb000008-0000-4000-8000-000000000000",
+      "id": "bb000020-0000-4000-8000-000000000000",
       "name": "Folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -205,11 +498,11 @@
         100
       ],
       "parameters": {
-        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
       }
     },
     {
-      "id": "bb000009-0000-4000-8000-000000000000",
+      "id": "bb000021-0000-4000-8000-000000000000",
       "name": "List folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -226,7 +519,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $json.id }}' in parents and trashed = false"
+              "value": "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}"
             },
             {
               "name": "fields",
@@ -252,7 +545,7 @@
       }
     },
     {
-      "id": "bb000010-0000-4000-8000-000000000000",
+      "id": "bb000022-0000-4000-8000-000000000000",
       "name": "Pending folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -261,11 +554,45 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const productName = stamp + \"_product.json\";\n    if (files.some((f) => f.name === productName)) return;\n    const ref = files.find((f) => f.name.startsWith(stamp + \"_ref.\"));\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : \"\", productName } });\n});\nreturn pending.slice(0, Number(settings.maxPerRun) || 20);"
+        "jsCode": "// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const productName = stamp + \"_product.json\";\n    if (files.some((f) => f.name === productName)) return;\n    const ref = files.find((f) => f.name.startsWith(stamp + \"_ref.\"));\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : \"\", productName } });\n});\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 20);\nreturn todo.length ? todo : [{ json: { none: true } }];"
       }
     },
     {
-      "id": "bb000011-0000-4000-8000-000000000000",
+      "id": "bb000023-0000-4000-8000-000000000000",
+      "name": "Folders to title?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "folderstotitle",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "bb000024-0000-4000-8000-000000000000",
       "name": "Loop over folders",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -278,7 +605,31 @@
       }
     },
     {
-      "id": "bb000012-0000-4000-8000-000000000000",
+      "id": "bb000025-0000-4000-8000-000000000000",
+      "name": "Heartbeat (refresh lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1870,
+        360
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "id": "bb000026-0000-4000-8000-000000000000",
       "name": "Download artwork",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -287,7 +638,7 @@
         200
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.artworkId }}?alt=media&supportsAllDrives=true",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.artworkId }}?alt=media&supportsAllDrives=true",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
@@ -302,7 +653,7 @@
       }
     },
     {
-      "id": "bb000013-0000-4000-8000-000000000000",
+      "id": "bb000027-0000-4000-8000-000000000000",
       "name": "Titling agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -321,7 +672,7 @@
       }
     },
     {
-      "id": "bb000014-0000-4000-8000-000000000000",
+      "id": "bb000028-0000-4000-8000-000000000000",
       "name": "Titling model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -339,7 +690,7 @@
       }
     },
     {
-      "id": "bb000015-0000-4000-8000-000000000000",
+      "id": "bb000029-0000-4000-8000-000000000000",
       "name": "Listing format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -353,7 +704,7 @@
       }
     },
     {
-      "id": "bb000016-0000-4000-8000-000000000000",
+      "id": "bb000030-0000-4000-8000-000000000000",
       "name": "Build product JSON",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -366,7 +717,7 @@
       }
     },
     {
-      "id": "bb000017-0000-4000-8000-000000000000",
+      "id": "bb000031-0000-4000-8000-000000000000",
       "name": "Save product JSON",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -391,7 +742,7 @@
       }
     },
     {
-      "id": "bb000018-0000-4000-8000-000000000000",
+      "id": "bb000032-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -402,6 +753,98 @@
       "parameters": {
         "jsCode": "// What this run produced (visible in the execution log)\nconst saved = $input.all().map((item) => item.json.name).filter(Boolean);\nreturn [{ json: { saved: saved.length, files: saved } }];"
       }
+    },
+    {
+      "id": "bb000033-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -420
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Summary').isExecuted && $('Summary').first().json.saved > 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "bb000034-0000-4000-8000-000000000000",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        -420
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000035-0000-4000-8000-000000000000",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "bb000036-0000-4000-8000-000000000000",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        -500
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -438,11 +881,153 @@
         ]
       ]
     },
-    "Settings": {
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
       "main": [
         [
           {
             "node": "Shopify collections",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
             "type": "main",
             "index": 0
           }
@@ -508,7 +1093,25 @@
       "main": [
         [
           {
+            "node": "Folders to title?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Folders to title?": {
+      "main": [
+        [
+          {
             "node": "Loop over folders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
             "type": "main",
             "index": 0
           }
@@ -524,6 +1127,17 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Heartbeat (refresh lock)": {
+      "main": [
         [
           {
             "node": "Download artwork",
@@ -598,11 +1212,56 @@
           }
         ]
       ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Africa/Casablanca"
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1"
   },
   "pinData": {}
 }

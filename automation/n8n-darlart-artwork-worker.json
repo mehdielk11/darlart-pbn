@@ -16,37 +16,17 @@
     },
     {
       "id": "ab000002-0000-4000-8000-000000000000",
-      "name": "Every hour",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        200
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 1
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "ab000003-0000-4000-8000-000000000000",
       "name": "Run now",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
         0,
-        400
+        200
       ],
       "parameters": {}
     },
     {
-      "id": "ab000004-0000-4000-8000-000000000000",
+      "id": "ab000003-0000-4000-8000-000000000000",
       "name": "Settings",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -161,6 +141,12 @@
             },
             {
               "id": "set17",
+              "name": "telegramChatId",
+              "value": "-5252292447",
+              "type": "string"
+            },
+            {
+              "id": "set18",
               "name": "timezone",
               "value": "Africa/Casablanca",
               "type": "string"
@@ -172,7 +158,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000005-0000-4000-8000-000000000000",
+      "id": "ab000004-0000-4000-8000-000000000000",
       "name": "List locks",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -215,7 +201,7 @@
       }
     },
     {
-      "id": "ab000006-0000-4000-8000-000000000000",
+      "id": "ab000005-0000-4000-8000-000000000000",
       "name": "Lock state",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -228,7 +214,7 @@
       }
     },
     {
-      "id": "ab000007-0000-4000-8000-000000000000",
+      "id": "ab000006-0000-4000-8000-000000000000",
       "name": "Lock free?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -261,18 +247,18 @@
       }
     },
     {
-      "id": "ab000008-0000-4000-8000-000000000000",
+      "id": "ab000007-0000-4000-8000-000000000000",
       "name": "Busy: another run is working",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1100,
+        1760,
         360
       ],
       "parameters": {}
     },
     {
-      "id": "ab000009-0000-4000-8000-000000000000",
+      "id": "ab000008-0000-4000-8000-000000000000",
       "name": "Create lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -294,7 +280,7 @@
       }
     },
     {
-      "id": "ab000010-0000-4000-8000-000000000000",
+      "id": "ab000009-0000-4000-8000-000000000000",
       "name": "List locks again",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -337,7 +323,7 @@
       }
     },
     {
-      "id": "ab000011-0000-4000-8000-000000000000",
+      "id": "ab000010-0000-4000-8000-000000000000",
       "name": "Won the lock?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -350,7 +336,7 @@
       }
     },
     {
-      "id": "ab000012-0000-4000-8000-000000000000",
+      "id": "ab000011-0000-4000-8000-000000000000",
       "name": "Lock won?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -383,7 +369,7 @@
       }
     },
     {
-      "id": "ab000013-0000-4000-8000-000000000000",
+      "id": "ab000012-0000-4000-8000-000000000000",
       "name": "Step back (drop my lock)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -403,7 +389,68 @@
       "onError": "continueRegularOutput"
     },
     {
+      "id": "ab000013-0000-4000-8000-000000000000",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        440
+      ],
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      }
+    },
+    {
       "id": "ab000014-0000-4000-8000-000000000000",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        440
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000015-0000-4000-8000-000000000000",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        520
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "ab000016-0000-4000-8000-000000000000",
       "name": "List queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -446,7 +493,7 @@
       }
     },
     {
-      "id": "ab000015-0000-4000-8000-000000000000",
+      "id": "ab000017-0000-4000-8000-000000000000",
       "name": "Next reference",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -459,7 +506,7 @@
       }
     },
     {
-      "id": "ab000016-0000-4000-8000-000000000000",
+      "id": "ab000018-0000-4000-8000-000000000000",
       "name": "Anything queued?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -492,7 +539,7 @@
       }
     },
     {
-      "id": "ab000017-0000-4000-8000-000000000000",
+      "id": "ab000019-0000-4000-8000-000000000000",
       "name": "Has manifest?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -525,7 +572,7 @@
       }
     },
     {
-      "id": "ab000018-0000-4000-8000-000000000000",
+      "id": "ab000020-0000-4000-8000-000000000000",
       "name": "Download manifest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -548,7 +595,7 @@
       }
     },
     {
-      "id": "ab000019-0000-4000-8000-000000000000",
+      "id": "ab000021-0000-4000-8000-000000000000",
       "name": "Start attempt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -561,7 +608,7 @@
       }
     },
     {
-      "id": "ab000020-0000-4000-8000-000000000000",
+      "id": "ab000022-0000-4000-8000-000000000000",
       "name": "Record the try?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -594,7 +641,7 @@
       }
     },
     {
-      "id": "ab000021-0000-4000-8000-000000000000",
+      "id": "ab000023-0000-4000-8000-000000000000",
       "name": "Save manifest (try)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -616,7 +663,7 @@
       }
     },
     {
-      "id": "ab000022-0000-4000-8000-000000000000",
+      "id": "ab000024-0000-4000-8000-000000000000",
       "name": "Tries left?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -649,7 +696,7 @@
       }
     },
     {
-      "id": "ab000023-0000-4000-8000-000000000000",
+      "id": "ab000025-0000-4000-8000-000000000000",
       "name": "Download reference",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -673,7 +720,7 @@
       }
     },
     {
-      "id": "ab000024-0000-4000-8000-000000000000",
+      "id": "ab000026-0000-4000-8000-000000000000",
       "name": "Result: stopped too often",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -686,7 +733,7 @@
       }
     },
     {
-      "id": "ab000025-0000-4000-8000-000000000000",
+      "id": "ab000027-0000-4000-8000-000000000000",
       "name": "Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -699,7 +746,7 @@
       }
     },
     {
-      "id": "ab000026-0000-4000-8000-000000000000",
+      "id": "ab000028-0000-4000-8000-000000000000",
       "name": "Build image prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -712,7 +759,7 @@
       }
     },
     {
-      "id": "ab000027-0000-4000-8000-000000000000",
+      "id": "ab000029-0000-4000-8000-000000000000",
       "name": "Generate ART",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -766,7 +813,7 @@
       }
     },
     {
-      "id": "ab000028-0000-4000-8000-000000000000",
+      "id": "ab000030-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -785,7 +832,7 @@
       }
     },
     {
-      "id": "ab000029-0000-4000-8000-000000000000",
+      "id": "ab000031-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -804,7 +851,7 @@
       }
     },
     {
-      "id": "ab000030-0000-4000-8000-000000000000",
+      "id": "ab000032-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -822,7 +869,7 @@
       }
     },
     {
-      "id": "ab000031-0000-4000-8000-000000000000",
+      "id": "ab000033-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -836,7 +883,7 @@
       }
     },
     {
-      "id": "ab000032-0000-4000-8000-000000000000",
+      "id": "ab000034-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -869,7 +916,7 @@
       }
     },
     {
-      "id": "ab000033-0000-4000-8000-000000000000",
+      "id": "ab000035-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -882,7 +929,7 @@
       }
     },
     {
-      "id": "ab000034-0000-4000-8000-000000000000",
+      "id": "ab000036-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -915,7 +962,7 @@
       }
     },
     {
-      "id": "ab000035-0000-4000-8000-000000000000",
+      "id": "ab000037-0000-4000-8000-000000000000",
       "name": "Result: not painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -928,7 +975,7 @@
       }
     },
     {
-      "id": "ab000036-0000-4000-8000-000000000000",
+      "id": "ab000038-0000-4000-8000-000000000000",
       "name": "Approved artwork",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -941,7 +988,7 @@
       }
     },
     {
-      "id": "ab000037-0000-4000-8000-000000000000",
+      "id": "ab000039-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -995,7 +1042,7 @@
       }
     },
     {
-      "id": "ab000038-0000-4000-8000-000000000000",
+      "id": "ab000040-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1008,7 +1055,7 @@
       }
     },
     {
-      "id": "ab000039-0000-4000-8000-000000000000",
+      "id": "ab000041-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -1027,7 +1074,7 @@
       }
     },
     {
-      "id": "ab000040-0000-4000-8000-000000000000",
+      "id": "ab000042-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1070,7 +1117,7 @@
       }
     },
     {
-      "id": "ab000041-0000-4000-8000-000000000000",
+      "id": "ab000043-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1083,7 +1130,7 @@
       }
     },
     {
-      "id": "ab000042-0000-4000-8000-000000000000",
+      "id": "ab000044-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1108,7 +1155,7 @@
       }
     },
     {
-      "id": "ab000043-0000-4000-8000-000000000000",
+      "id": "ab000045-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1121,7 +1168,7 @@
       }
     },
     {
-      "id": "ab000044-0000-4000-8000-000000000000",
+      "id": "ab000046-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1146,7 +1193,7 @@
       }
     },
     {
-      "id": "ab000045-0000-4000-8000-000000000000",
+      "id": "ab000047-0000-4000-8000-000000000000",
       "name": "Run Titling Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1170,7 +1217,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000046-0000-4000-8000-000000000000",
+      "id": "ab000048-0000-4000-8000-000000000000",
       "name": "Run Print Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1194,7 +1241,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000047-0000-4000-8000-000000000000",
+      "id": "ab000049-0000-4000-8000-000000000000",
       "name": "Result: painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1208,7 +1255,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000048-0000-4000-8000-000000000000",
+      "id": "ab000050-0000-4000-8000-000000000000",
       "name": "Update entry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1217,11 +1264,129 @@
         0
       ],
       "parameters": {
-        "jsCode": "// The manifest records what became of the reference; the batch is painted once nothing of it is queued\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst result = $input.first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst now = $now.setZone(settings.timezone).toISO();\nlet painted = false;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || \"\", folder: result.folder || \"\", folderId: result.folderId || \"\", finishedAt: now });\n    painted = manifest.files.every((e) => e.status !== \"queued\");\n    if (painted) Object.assign(manifest, { paintedAt: now, notified: false });\n}\n// a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is\nconst move = result.status === \"done\"\n    ? { to: settings.refFolderId, name: result.referenceName }\n    : { to: settings.failedFolderId, name: next.queueName };\nconst out = { json: { status: result.status, folder: result.folder || \"\", painted, hasManifest: !!manifest, move } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
+        "jsCode": "// The manifest records what became of the reference; the batch is painted once nothing of it is queued\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst result = $input.first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst now = $now.setZone(settings.timezone).toISO();\nlet painted = false;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || \"\", folder: result.folder || \"\", folderId: result.folderId || \"\", finishedAt: now });\n    painted = manifest.files.every((e) => e.status !== \"queued\");\n    if (painted) Object.assign(manifest, { paintedAt: now, notified: false });\n}\n// a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is\nconst move = result.status === \"done\"\n    ? { to: settings.refFolderId, name: result.referenceName }\n    : { to: settings.failedFolderId, name: next.queueName };\nconst out = { json: { status: result.status, folder: result.folder || \"\", painted, hasManifest: !!manifest, move, manifest } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
       }
     },
     {
-      "id": "ab000049-0000-4000-8000-000000000000",
+      "id": "ab000051-0000-4000-8000-000000000000",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8020,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000052-0000-4000-8000-000000000000",
+      "name": "Artwork message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8240,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// The artwork (a photo with its product number) or, when it could not be painted, the reason\nconst next = $('Next reference').first().json;\nconst entryResult = $('Update entry').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst originalName = $('Start attempt').first().json.originalName;\nlet position = \"\";\nif (manifest && Array.isArray(manifest.files)) {\n    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);\n    if (i >= 0) position = \", \" + (i + 1) + \" of \" + manifest.files.length;\n}\nconst from = \"From: \" + originalName + \" (batch \" + next.batchId + position + \")\";\nif (entryResult.status === \"done\") {\n    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n    const colors = $('Check palette').first().json.paletteJson.colorCount;\n    const caption = [\n        \"Artwork \" + folder.name + \" painted, \" + colors + \" Darl'Art colors\",\n        from,\n        \"Next: product texts, print files and mockup, then the Shopify draft.\",\n        \"https://drive.google.com/drive/folders/\" + folder.id,\n    ].join(\"\\n\");\n    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];\n}\nconst reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : \"\";\nreturn [{ json: { painted: false, text: [\"Not painted: \" + originalName, from, \"Reason: \" + reason, \"The reference is in Artwork Ref/Failed.\"].join(\"\\n\") } }];"
+      }
+    },
+    {
+      "id": "ab000053-0000-4000-8000-000000000000",
+      "name": "Painted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8460,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Painted",
+              "leftValue": "={{ $json.painted }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000054-0000-4000-8000-000000000000",
+      "name": "Telegram: artwork",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        8680,
+        280
+      ],
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "={{ $json.caption }}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000055-0000-4000-8000-000000000000",
+      "name": "Telegram: not painted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        8680,
+        440
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000056-0000-4000-8000-000000000000",
       "name": "Record the result?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1254,7 +1419,7 @@
       }
     },
     {
-      "id": "ab000050-0000-4000-8000-000000000000",
+      "id": "ab000057-0000-4000-8000-000000000000",
       "name": "Save manifest (result)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1276,7 +1441,7 @@
       }
     },
     {
-      "id": "ab000051-0000-4000-8000-000000000000",
+      "id": "ab000058-0000-4000-8000-000000000000",
       "name": "Move reference out of the queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1298,7 +1463,7 @@
       }
     },
     {
-      "id": "ab000052-0000-4000-8000-000000000000",
+      "id": "ab000059-0000-4000-8000-000000000000",
       "name": "Batch painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1331,7 +1496,7 @@
       }
     },
     {
-      "id": "ab000053-0000-4000-8000-000000000000",
+      "id": "ab000060-0000-4000-8000-000000000000",
       "name": "Move manifest to Done",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1353,7 +1518,72 @@
       }
     },
     {
-      "id": "ab000054-0000-4000-8000-000000000000",
+      "id": "ab000061-0000-4000-8000-000000000000",
+      "name": "Telegram on? (batch)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8900,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramonbatch",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000062-0000-4000-8000-000000000000",
+      "name": "Batch message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9120,
+        -240
+      ],
+      "parameters": {
+        "jsCode": "const next = $('Next reference').first().json;\nconst manifest = $('Update entry').first().json.manifest;\nconst done = manifest.files.filter((e) => e.status === \"done\");\nconst failed = manifest.files.filter((e) => e.status === \"failed\");\nconst lines = [\"Batch \" + next.batchId + \" painted: \" + done.length + \" artwork\" + (done.length === 1 ? \"\" : \"s\") + (done.length ? \" (\" + done.map((e) => e.folder).join(\", \") + \")\" : \"\")];\nif (failed.length) {\n    lines.push(\"\", failed.length + \" not painted:\");\n    for (const e of failed) lines.push(\"- \" + e.originalName + \": \" + (e.reason || \"failed\"));\n}\nif (done.length) lines.push(\"\", \"You get one more message when all their drafts are in Shopify.\");\nreturn [{ json: { text: lines.join(\"\\n\") } }];"
+      }
+    },
+    {
+      "id": "ab000063-0000-4000-8000-000000000000",
+      "name": "Telegram: batch painted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        9340,
+        -240
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000064-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1366,7 +1596,7 @@
       }
     },
     {
-      "id": "ab000055-0000-4000-8000-000000000000",
+      "id": "ab000065-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1386,7 +1616,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000056-0000-4000-8000-000000000000",
+      "id": "ab000066-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1420,7 +1650,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000057-0000-4000-8000-000000000000",
+      "id": "ab000067-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1446,17 +1676,6 @@
   ],
   "connections": {
     "When called by Artwork Agent": {
-      "main": [
-        [
-          {
-            "node": "Settings",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Every hour": {
       "main": [
         [
           {
@@ -1522,7 +1741,7 @@
         ],
         [
           {
-            "node": "Busy: another run is working",
+            "node": "Busy: try again?",
             "type": "main",
             "index": 0
           }
@@ -1574,6 +1793,57 @@
         [
           {
             "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
             "type": "main",
             "index": 0
           }
@@ -1988,7 +2258,52 @@
       "main": [
         [
           {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Record the result?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "Artwork message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artwork message": {
+      "main": [
+        [
+          {
+            "node": "Painted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Painted?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: artwork",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: not painted",
             "type": "main",
             "index": 0
           }
@@ -2042,11 +2357,38 @@
             "node": "Move manifest to Done",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Telegram on? (batch)",
+            "type": "main",
+            "index": 0
           }
         ],
         [
           {
             "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on? (batch)": {
+      "main": [
+        [
+          {
+            "node": "Batch message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch message": {
+      "main": [
+        [
+          {
+            "node": "Telegram: batch painted",
             "type": "main",
             "index": 0
           }
@@ -2100,7 +2442,8 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Africa/Casablanca"
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1"
   },
   "pinData": {}
 }

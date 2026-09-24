@@ -2,9 +2,9 @@
  * Builds automation/n8n-darlart-shopify-uploader.json, the "Shopify Uploader" n8n workflow:
  *
  *   Print Agent finished / Run now / every day -> prices Google Sheet (Drive) + Drive "Artwork Agent" folders
- *   -> folders that have a product JSON, an artwork and a mockup but no <date+time>_shopify.json yet, one by one:
- *      featured image (pbn API: the artwork on a canvas photo, saved once as <date+time>_featured.png) -> WebP copies
- *      of the featured image and the mockup (pbn API, saved once as <date+time>_<name>.webp) -> the WebP files go to
+ *   -> folders that have a product JSON, an artwork, a featured image and a mockup (both made by the Print Agent)
+ *      but no <date+time>_shopify.json yet, one by one: WebP copies of the featured image and the mockup
+ *      (pbn API, saved once as <date+time>_<name>.webp) -> the WebP files go to
  *      Shopify, never the PNGs nor the artwork itself -> draft product (texts from the product JSON, variants and
  *      prices from the sheet, images: featured, mockup, then the shared images) -> <date+time>_shopify.json
  *
@@ -13,13 +13,20 @@
  * After each run, every artwork batch (manifests in Drive "Artwork Ref/Queue/Done", written by the Artwork Worker)
  * whose drafts are all in Shopify gets one Telegram message; a batch still incomplete batchStuckHours after it was
  * painted gets one warning listing what its folders miss.
+ * One run at a time (a Drive lock in "Artwork Agent", see scripts/lib/n8n-queue-lock.js): a call that finds another
+ * run working waits and tries again, and a run that created drafts starts itself again until no folder is ready.
+ * The batch messages are checked by the same run, before it releases the lock (the workflow calls itself in
+ * "batch-messages" mode and waits), so a message is never sent twice.
  * The product's handle is the product JSON's handle plus the folder number (e.g. blue-iris-1003): a rerun updates
  * the same draft instead of creating a second one, and never touches an existing product.
  */
 const fs = require("fs");
 const path = require("path");
+const { queueLock } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
+// "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
+const ERROR_WORKFLOW_ID = "aokToPHKOa4MciN1";
 
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
@@ -108,9 +115,12 @@ node("When called by Print Agent", "n8n-nodes-base.executeWorkflowTrigger", 1.1,
 
 node("Settings", "n8n-nodes-base.set", 3.4, [220, 200], {
     assignments: {
-        assignments: Object.entries(SETTINGS).map(([name, value], i) => ({
-            id: "set" + i, name, value, type: typeof value === "number" ? "number" : "string",
-        })),
+        assignments: [
+            ...Object.entries(SETTINGS).map(([name, value], i) => ({
+                id: "set" + i, name, value, type: typeof value === "number" ? "number" : "string",
+            })),
+            { id: "setmode", name: "runMode", value: "={{ $json.mode || 'upload' }}", type: "string" },
+        ],
     },
     options: {},
 }, { executeOnce: true });
@@ -127,7 +137,20 @@ node("Find prices sheet", "n8n-nodes-base.httpRequest", 4.2, [440, 200], {
     queryParameters: { parameters: [{ name: "fields", value: "id,name,mimeType,modifiedTime,trashed" }, { name: "supportsAllDrives", value: "true" }] },
     options: { timeout: 30000 },
 });
-connect("Settings", "Find prices sheet");
+node("Batch messages only?", "n8n-nodes-base.if", 2, [330, 420], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "batchmessagesonly", leftValue: "={{ $json.runMode === 'batch-messages' }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Settings", "Batch messages only?");
+
+// ---- one run at a time ------------------------------------------------------------------------------
+const lock = queueLock({ node, connect }, { prefix: "_shopify-uploader.lock", folderExpression: "$('Settings').first().json.agentFolderId", staleMinutes: 20, x: 440, y: -760 });
+connect("Batch messages only?", "List locks", 1);
+connect("Lock won?", "Find prices sheet", 0);
 
 code("Prices file", [660, 200], `const file = $input.first().json;
 if (!file.id || file.trashed) throw new Error("The prices sheet (pricesSheetId in Settings) is missing or in the trash");
@@ -237,18 +260,20 @@ connect("Prices", "List Artwork Agent folders");
 code("Folders", [1540, 200], `// One item per numbered folder (1001, 1002...), oldest first
 const folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));
 folders.sort((a, b) => Number(a.name) - Number(b.name));
+if (!folders.length) return [{ json: { none: true } }];
 return folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));`);
 connect("List Artwork Agent folders", "Folders");
 
-driveList("List folder files", [1760, 200], "='{{ $json.id }}' in parents and trashed = false");
+driveList("List folder files", [1760, 200], "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}");
 connect("Folders", "List folder files");
 
-code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork and mockup, and no <date+time>_shopify.json yet
+code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <date+time>_shopify.json yet
 const settings = $('Settings').first().json;
 const folders = $('Folders').all();
 const pending = [];
 $input.all().forEach((item, i) => {
     const folder = folders[i].json;
+    if (folder.none) return;
     const files = item.json.files || [];
     const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));
     if (!art) return;
@@ -256,12 +281,13 @@ $input.all().forEach((item, i) => {
     const find = (suffix) => files.find((f) => f.name === stamp + suffix);
     const product = find("_product.json");
     const mockup = find("_mockup.png");
+    const featured = find("_featured.png"); // made by the Print Agent
     const markerName = stamp + "_shopify.json";
-    // the PNG made by the pbn API, and the WebP copies that go to Shopify
-    const names = { featuredPng: stamp + "_featured.png", featured: stamp + "_featured.webp", mockup: stamp + "_mockup.webp" };
+    // the WebP copies that go to Shopify
+    const names = { featured: stamp + "_featured.webp", mockup: stamp + "_mockup.webp" };
     const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));
-    if (!product || !mockup || find("_shopify.json")) return;
-    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, names, inDrive, markerName } });
+    if (!product || !mockup || !featured || find("_shopify.json")) return;
+    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName } });
 });
 const todo = pending.slice(0, Number(settings.maxPerRun) || 10);
 return todo.length ? todo : [{ json: { none: true } }];`);
@@ -280,8 +306,10 @@ node("Folders to upload?", "n8n-nodes-base.if", 2, [2090, 380], {
 connect("Pending folders", "Folders to upload?");
 connect("Folders to upload?", "Loop over folders", 0);
 
-driveDownload("Download product JSON", [2420, 300], "$json.productId", "json");
-connect("Loop over folders", "Download product JSON", 1);
+lock.heartbeat("Heartbeat (refresh lock)", [2310, 460]);
+connect("Loop over folders", "Heartbeat (refresh lock)", 1);
+driveDownload("Download product JSON", [2420, 300], "$('Loop over folders').first().json.productId", "json");
+connect("Heartbeat (refresh lock)", "Download product JSON");
 
 shopify("Stage uploads", [2640, 300], `={{ JSON.stringify({
   query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',
@@ -301,10 +329,6 @@ const target = (t) => ({ url: t.url, resourceUrl: t.resourceUrl, headers: Object
 return [{ json: { mockup: target(targets[0]), featured: target(targets[1]) } }];`);
 connect("Stage uploads", "Upload targets");
 
-// the featured image: the artwork on the canvas photo of its orientation, made by the pbn API (a PNG)
-driveDownload("Artwork for featured", [3080, 520], "$('Loop over folders').first().json.artworkId", "art");
-connect("Upload targets", "Artwork for featured");
-
 const pbnApi = (name, position, path, parameters) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
     method: "POST",
     url: "={{ $('Settings').first().json.pbnApiUrl }}" + path,
@@ -315,46 +339,16 @@ const pbnApi = (name, position, path, parameters) => node(name, "n8n-nodes-base.
     bodyParameters: { parameters },
     options: { timeout: 120000 },
 });
-pbnApi("Make featured image", [3300, 520], "/v1/featured", [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "art" }]);
-connect("Artwork for featured", "Make featured image");
 
-code("Featured file", [3520, 520], `// The API's PNG (base64) as the binary "image"
-const folder = $('Loop over folders').first().json;
-const result = $('Make featured image').first().json;
-if (!result.image) throw new Error("Folder " + folder.folder + ": the pbn API returned no featured image");
-return [{
-    json: { template: result.template, name: folder.names.featuredPng },
-    binary: { image: { data: result.image, mimeType: "image/png", fileName: folder.names.featuredPng, fileExtension: "png" } },
-}];`);
-connect("Make featured image", "Featured file");
-
-// saved next to the artwork once: a later run makes the same image again and keeps this file
-node("Featured PNG in Drive?", "n8n-nodes-base.if", 2, [3740, 700], {
-    conditions: {
-        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
-        conditions: [{ id: "featuredpngindrive", leftValue: "={{ $('Loop over folders').first().json.inDrive.featuredPng }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
-        combinator: "and",
-    },
-    options: {},
-});
-connect("Featured file", "Featured PNG in Drive?");
-node("Save featured PNG", "n8n-nodes-base.googleDrive", 3, [3960, 780], {
-    name: "={{ $('Loop over folders').first().json.names.featuredPng }}",
-    driveId: drive,
-    folderId: byId("={{ $('Loop over folders').first().json.folderId }}"),
-    inputDataFieldName: "image",
-    options: {},
-});
-connect("Featured PNG in Drive?", "Save featured PNG", 1);
-
-// ---- WebP copies: the featured image and the mockup as items, converted by the pbn API, saved once and sent to Shopify
-// (the artwork itself only makes the featured image: it is not uploaded)
-code("Source images", [3740, 520], `// The mockup PNG to download (the featured PNG is already here)
+// ---- WebP copies: the featured image (made by the Print Agent) and the mockup, converted by the pbn API, saved
+// once and sent to Shopify (the artwork itself is shown on the featured image: it is not uploaded)
+code("Source images", [3740, 520], `// The featured image and the mockup PNGs to download
 const folder = $('Loop over folders').first().json;
 return [
+    { json: { kind: "featured", fileId: folder.featuredId } },
     { json: { kind: "mockup", fileId: folder.mockupId } },
 ];`);
-connect("Featured file", "Source images");
+connect("Upload targets", "Source images");
 
 node("Download images", "n8n-nodes-base.httpRequest", 4.2, [3960, 520], {
     url: "=https://www.googleapis.com/drive/v3/files/{{ $json.fileId }}?alt=media&supportsAllDrives=true",
@@ -370,7 +364,6 @@ const downloads = $('Download images').all();
 const sources = $('Source images').all();
 const byKind = {};
 sources.forEach((source, i) => { byKind[source.json.kind] = downloads[i].binary.image; });
-byKind.featured = $('Featured file').first().binary.image;
 return ["featured", "mockup"].map((kind) => {
     if (!byKind[kind]) throw new Error("Folder " + folder.folder + ": no " + kind + " image to convert");
     return { json: { kind, name: folder.names[kind], inDrive: folder.inDrive[kind] }, binary: { image: byKind[kind] } };
@@ -607,7 +600,7 @@ const marker = {
     uploadedAt: $now.setZone("Africa/Casablanca").toISO(),
 };
 return [{
-    json: { folder: folder.folder, title: product.title, adminUrl: marker.adminUrl },
+    json: { folder: folder.folder, title: product.title, adminUrl: marker.adminUrl, variants: marker.variants, onlineStore: marker.onlineStore },
     binary: { data: { data: Buffer.from(JSON.stringify(marker, null, 2)).toString("base64"), mimeType: "application/json", fileName: folder.markerName } },
 }];`);
 // needs the write_publications scope on the Shopify credential; an error is recorded in the marker, not fatal
@@ -627,12 +620,37 @@ node("Save marker", "n8n-nodes-base.googleDrive", 3, [7260, 200], {
     options: {},
 });
 connect("Shopify marker", "Save marker");
-connect("Save marker", "Loop over folders");
+
+// the uploaded product (not the marker file) goes back to the loop, for the run's report
+code("Uploaded", [7480, 200], `const product = $('Shopify marker').first().json;
+return [{ json: { ...product, markerId: $input.first().json.id } }];`);
+connect("Save marker", "Uploaded");
+connect("Uploaded", "Loop over folders");
 
 code("Summary", [2420, 60], `// What this run uploaded (visible in the execution log)
-const saved = $input.all().map((item) => item.json.name).filter(Boolean);
-return [{ json: { uploaded: saved.length, markers: saved } }];`);
+const products = $input.all().map((item) => item.json).filter((p) => p.folder);
+return [{ json: { uploaded: products.length, products } }];`);
 connect("Loop over folders", "Summary", 0);
+
+// ---- Telegram: the drafts this run created (nothing is sent when it created none) --------------------------------
+code("Upload report", [2640, 60], `const settings = $('Settings').first().json;
+if (!String(settings.telegramChatId || "").trim()) return [];
+const products = $input.first().json.products || [];
+if (!products.length) return [];
+const lines = ["Shopify Uploader: " + products.length + " draft" + (products.length === 1 ? "" : "s") + " created"];
+for (const p of products.sort((a, b) => Number(a.folder) - Number(b.folder))) {
+    lines.push("- " + p.folder + " " + p.title + (p.variants ? ", " + p.variants + " variants" : "") + (p.onlineStore === "published" ? ", on the Online Store" : ", NOT on the Online Store (" + String(p.onlineStore || "").replace(/^not published: /, "") + ")"));
+    lines.push("  " + p.adminUrl);
+}
+lines.push("", "Review each draft and set it to Active to put it on sale.");
+return [{ json: { text: lines.join("\\n").slice(0, 4000) } }];`);
+connect("Summary", "Upload report");
+node("Telegram: upload report", "n8n-nodes-base.telegram", 1.2, [2860, 60], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ $json.text }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+}, { onError: "continueRegularOutput" });
+connect("Upload report", "Telegram: upload report");
 
 // ---- batch messages: runs after the uploads, and also when there was nothing to upload -------------------------
 node("Batch messages on?", "n8n-nodes-base.if", 2, [2640, -300], {
@@ -643,8 +661,22 @@ node("Batch messages on?", "n8n-nodes-base.if", 2, [2640, -300], {
     },
     options: {},
 }, { executeOnce: true });
-connect("Summary", "Batch messages on?");
-connect("Folders to upload?", "Batch messages on?", 1);
+connect("Batch messages only?", "Batch messages on?", 0);
+
+code("Batch messages mode", [2640, -600], `return [{ json: { mode: "batch-messages" } }];`, { executeOnce: true });
+connect("Summary", "Batch messages mode");
+connect("Folders to upload?", "Batch messages mode", 1);
+node("Check batches", "n8n-nodes-base.executeWorkflow", 1.2, [2860, -600], {
+    source: "database",
+    workflowId: { __rl: true, mode: "id", value: "={{ $workflow.id }}" },
+    mode: "once",
+    options: { waitForSubWorkflow: true },
+}, { executeOnce: true, onError: "continueRegularOutput" });
+connect("Batch messages mode", "Check batches");
+
+// ---- release the lock; a run that created drafts starts again (it stops at once when no folder is ready) ----
+lock.release([3080, -600], "$('Summary').isExecuted && $('Summary').first().json.uploaded > 0");
+connect("Check batches", "Locks to delete");
 
 driveList("List painted batches", [2860, -300], "='{{ $('Settings').first().json.batchDoneFolderId }}' in parents and name contains '_batch.json' and trashed = false");
 connect("Batch messages on?", "List painted batches", 0);
@@ -805,7 +837,7 @@ node("Rename sent batch", "n8n-nodes-base.httpRequest", 4.2, [5720, -380], {
 });
 connect("Batches to rename", "Rename sent batch");
 
-const workflow = { name: "Darl'Art Shopify Uploader", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
+const workflow = { name: "Darl'Art Shopify Uploader", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-shopify-uploader.json");
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

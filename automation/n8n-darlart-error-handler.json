@@ -1,0 +1,441 @@
+{
+  "name": "Darl'Art Error Handler",
+  "nodes": [
+    {
+      "id": "ee000001-0000-4000-8000-000000000000",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ee000002-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "telegramChatId",
+              "value": "-5252292447",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ee000003-0000-4000-8000-000000000000",
+      "name": "Error details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// What failed, where, and the run's execution id (its lock is named <prefix>-<execution id>)\nconst e = $('Error Trigger').first().json;\nconst execution = e.execution || {};\nconst workflow = e.workflow || {};\nconst triggerError = (e.trigger && e.trigger.error) || null;\nreturn [{ json: {\n    executionId: execution.id ? String(execution.id) : \"\",\n    workflowId: String(workflow.id || \"\"),\n    workflowName: workflow.name || \"A workflow\",\n    step: execution.lastNodeExecuted || (triggerError && triggerError.node && triggerError.node.name) || \"\",\n    message: (execution.error && execution.error.message) || (triggerError && triggerError.message) || \"unknown error\",\n    url: execution.url || \"\",\n} }];"
+      }
+    },
+    {
+      "id": "ee000004-0000-4000-8000-000000000000",
+      "name": "Find locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock') and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ee000005-0000-4000-8000-000000000000",
+      "name": "Locks of the run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Only the failed run's own lock: its name ends with \"-<execution id>\"\nconst id = $('Error details').first().json.executionId;\nconst locks = id ? ($input.first().json.files || []).filter((f) => f.name.endsWith(\"-\" + id)) : [];\nreturn locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "ee000006-0000-4000-8000-000000000000",
+      "name": "Any lock?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anylock",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ee000007-0000-4000-8000-000000000000",
+      "name": "Delete the run's lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -80
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ee000008-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1210,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return $('Locks of the run').all().filter((item) => !item.json.none).map((item) => ({ json: item.json }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ee000009-0000-4000-8000-000000000000",
+      "name": "Next steps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// What happens now, for the alert; the worker is started again only after a failure past its recorded try\nconst d = $('Error details').first().json;\nconst W = {\"worker\":\"dO8EdyDM4ua2hRrA\",\"form\":\"SLFvTtBEdGfSbgGu\",\"titling\":\"tOSHbCt7hJ6ORh8a\",\"print\":\"ytxV3m341mDLCdt4\",\"uploader\":\"XAwk67SiWmvVSu1d\"};\nconst beforeTry = [\"Settings\",\"List locks\",\"Lock state\",\"Lock free?\",\"Create lock\",\"List locks again\",\"Won the lock?\",\"Lock won?\",\"Step back (drop my lock)\",\"Busy: try again?\",\"Retry?\",\"Wait before retry\",\"List queue\",\"Next reference\",\"Anything queued?\",\"Has manifest?\",\"Download manifest\",\"Start attempt\",\"Record the try?\",\"Save manifest (try)\"];\nconst released = $('Locks to delete').isExecuted ? $('Locks to delete').all().length : 0;\nlet next = \"\";\nlet restartWorker = false;\nif (d.workflowId === W.worker) {\n    if (d.step && !beforeTry.includes(d.step)) {\n        restartWorker = true;\n        next = \"The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.\";\n    } else {\n        next = \"The worker stopped before painting: fix the cause, then click Run now in the Artwork Worker (the queue is kept).\";\n    }\n} else if (d.workflowId === W.print) next = \"The next run (after the next artwork, or daily at 04:00) retries the unfinished folders.\";\nelse if (d.workflowId === W.titling) next = \"The next run (after the next artwork, or daily at 03:00) retries the folders without product texts.\";\nelse if (d.workflowId === W.uploader) next = \"The next run (after the next Print Agent run, or daily at 05:00) retries this folder.\";\nelse if (d.workflowId === W.form) next = \"This upload may not be queued: check Artwork Ref/Queue, and send the images again if they are missing.\";\nconst lines = [\n    \"Workflow failed: \" + d.workflowName,\n    d.step ? \"Step: \" + d.step : \"\",\n    \"Error: \" + String(d.message).slice(0, 600),\n    released ? \"Its queue lock was released, so the next runs are not blocked.\" : \"\",\n    next,\n    d.url,\n].filter(Boolean);\nreturn [{ json: { restartWorker, text: lines.join(\"\\n\") } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ee000010-0000-4000-8000-000000000000",
+      "name": "Restart the worker?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Restarttheworker",
+              "leftValue": "={{ $json.restartWorker }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ee000011-0000-4000-8000-000000000000",
+      "name": "Start the worker",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        -80
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "dO8EdyDM4ua2hRrA"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ee000012-0000-4000-8000-000000000000",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ee000013-0000-4000-8000-000000000000",
+      "name": "Telegram: failure alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1980,
+        120
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $('Next steps').first().json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Error details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error details": {
+      "main": [
+        [
+          {
+            "node": "Find locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find locks": {
+      "main": [
+        [
+          {
+            "node": "Locks of the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks of the run": {
+      "main": [
+        [
+          {
+            "node": "Any lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any lock?": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Next steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Delete the run's lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete the run's lock": {
+      "main": [
+        [
+          {
+            "node": "Next steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next steps": {
+      "main": [
+        [
+          {
+            "node": "Restart the worker?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restart the worker?": {
+      "main": [
+        [
+          {
+            "node": "Start the worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: failure alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca"
+  },
+  "pinData": {}
+}

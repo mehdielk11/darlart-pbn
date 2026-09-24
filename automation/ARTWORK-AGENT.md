@@ -10,7 +10,7 @@ Formulaire (1 to 20 files) -> Check uploads (each file: JPG/PNG/WEBP from its by
   -> queue the good ones in Drive "Artwork Ref/Queue" as <batchId>_<nn>.<ext> + <batchId>_batch.json (manifest)
   -> Start worker (not awaited) -> page: "N queued, M refused (reasons)"
 
-Artwork Worker (called by the form, every hour, Run now), one reference per run:
+Artwork Worker (called by the form, or Run now), one reference per run:
   queue lock (one worker at a time) -> oldest queued reference
   -> Generate ART (gpt-image-2 at 1024x1280 = 4:5: reference + fixed prompt, the reference's own colors)
   -> Check artwork (gpt-5-mini: no swatches/text/border, up to 3 tries)
@@ -27,7 +27,7 @@ Artwork Worker (called by the form, every hour, Run now), one reference per run:
 
 - **One at a time:** the worker holds a Drive lock file in `Queue`, so two batches sent together are painted one after the other and folder numbers never repeat. A lock older than `lockStaleMinutes` (45) belongs to a crashed run and is removed.
 - **Failures:** 3 paintings with swatches, text or borders set the reference aside in `Artwork Ref/Failed`. A reference whose run stopped midway `maxTries` times (3) is set aside too. The manifest records the reason.
-- **Crashes:** a reference stays in `Queue` until it is painted or set aside, so the hourly run picks it up again.
+- **Crashes:** a reference stays in `Queue` until it is painted or set aside: the next upload, or "Run now" in the worker, picks it up again.
 - **The manifest** `<batchId>_batch.json` lists each reference (`queued`, `done` with its folder, `failed` with the reason) and the files refused at upload. Once nothing is queued, it moves to `Queue/Done`. The Shopify Uploader then sends **one Telegram message per batch** when all its drafts are in Shopify (see `SHOPIFY-UPLOADER.md`).
 - Form uploads are limited by n8n's `N8N_FORMDATA_FILE_SIZE_MAX` (200 MB by default): 20 files of 5 MB fit.
 
@@ -58,3 +58,13 @@ Every artwork is a **60x75 cm portrait** (4:5), whatever the reference's shape: 
 After changing `server/palettes/darlart-v3.json`, run `node scripts/build-artwork-agent-workflow.js` and re-import (Check palette embeds the palette).
 
 Cost: `imageQuality` in Settings drives it. About $0.08 per artwork on `medium`, $0.20 on `high` (gpt-image-2 output dominates; the checker is ~$0.005).
+
+## Telegram messages
+
+To the group in `telegramChatId` (Settings of both workflows; empty = no messages), through the "Telegram account" bot. A Telegram error never stops a workflow.
+- **Artwork Agent**, after each upload: the images queued and the ones refused (with the reason), how many images wait in the queue in all (and how many from earlier uploads come first), and roughly how long painting them takes. When nothing could be queued, the reasons.
+- **Artwork Worker**, after each reference: the painted artwork as a photo, captioned with its product number (1xxx), the source file, its place in the batch and a link to the Drive folder. When a reference could not be painted, the reason. When a whole batch is painted, a summary (the Shopify Uploader sends the last message once its drafts are in Shopify).
+
+## Busy and failed runs
+
+A worker call that finds another run working waits 30 s and tries again (3 times). When a worker run fails, the Darl'Art Error Handler releases its lock, alerts on Telegram and starts the worker again (only when the failure came after the reference's try was recorded, so a reference that keeps failing is set aside after 3 tries and a lasting outage cannot loop).

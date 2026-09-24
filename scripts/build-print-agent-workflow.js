@@ -5,6 +5,7 @@
  *   -> queue lock (one worker at a time, a Drive lock file with a heartbeat)
  *   -> folders "Artwork Agent/1xxx" still missing print files
  *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 60x75 (portrait or landscape from the artwork itself)
+ *   -> 1xxx/<stamp>_featured.png (pbn API /v1/featured: the artwork on a canvas photo, the product's first image)
  *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
  *
@@ -14,6 +15,8 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
+// "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
+const ERROR_WORKFLOW_ID = "aokToPHKOa4MciN1";
 
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
@@ -29,6 +32,7 @@ const SETTINGS = {
     mockupColors: 48, // the single mockup comes from the first canvas size at this color count
     maxPerRun: 5, // folders per run; the next run starts by itself when work remains
     lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
+    telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
 };
 // the "Darl'Art Shopify Uploader" workflow, started when a run saved new files
 const SHOPIFY_UPLOADER_WORKFLOW_ID = "XAwk67SiWmvVSu1d";
@@ -112,8 +116,7 @@ connect("List locks", "Lock state");
 
 ifNode("Lock free?", [880, 200], "={{ $json.free }}");
 connect("Lock state", "Lock free?");
-node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1100, 360], {});
-connect("Lock free?", "Busy: another run is working", 1);
+node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1760, 360], {});
 
 node("Create lock", "n8n-nodes-base.httpRequest", 4.2, [1100, 120], {
     method: "POST",
@@ -143,6 +146,18 @@ ifNode("Lock won?", [1760, 120], "={{ $json.won }}");
 connect("Won the lock?", "Lock won?");
 deleteFile("Step back (drop my lock)", [1980, 280], "$json.lockId");
 connect("Lock won?", "Step back (drop my lock)", 1);
+
+// busy, or lost a tie: try again a little later (a run about to finish with nothing done does not start itself again)
+code("Busy: try again?", [1320, 440], `const attempt = $runIndex + 1;
+return [{ json: { retry: attempt <= 3, attempt } }];`);
+connect("Lock free?", "Busy: try again?", 1);
+connect("Step back (drop my lock)", "Busy: try again?");
+ifNode("Retry?", [1540, 440], "={{ $json.retry }}");
+connect("Busy: try again?", "Retry?");
+node("Wait before retry", "n8n-nodes-base.wait", 1.1, [1760, 520], { resume: "timeInterval", amount: 30, unit: "seconds" });
+connect("Retry?", "Wait before retry", 0);
+connect("Wait before retry", "List locks");
+connect("Retry?", "Busy: another run is working", 1);
 
 // ---- 3. what is left to do ------------------------------------------------------------------------------
 driveList("List Artwork Agent folders", [1980, 40], "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
@@ -176,6 +191,61 @@ connect("List folder files", "Folder states");
 driveList("List Print files", [2860, 40], `={{ $json.printFolderId ? "'" + $json.printFolderId + "' in parents and trashed = false" : "${NONE_Q}" }}`);
 connect("Folder states", "List Print files");
 
+// ---- the featured image (the artwork on a canvas photo), made once per folder, before the print jobs --------------
+code("Featured to make", [2860, -300], `// Folders with an artwork and no <date+time>_featured.png yet (at most maxPerRun per run)
+const settings = $('Settings').first().json;
+const todo = $('Folder states').all().map((item) => item.json)
+    .filter((state) => !state.none && !state.rootFiles.includes(state.stamp + "_featured.png"))
+    .slice(0, Number(settings.maxPerRun) || 5)
+    .map((state) => ({ json: { folderId: state.folderId, folder: state.folder, artworkId: state.artworkId, name: state.stamp + "_featured.png" } }));
+return todo.length ? todo : [{ json: { none: true } }];`);
+connect("List Print files", "Featured to make");
+
+ifNode("Featured to make?", [3080, -300], "={{ !$json.none }}");
+connect("Featured to make", "Featured to make?");
+
+node("Artwork for featured", "n8n-nodes-base.httpRequest", 4.2, [3300, -420], {
+    url: `=${driveFiles}/{{ $json.artworkId }}?alt=media&supportsAllDrives=true`,
+    ...googleAuth,
+    options: { response: { response: { responseFormat: "file", outputPropertyName: "image" } }, timeout: 120000 },
+});
+connect("Featured to make?", "Artwork for featured", 0);
+
+node("Make featured image", "n8n-nodes-base.httpRequest", 4.2, [3520, -420], {
+    method: "POST",
+    url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/featured",
+    authentication: "genericCredentialType",
+    genericAuthType: "httpHeaderAuth",
+    sendBody: true,
+    contentType: "multipart-form-data",
+    bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "image" }] },
+    options: { timeout: 120000 },
+}, { onError: "continueRegularOutput" });
+connect("Artwork for featured", "Make featured image");
+
+code("Featured files", [3740, -420], `// The API's PNGs (base64) as files; a folder whose image failed is retried by the next run
+const todo = $('Featured to make').all();
+const out = [];
+$input.all().forEach((item, i) => {
+    const folder = todo[i].json;
+    if (!item.json.image) return;
+    out.push({ json: folder, binary: { data: { data: item.json.image, mimeType: "image/png", fileName: folder.name, fileExtension: "png" } } });
+});
+return out.length ? out : [{ json: { none: true } }];`);
+connect("Make featured image", "Featured files");
+
+ifNode("Any featured image?", [3960, -420], "={{ !$json.none }}");
+connect("Featured files", "Any featured image?");
+
+node("Save featured image", "n8n-nodes-base.googleDrive", 3, [4180, -500], {
+    name: "={{ $json.name }}",
+    driveId: { __rl: true, mode: "list", value: "My Drive" },
+    folderId: { __rl: true, mode: "id", value: "={{ $json.folderId }}" },
+    inputDataFieldName: "data",
+    options: {},
+}, { onError: "continueRegularOutput" });
+connect("Any featured image?", "Save featured image", 0);
+
 code("Plan jobs", [3080, 40], `// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)
 const settings = $('Settings').first().json;
 const states = $('Folder states').all();
@@ -185,7 +255,7 @@ const mockupColors = Number(settings.mockupColors);
 const flip = (size) => size.split("x").reverse().join("x");
 const jobs = [];
 let folderCount = 0;
-$input.all().forEach((item, i) => {
+$('List Print files').all().forEach((item, i) => {
     const state = states[i].json;
     if (state.none || folderCount >= Number(settings.maxPerRun)) return;
     const printFiles = new Set((item.json.files || []).map((f) => f.name));
@@ -211,8 +281,10 @@ $input.all().forEach((item, i) => {
         jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });
     }
 });
-return jobs.length ? jobs : [{ json: { none: true } }];`);
-connect("List Print files", "Plan jobs");
+return jobs.length ? jobs : [{ json: { none: true } }];`, { executeOnce: true });
+connect("Featured to make?", "Plan jobs", 1);
+connect("Any featured image?", "Plan jobs", 1);
+connect("Save featured image", "Plan jobs");
 
 ifNode("Anything to do?", [3300, 40], "={{ !$json.none }}");
 connect("Plan jobs", "Anything to do?");
@@ -317,7 +389,7 @@ connect("Job accepted?", "Wait for pbn job", 0);
 code("Files to save", [5500, 0], `// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)
 const task = $('Loop over jobs').first().json;
 const result = ($json.body && $json.body.status === "completed" && $json.body.result) || null;
-if (!result) return [{ json: { skip: true, reason: ($json.body && ($json.body.error || $json.body.status)) || "no answer from the pbn API within 30 minutes" } }];
+if (!result) return [{ json: { skip: true, folder: task.folder, job: task.size + " " + task.colors + " colors", reason: ($json.body && ($json.body.error || $json.body.status)) || "no answer from the pbn API within 30 minutes" } }];
 const url = (name) => (result.files.find((f) => f.name === name) || {}).url;
 const label = (result.canvas && result.canvas.label) || task.size;
 const files = [];
@@ -335,7 +407,7 @@ if (task.needMockup) {
     files.push({ url: url("mockup.png"), name: task.stamp + "_mockup.png", parent: task.folderId, mimeType: "image/png" });
 }
 const ready = files.filter((f) => f.url);
-if (ready.length !== files.length) return [{ json: { skip: true, reason: "the pbn API result is missing a file" } }];
+if (ready.length !== files.length) return [{ json: { skip: true, folder: task.folder, job: task.size + " " + task.colors + " colors", reason: "the pbn API result is missing a file" } }];
 return ready.map((f) => ({ json: f }));`);
 connect("Wait for pbn job", "Files to save");
 
@@ -364,17 +436,101 @@ connect("Job done?", "Loop over jobs", 1);
 connect("Job accepted?", "Loop over jobs", 1);
 
 // ---- 5. release the lock, start again if work was done -------------------------------------------------
-code("Run summary", [4400, -220], `// Files saved in this run (failed jobs are retried by the next run)
-const saved = $input.all().filter((item) => item.json.id && item.json.name).map((item) => item.json.name);
-return [{ json: { saved: saved.length, files: saved } }];`);
+code("Run summary", [4400, -220], `// Files saved in this run, and the jobs that failed (retried by the next run)
+const items = $input.all().map((item) => item.json);
+const saved = items.filter((j) => j.id && j.name).map((j) => j.name);
+const failed = items.filter((j) => j.skip).map((j) => ({ folder: j.folder || "", job: j.job || "", reason: j.reason || "" }));
+// a job the pbn API did not accept, or a file Drive refused, comes back as an error item
+const errors = items.filter((j) => !j.skip && !(j.id && j.name)).map((j) => (j.error && (j.error.message || j.error)) || "pbn job not accepted");
+return [{ json: { saved: saved.length, files: saved, failed, errors } }];`);
 connect("Loop over jobs", "Run summary", 0);
 
 code("Locks to delete", [4620, -220], `// My lock, plus locks left behind by crashed runs
-const saved = $('Run summary').isExecuted ? $('Run summary').first().json.saved : 0;
+const featured = $('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0;
+const saved = ($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + featured;
 const ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];
-return ids.map((id) => ({ json: { id, saved } }));`);
-connect("Run summary", "Locks to delete");
-connect("Anything to do?", "Locks to delete", 1);
+return ids.map((id) => ({ json: { id, saved } }));`, { executeOnce: true });
+// ---- one Telegram message for the whole chain: each run that made something adds it to a tally (the description
+// of the Drive file "_print-report.json" in Artwork Agent), and the run that finds nothing left sends it once ----
+driveList("Find print report", [4620, -420], "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_print-report.json' and trashed = false", "files(id,name,description)");
+connect("Run summary", "Find print report");
+connect("Anything to do?", "Find print report", 1);
+
+code("Print report", [4840, -420], `// This run's successful generations, added to the tally; sent once when a run finds nothing left to do
+const settings = $('Settings').first().json;
+const file = ($input.first().json.files || [])[0] || null;
+let tally = { folders: {}, since: $now.toISO() };
+try { if (file && file.description) tally = JSON.parse(file.description); } catch (e) {}
+const stampToFolder = {};
+if ($('Plan jobs').isExecuted) for (const item of $('Plan jobs').all()) if (!item.json.none) stampToFolder[item.json.stamp] = item.json.folder;
+const add = (folder, kind) => { const f = (tally.folders[folder] = tally.folders[folder] || {}); f[kind] = (f[kind] || 0) + 1; };
+let made = 0;
+const files = $('Run summary').isExecuted ? $('Run summary').first().json.files || [] : [];
+for (const name of files) {
+    const kind = name.endsWith("_blank.svg") ? "blank SVG" : name.endsWith("_catalog.pdf") ? "catalog PDF" : name.endsWith("_user.pdf") ? "user PDF" : name.endsWith("_mockup.png") ? "mockup" : "file";
+    add(stampToFolder[name.slice(0, 19)] || name.slice(0, 19), kind);
+    made++;
+}
+if ($('Save featured image').isExecuted) {
+    const todo = $('Featured to make').all().map((item) => item.json);
+    for (const item of $('Save featured image').all()) {
+        if (!item.json.id) continue;
+        add((todo.find((t) => t.name === item.json.name) || {}).folder || item.json.name, "featured image");
+        made++;
+    }
+}
+const telegram = String(settings.telegramChatId || "").trim() !== "";
+if (made) return [{ json: { action: "save", reportId: file ? file.id : "", description: JSON.stringify(tally) } }];
+const folders = Object.keys(tally.folders);
+if (!file || !folders.length) return [{ json: { action: "none" } }];
+if (!telegram) return [{ json: { action: "drop", reportId: file.id } }];
+const lines = ["Print Agent: finished, " + folders.length + " folder" + (folders.length === 1 ? "" : "s") + " done"];
+let ready = 0;
+for (const folder of folders.sort()) {
+    const kinds = tally.folders[folder];
+    const parts = [];
+    for (const kind of ["blank SVG", "catalog PDF", "user PDF", "file"]) if (kinds[kind]) parts.push(kinds[kind] + " " + kind);
+    if (kinds["mockup"]) parts.push("mockup");
+    if (kinds["featured image"]) parts.push("featured image");
+    if (kinds["mockup"]) ready++;
+    lines.push("- " + folder + ": " + parts.join(", "));
+}
+if (ready) lines.push("", ready + " folder" + (ready === 1 ? "" : "s") + " ready for the Shopify draft.");
+return [{ json: { action: "send", reportId: file.id, text: lines.join("\\n").slice(0, 4000) } }];`, { executeOnce: true });
+connect("Find print report", "Print report");
+
+ifNode("Save the tally?", [5060, -420], "={{ $json.action === 'save' }}");
+connect("Print report", "Save the tally?");
+// an existing tally gets its description updated, a missing one is created (a metadata-only file)
+node("Store print report", "n8n-nodes-base.httpRequest", 4.2, [5280, -500], {
+    method: "={{ $json.reportId ? 'PATCH' : 'POST' }}",
+    url: `={{ '${driveFiles}' + ($json.reportId ? '/' + $json.reportId : '') + '?supportsAllDrives=true&fields=id' }}`,
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify($json.reportId ? { description: $json.description } : { name: '_print-report.json', mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Save the tally?", "Store print report", 0);
+connect("Store print report", "Locks to delete");
+
+ifNode("Send the report?", [5280, -340], "={{ $json.action === 'send' }}");
+connect("Save the tally?", "Send the report?", 1);
+node("Telegram: print report", "n8n-nodes-base.telegram", 1.2, [5500, -400], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ $json.text }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+}, { onError: "continueRegularOutput" });
+connect("Send the report?", "Telegram: print report", 0);
+
+ifNode("Drop the tally?", [5500, -260], "={{ $json.action === 'drop' }}");
+connect("Send the report?", "Drop the tally?", 1);
+// sent (or no chat set): the tally starts again from zero
+deleteFile("Drop print report", [5720, -340], "$('Print report').first().json.reportId");
+connect("Telegram: print report", "Drop print report");
+connect("Drop the tally?", "Drop print report", 0);
+connect("Drop print report", "Locks to delete");
+connect("Drop the tally?", "Locks to delete", 1);
 
 deleteFile("Release lock", [4840, -220], "$json.id");
 connect("Locks to delete", "Release lock");
@@ -383,6 +539,8 @@ code("More to do?", [5060, -220], `// Folders may have arrived while this run wo
 const saved = $('Locks to delete').first().json.saved;
 return [{ json: { again: saved > 0, saved } }];`, { executeOnce: true });
 connect("Release lock", "More to do?");
+
+
 
 ifNode("Start again?", [5280, -220], "={{ $json.again }}");
 connect("More to do?", "Start again?");
@@ -404,7 +562,7 @@ node("Run Shopify Uploader", "n8n-nodes-base.executeWorkflow", 1.2, [5500, -120]
 }, { executeOnce: true, onError: "continueRegularOutput" });
 connect("Start again?", "Run Shopify Uploader", 0);
 
-const workflow = { name: "Darl'Art Print Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
+const workflow = { name: "Darl'Art Print Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-print-agent.json");
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

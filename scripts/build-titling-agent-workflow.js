@@ -5,13 +5,19 @@
  *   -> folders that have an artwork but no product JSON yet, one by one:
  *      download the artwork -> AI agent (title, description, tags, themes) -> <date+time>_product.json in the same folder
  *
+ * One run at a time (a Drive lock in "Artwork Agent", see scripts/lib/n8n-queue-lock.js): a call that finds another
+ * run working waits and tries again, and a run that wrote product JSONs starts itself again until none is missing.
+ *
  * The JSON follows Shopify's product fields (title, handle, productType, vendor, collections, tags) and a
  * plain-text description (wrap its paragraphs in <p> for Shopify's descriptionHtml).
  */
 const fs = require("fs");
 const path = require("path");
+const { queueLock } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
+// "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
+const ERROR_WORKFLOW_ID = "aokToPHKOa4MciN1";
 
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
@@ -73,7 +79,7 @@ node("Settings", "n8n-nodes-base.set", 3.4, [220, 100], {
         })),
     },
     options: {},
-});
+}, { executeOnce: true });
 connect("Run now", "Settings");
 connect("Every day", "Settings");
 connect("When called by Artwork Agent", "Settings");
@@ -89,7 +95,10 @@ node("Shopify collections", "n8n-nodes-base.httpRequest", 4.2, [440, 100], {
     jsonBody: "={{ JSON.stringify({ query: '{ collections(first: 250) { nodes { id title handle } } }' }) }}",
     options: { timeout: 30000 },
 });
-connect("Settings", "Shopify collections");
+// ---- one run at a time ------------------------------------------------------------------------------
+const lock = queueLock({ node, connect }, { prefix: "_titling-agent.lock", folderExpression: "$('Settings').first().json.agentFolderId", staleMinutes: 15, x: 440, y: -420 });
+connect("Settings", "List locks");
+connect("Lock won?", "Shopify collections", 0);
 
 node("Themes", "n8n-nodes-base.code", 2, [660, 100], {
     jsCode: `// One theme per collection family: "Animals", "Animals - Mini Kits" and "Animals - Kids Kits" are the theme "Animals".
@@ -124,11 +133,12 @@ node("Folders", "n8n-nodes-base.code", 2, [1100, 100], {
     jsCode: `// One item per numbered folder (1001, 1002...), oldest first
 const folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));
 folders.sort((a, b) => Number(a.name) - Number(b.name));
+if (!folders.length) return [{ json: { none: true } }];
 return folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));`,
 });
 connect("List Artwork Agent folders", "Folders");
 
-driveList("List folder files", [1320, 100], "='{{ $json.id }}' in parents and trashed = false");
+driveList("List folder files", [1320, 100], "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}");
 connect("Folders", "List folder files");
 
 node("Pending folders", "n8n-nodes-base.code", 2, [1540, 100], {
@@ -138,6 +148,7 @@ const folders = $('Folders').all();
 const pending = [];
 $input.all().forEach((item, i) => {
     const folder = folders[i].json;
+    if (folder.none) return;
     const files = item.json.files || [];
     const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));
     if (!art) return;
@@ -147,21 +158,35 @@ $input.all().forEach((item, i) => {
     const ref = files.find((f) => f.name.startsWith(stamp + "_ref."));
     pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : "", productName } });
 });
-return pending.slice(0, Number(settings.maxPerRun) || 20);`,
+const todo = pending.slice(0, Number(settings.maxPerRun) || 20);
+return todo.length ? todo : [{ json: { none: true } }];`,
 });
 connect("List folder files", "Pending folders");
 
+node("Folders to title?", "n8n-nodes-base.if", 2, [1650, 260], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "folderstotitle", leftValue: "={{ !$json.none }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+}, { executeOnce: true });
+connect("Pending folders", "Folders to title?");
+
 // ---- 4. one folder at a time ------------------------------------------------------------------------
 node("Loop over folders", "n8n-nodes-base.splitInBatches", 3, [1760, 100], { options: {} });
-connect("Pending folders", "Loop over folders");
+connect("Folders to title?", "Loop over folders", 0);
+
+lock.heartbeat("Heartbeat (refresh lock)", [1870, 360]);
+connect("Loop over folders", "Heartbeat (refresh lock)", 1);
 
 node("Download artwork", "n8n-nodes-base.httpRequest", 4.2, [1980, 200], {
-    url: "=https://www.googleapis.com/drive/v3/files/{{ $json.artworkId }}?alt=media&supportsAllDrives=true",
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.artworkId }}?alt=media&supportsAllDrives=true",
     authentication: "predefinedCredentialType",
     nodeCredentialType: "googleDriveOAuth2Api",
     options: { response: { response: { responseFormat: "file", outputPropertyName: "artwork" } }, timeout: 120000 },
 });
-connect("Loop over folders", "Download artwork", 1);
+connect("Heartbeat (refresh lock)", "Download artwork");
 
 node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
     promptType: "define",
@@ -264,7 +289,12 @@ return [{ json: { saved: saved.length, files: saved } }];`,
 });
 connect("Loop over folders", "Summary", 0);
 
-const workflow = { name: "Darl'Art Titling Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
+// ---- release the lock; a run that wrote product JSONs starts again (it stops at once when none is missing) ----
+lock.release([2200, -420], "$('Summary').isExecuted && $('Summary').first().json.saved > 0");
+connect("Summary", "Locks to delete");
+connect("Folders to title?", "Locks to delete", 1);
+
+const workflow = { name: "Darl'Art Titling Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-titling-agent.json");
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

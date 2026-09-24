@@ -66,6 +66,12 @@
               "name": "agentFolderId",
               "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
               "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "telegramChatId",
+              "value": "-5252292447",
+              "type": "string"
             }
           ]
         },
@@ -250,6 +256,180 @@
     },
     {
       "id": "aa000013-0000-4000-8000-000000000000",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aa000014-0000-4000-8000-000000000000",
+      "name": "List queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        120
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000015-0000-4000-8000-000000000000",
+      "name": "Queued message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        120
+      ],
+      "parameters": {
+        "jsCode": "// Queued, refused, and the whole queue: how many references wait (earlier batches first) and roughly how long\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst refused = first.refused || [];\nconst queued = checked.map((c) => c.originalName);\nconst waiting = ($input.first().json.files || []).filter((f) => new RegExp(\"^\\\\d{4}-\\\\d{2}-\\\\d{2}_\\\\d{2}-\\\\d{2}-\\\\d{2}_\\\\d{2}\\\\.(jpg|png|webp)$\").test(f.name));\nconst ahead = waiting.filter((f) => f.name.slice(0, 19) < first.batchId).length;\nconst lines = [\"Artwork Agent: \" + queued.length + \" image\" + (queued.length === 1 ? \"\" : \"s\") + \" queued for painting (batch \" + first.batchId + \")\"];\nfor (const name of queued) lines.push(\"- \" + name);\nif (refused.length) {\n    lines.push(\"\", refused.length + \" refused:\");\n    for (const r of refused) lines.push(\"- \" + r.name + \": \" + r.reason);\n}\nlines.push(\"\", \"Queue: \" + waiting.length + \" image\" + (waiting.length === 1 ? \"\" : \"s\") + \" waiting\" + (ahead ? \", \" + ahead + \" from earlier uploads first\" : \"\") + \". About \" + (waiting.length * 2) + \" min to paint them all, one after another.\");\nlines.push(\"Each one gets its folder Artwork Agent/1xxx; you get the painted artwork here.\");\nreturn [{ json: { text: lines.join(\"\\n\") } }];"
+      }
+    },
+    {
+      "id": "aa000016-0000-4000-8000-000000000000",
+      "name": "Telegram: queued",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        120
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000017-0000-4000-8000-000000000000",
+      "name": "Telegram on? (refused)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramonrefused",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aa000018-0000-4000-8000-000000000000",
+      "name": "Refused message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        320
+      ],
+      "parameters": {
+        "jsCode": "const refused = $('Check uploads').first().json.refused || [];\nconst lines = [\"Artwork Agent: nothing queued, none of the \" + refused.length + \" file\" + (refused.length === 1 ? \"\" : \"s\") + \" can be used:\"];\nfor (const r of refused) lines.push(\"- \" + r.name + \": \" + r.reason);\nreturn [{ json: { text: lines.join(\"\\n\") } }];"
+      }
+    },
+    {
+      "id": "aa000019-0000-4000-8000-000000000000",
+      "name": "Telegram: refused",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        320
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000020-0000-4000-8000-000000000000",
       "name": "Page: nothing queued",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
@@ -312,6 +492,11 @@
             "node": "Build refused page",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Telegram on? (refused)",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -367,6 +552,11 @@
             "node": "Build queued page",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -376,6 +566,61 @@
         [
           {
             "node": "Page: queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "List queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List queue": {
+      "main": [
+        [
+          {
+            "node": "Queued message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queued message": {
+      "main": [
+        [
+          {
+            "node": "Telegram: queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on? (refused)": {
+      "main": [
+        [
+          {
+            "node": "Refused message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refused message": {
+      "main": [
+        [
+          {
+            "node": "Telegram: refused",
             "type": "main",
             "index": 0
           }
@@ -396,7 +641,8 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Africa/Casablanca"
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1"
   },
   "pinData": {}
 }

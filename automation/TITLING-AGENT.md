@@ -29,3 +29,7 @@ Shopify's own field names, so a later workflow can create the product as is:
 - Triggers: the Artwork Agent calls it after saving each artwork ("When called by Artwork Agent", no waiting), a daily run at 03:00 catches anything a failed run left behind, and "Run now" works anytime. It must be **published** for the Artwork Agent's production runs to call it.
 - Credentials: "Shopify darlart.ma" (Shopify OAuth2, store smgi0i-0a = darlart.ma), Google Drive account, OpenAI.
 - Rebuild the file with `node scripts/build-titling-agent-workflow.js`.
+
+## One run at a time
+
+A Drive lock (`_titling-agent.lock-<execution id>` in Artwork Agent, `scripts/lib/n8n-queue-lock.js`) lets one run work at a time: a call that finds another run working waits 30 s and tries again (3 times), and a run that wrote product JSONs starts itself again until none is missing. The lock is refreshed for each folder; one not refreshed for 15 min belongs to a crashed run and is removed. A failed run's lock is released at once by the Darl'Art Error Handler.

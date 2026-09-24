@@ -4,8 +4,7 @@
 
 ```
 Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Drive) -> Drive "Artwork Agent" folders
-  -> folders with _product.json + _art.png + _mockup.png and no _shopify.json, one by one:
-     featured image: the artwork on a canvas photo (pbn API /v1/featured), saved once as <date+time>_featured.png
+  -> folders with _product.json + _art.png + _featured.png + _mockup.png and no _shopify.json, one by one:
      WebP copies of the featured image and the mockup (pbn API /v1/webp), saved once as <date+time>_<name>.webp
      staged upload of the two WebP files to Shopify (never the PNGs, and never the artwork itself)
      -> productSet: draft product (texts, collections, variants + prices, images)
@@ -39,7 +38,7 @@ In the Drive "Artwork Agent" folder (`pricesSheetId` in Settings). Its first tab
 
 ## Featured image
 
-The product's first image: the artwork (`<date+time>_art.png`) on a blank stretched canvas against a light wall. The pbn API (`POST /v1/featured`, `pbnApiUrl` in Settings) picks the landscape photo for an artwork wider than tall and the portrait one otherwise (a square artwork is portrait), fills the 4:5 canvas face without distortion and returns a 1600 x 1600 PNG. It is saved in the folder as `<date+time>_featured.png` the first time; later runs keep that file.
+The product's first image: the artwork (`<date+time>_art.png`) on a blank stretched canvas against a light wall. The **Print Agent** makes it (see `PRINT-AGENT.md`) and the Uploader waits for it. The pbn API (`POST /v1/featured`) picks the landscape photo for an artwork wider than tall and the portrait one otherwise (a square artwork is portrait), fills the 4:5 canvas face without distortion and returns a 1600 x 1600 PNG, saved in the folder as `<date+time>_featured.png`.
 
 The two photos are `mockups/featured-portrait.webp` and `featured-landscape.webp` (800 x 800, face positions in `src/core/mockup.ts`); `npm run prepare:mockups` paints their faces blank into the `-blank.webp` files the API uses.
 
@@ -63,3 +62,11 @@ After each run, and also when there was nothing to upload, the Uploader reads th
 - A folder is done once its `_shopify.json` exists: delete that file to upload the folder again (it updates the same draft).
 - The Shopify credential needs the `write_products` and `write_files` scopes.
 - Must be **published** for the Print Agent's production runs to call it.
+
+## Run report (Telegram)
+
+At the end of a run that created drafts: each draft with its folder, title, variants, admin link and whether it is on the Online Store. A run that created none sends nothing. The batch messages above come in addition.
+
+## One run at a time
+
+A Drive lock (`_shopify-uploader.lock-<execution id>` in Artwork Agent, `scripts/lib/n8n-queue-lock.js`) lets one run work at a time: a call that finds another run working waits 30 s and tries again (3 times), and a run that created drafts starts itself again until no folder is ready. The lock is refreshed for each folder (stale after 20 min). The batch messages are checked by the same run before it releases the lock: the workflow calls itself in `batch-messages` mode and waits, so a batch message is never sent twice. A failed run's lock is released at once by the Darl'Art Error Handler.

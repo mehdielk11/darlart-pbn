@@ -20,6 +20,8 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.join(__dirname, "..");
+// "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
+const ERROR_WORKFLOW_ID = "aokToPHKOa4MciN1";
 const palette = JSON.parse(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8"));
 
 // ===== Settings written into the workflows (all editable later in their "Settings" node) =====
@@ -43,6 +45,7 @@ const SETTINGS = {
     imageSize: "1024x1280", // multiples of 16, exactly 4:5
     maxTries: 3, // runs a queued reference may crash before it is set aside as failed
     lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
+    telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
     timezone: "Africa/Casablanca",
 };
 const MAX_BATCH = 20; // references per upload, the rest are refused on the page
@@ -104,20 +107,33 @@ function workflowBuilder(idPrefix) {
         mode: "once",
         options: { waitForSubWorkflow: false },
     }, { executeOnce: true, onError: "continueRegularOutput" });
+    const telegramOn = "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}";
+    const telegramText = (name, position, textExpression) => node(name, "n8n-nodes-base.telegram", 1.2, position, {
+        chatId: "={{ $('Settings').first().json.telegramChatId }}",
+        text: textExpression,
+        additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+    }, { onError: "continueRegularOutput" });
+    const telegramPhoto = (name, position, captionExpression) => node(name, "n8n-nodes-base.telegram", 1.2, position, {
+        operation: "sendPhoto",
+        chatId: "={{ $('Settings').first().json.telegramChatId }}",
+        binaryData: true,
+        binaryPropertyName: "data",
+        additionalFields: { caption: captionExpression },
+    }, { onError: "continueRegularOutput" });
     const completionPage = (name, position, responseText) => node(name, "n8n-nodes-base.form", 2.3, position, { operation: "completion", respondWith: "showText", responseText });
     const save = (file, name) => {
         const out = path.join(root, file);
-        fs.writeFileSync(out, JSON.stringify({ name, nodes, connections, settings: { executionOrder: "v1", timezone: SETTINGS.timezone }, pinData: {} }, null, 2) + "\n");
+        fs.writeFileSync(out, JSON.stringify({ name, nodes, connections, settings: { executionOrder: "v1", timezone: SETTINGS.timezone, errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} }, null, 2) + "\n");
         console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");
     };
-    return { nodes, connections, node, connect, code, ifNode, settingsNode, runWorkflow, completionPage, save };
+    return { nodes, connections, node, connect, code, ifNode, settingsNode, runWorkflow, completionPage, save, telegramOn, telegramText, telegramPhoto };
 }
 
 // =====================================================================================================
 // "Darl'Art Artwork Agent": the form, receives and queues
 // =====================================================================================================
 {
-    const { node, connect, code, ifNode, settingsNode, runWorkflow, completionPage, save } = workflowBuilder("aa");
+    const { node, connect, code, ifNode, settingsNode, runWorkflow, completionPage, save, telegramOn, telegramText } = workflowBuilder("aa");
 
     node("Formulaire", "n8n-nodes-base.formTrigger", 2.2, [0, 0], {
         formTitle: "Darl'Art Artwork Agent",
@@ -160,7 +176,7 @@ if (!accepted.length) return [{ json: { none: true, batchId, refused } }];
 return accepted.map((a) => ({ json: { ...a.json, refused }, binary: a.binary }));`);
     connect("Formulaire", "Check uploads");
 
-    settingsNode([440, 0], { queueFolderId: SETTINGS.queueFolderId, agentFolderId: SETTINGS.agentFolderId });
+    settingsNode([440, 0], { queueFolderId: SETTINGS.queueFolderId, agentFolderId: SETTINGS.agentFolderId, telegramChatId: SETTINGS.telegramChatId });
     connect("Check uploads", "Settings");
 
     ifNode("Anything to queue?", [660, 0], "={{ !$('Check uploads').first().json.none }}");
@@ -229,6 +245,55 @@ html += '<p><a href="' + folderUrl + '" target="_blank">Open Artwork Agent in Dr
     + "<ul>" + refused.map((r) => "<li>" + esc(r.name) + ": " + esc(r.reason) + "</li>").join("") + "</ul>"
     + '<p><a href="javascript:history.back()">Try again</a></p>';`));
     connect("Anything to queue?", "Build refused page", 1);
+
+    // ---- Telegram: what this upload queued, what it refused, and how long the queue is ----------------------------
+    ifNode("Telegram on?", [1980, 120], telegramOn);
+    connect("Start worker", "Telegram on?");
+    node("List queue", "n8n-nodes-base.httpRequest", 4.2, [2200, 120], {
+        url: driveFiles,
+        ...googleAuth,
+        sendQuery: true,
+        queryParameters: {
+            parameters: [
+                { name: "q", value: "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false" },
+                { name: "fields", value: "files(id,name)" },
+                { name: "pageSize", value: "1000" },
+                { name: "supportsAllDrives", value: "true" },
+                { name: "includeItemsFromAllDrives", value: "true" },
+            ],
+        },
+        options: { timeout: 30000 },
+    }, { onError: "continueRegularOutput" });
+    connect("Telegram on?", "List queue", 0);
+    code("Queued message", [2420, 120], `// Queued, refused, and the whole queue: how many references wait (earlier batches first) and roughly how long
+const checked = $('Check uploads').all().map((item) => item.json);
+const first = checked[0];
+const refused = first.refused || [];
+const queued = checked.map((c) => c.originalName);
+const waiting = ($input.first().json.files || []).filter((f) => new RegExp("${QUEUED_IMAGE}").test(f.name));
+const ahead = waiting.filter((f) => f.name.slice(0, 19) < first.batchId).length;
+const lines = ["Artwork Agent: " + queued.length + " image" + (queued.length === 1 ? "" : "s") + " queued for painting (batch " + first.batchId + ")"];
+for (const name of queued) lines.push("- " + name);
+if (refused.length) {
+    lines.push("", refused.length + " refused:");
+    for (const r of refused) lines.push("- " + r.name + ": " + r.reason);
+}
+lines.push("", "Queue: " + waiting.length + " image" + (waiting.length === 1 ? "" : "s") + " waiting" + (ahead ? ", " + ahead + " from earlier uploads first" : "") + ". About " + (waiting.length * 2) + " min to paint them all, one after another.");
+lines.push("Each one gets its folder Artwork Agent/1xxx; you get the painted artwork here.");
+return [{ json: { text: lines.join("\\n") } }];`);
+    connect("List queue", "Queued message");
+    telegramText("Telegram: queued", [2640, 120], "={{ $json.text }}");
+    connect("Queued message", "Telegram: queued");
+
+    ifNode("Telegram on? (refused)", [1100, 320], telegramOn);
+    connect("Anything to queue?", "Telegram on? (refused)", 1);
+    code("Refused message", [1320, 320], `const refused = $('Check uploads').first().json.refused || [];
+const lines = ["Artwork Agent: nothing queued, none of the " + refused.length + " file" + (refused.length === 1 ? "" : "s") + " can be used:"];
+for (const r of refused) lines.push("- " + r.name + ": " + r.reason);
+return [{ json: { text: lines.join("\\n") } }];`);
+    connect("Telegram on? (refused)", "Refused message", 0);
+    telegramText("Telegram: refused", [1540, 320], "={{ $json.text }}");
+    connect("Refused message", "Telegram: refused");
     completionPage("Page: nothing queued", [1100, 160], "={{ $json.html }}");
     connect("Build refused page", "Page: nothing queued");
 
@@ -239,7 +304,7 @@ html += '<p><a href="' + folderUrl + '" target="_blank">Open Artwork Agent in Dr
 // "Darl'Art Artwork Worker": one queued reference per run
 // =====================================================================================================
 {
-    const { nodes, node, connect, code, ifNode, settingsNode, runWorkflow, save } = workflowBuilder("ab");
+    const { nodes, node, connect, code, ifNode, settingsNode, runWorkflow, save, telegramOn, telegramText, telegramPhoto } = workflowBuilder("ab");
     const driveList = (name, position, q, fields) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
         url: driveFiles,
         ...googleAuth,
@@ -278,11 +343,10 @@ html += '<p><a href="' + folderUrl + '" target="_blank">Open Artwork Agent in Dr
 
     // ---- 1. triggers, settings ---------------------------------------------------------------------
     node("When called by Artwork Agent", "n8n-nodes-base.executeWorkflowTrigger", 1.1, [0, 0], { inputSource: "passthrough" });
-    // safety net: references left behind by a crashed run
-    node("Every hour", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 200], { rule: { interval: [{ field: "hours", hoursInterval: 1 }] } });
-    node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 400], {});
+    // after a crashed run, "Run now" paints what is left in the queue (the next upload does too)
+    node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 200], {});
     settingsNode([220, 200], SETTINGS);
-    for (const trigger of ["When called by Artwork Agent", "Every hour", "Run now"]) { connect(trigger, "Settings"); }
+    for (const trigger of ["When called by Artwork Agent", "Run now"]) { connect(trigger, "Settings"); }
 
     // ---- 2. queue lock: one worker at a time, so folder numbers never repeat -------------------------
     const lockQuery = `='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '${LOCK_PREFIX}' and trashed = false`;
@@ -300,8 +364,7 @@ return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
 
     ifNode("Lock free?", [880, 200], "={{ $json.free }}");
     connect("Lock state", "Lock free?");
-    node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1100, 360], {});
-    connect("Lock free?", "Busy: another run is working", 1);
+    node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1760, 360], {});
 
     node("Create lock", "n8n-nodes-base.httpRequest", 4.2, [1100, 120], {
         method: "POST",
@@ -336,6 +399,18 @@ return [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine
         options: { timeout: 30000 },
     }, { onError: "continueRegularOutput" });
     connect("Lock won?", "Step back (drop my lock)", 1);
+
+    // busy, or lost a tie: try again a little later (a run about to finish with nothing done does not start itself again)
+    code("Busy: try again?", [1320, 440], `const attempt = $runIndex + 1;
+return [{ json: { retry: attempt <= 3, attempt } }];`);
+    connect("Lock free?", "Busy: try again?", 1);
+    connect("Step back (drop my lock)", "Busy: try again?");
+    ifNode("Retry?", [1540, 440], "={{ $json.retry }}");
+    connect("Busy: try again?", "Retry?");
+    node("Wait before retry", "n8n-nodes-base.wait", 1.1, [1760, 520], { resume: "timeInterval", amount: 30, unit: "seconds" });
+    connect("Retry?", "Wait before retry", 0);
+    connect("Wait before retry", "List locks");
+    connect("Retry?", "Busy: another run is working", 1);
 
     // ---- 3. the oldest queued reference and its batch manifest ---------------------------------------
     driveList("List queue", [1980, 40], "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false", "files(id,name,mimeType)");
@@ -639,10 +714,45 @@ if (manifest && Array.isArray(manifest.files)) {
 const move = result.status === "done"
     ? { to: settings.refFolderId, name: result.referenceName }
     : { to: settings.failedFolderId, name: next.queueName };
-const out = { json: { status: result.status, folder: result.folder || "", painted, hasManifest: !!manifest, move } };
+const out = { json: { status: result.status, folder: result.folder || "", painted, hasManifest: !!manifest, move, manifest } };
 if (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: next.batchId + "_batch.json" } };
 return [out];`);
     for (const result of ["Result: painted", "Result: not painted", "Result: stopped too often"]) { connect(result, "Update entry"); }
+
+    // ---- Telegram: the painted artwork with its product number, or why the reference was set aside ----------------
+    ifNode("Telegram on?", [Y + 220, 360], telegramOn);
+    connect("Update entry", "Telegram on?");
+    code("Artwork message", [Y + 440, 360], `// The artwork (a photo with its product number) or, when it could not be painted, the reason
+const next = $('Next reference').first().json;
+const entryResult = $('Update entry').first().json;
+const manifest = $('Start attempt').first().json.manifest;
+const originalName = $('Start attempt').first().json.originalName;
+let position = "";
+if (manifest && Array.isArray(manifest.files)) {
+    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);
+    if (i >= 0) position = ", " + (i + 1) + " of " + manifest.files.length;
+}
+const from = "From: " + originalName + " (batch " + next.batchId + position + ")";
+if (entryResult.status === "done") {
+    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;
+    const colors = $('Check palette').first().json.paletteJson.colorCount;
+    const caption = [
+        "Artwork " + folder.name + " painted, " + colors + " Darl'Art colors",
+        from,
+        "Next: product texts, print files and mockup, then the Shopify draft.",
+        "https://drive.google.com/drive/folders/" + folder.id,
+    ].join("\\n");
+    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];
+}
+const reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : "";
+return [{ json: { painted: false, text: ["Not painted: " + originalName, from, "Reason: " + reason, "The reference is in Artwork Ref/Failed."].join("\\n") } }];`);
+    connect("Telegram on?", "Artwork message", 0);
+    ifNode("Painted?", [Y + 660, 360], "={{ $json.painted }}");
+    connect("Artwork message", "Painted?");
+    telegramPhoto("Telegram: artwork", [Y + 880, 280], "={{ $json.caption }}");
+    connect("Painted?", "Telegram: artwork", 0);
+    telegramText("Telegram: not painted", [Y + 880, 440], "={{ $json.text }}");
+    connect("Painted?", "Telegram: not painted", 1);
 
     ifNode("Record the result?", [Y + 220, 0], "={{ $json.hasManifest }}");
     connect("Update entry", "Record the result?");
@@ -666,6 +776,24 @@ return [out];`);
         "$('Settings').first().json.queueFolderId",
         "={{ JSON.stringify({}) }}");
     connect("Batch painted?", "Move manifest to Done", 0);
+
+    // the whole batch is painted: a summary (the Shopify Uploader reports again once all its drafts are in Shopify)
+    ifNode("Telegram on? (batch)", [Y + 1100, -240], telegramOn);
+    connect("Batch painted?", "Telegram on? (batch)", 0);
+    code("Batch message", [Y + 1320, -240], `const next = $('Next reference').first().json;
+const manifest = $('Update entry').first().json.manifest;
+const done = manifest.files.filter((e) => e.status === "done");
+const failed = manifest.files.filter((e) => e.status === "failed");
+const lines = ["Batch " + next.batchId + " painted: " + done.length + " artwork" + (done.length === 1 ? "" : "s") + (done.length ? " (" + done.map((e) => e.folder).join(", ") + ")" : "")];
+if (failed.length) {
+    lines.push("", failed.length + " not painted:");
+    for (const e of failed) lines.push("- " + e.originalName + ": " + (e.reason || "failed"));
+}
+if (done.length) lines.push("", "You get one more message when all their drafts are in Shopify.");
+return [{ json: { text: lines.join("\\n") } }];`);
+    connect("Telegram on? (batch)", "Batch message", 0);
+    telegramText("Telegram: batch painted", [Y + 1540, -240], "={{ $json.text }}");
+    connect("Batch message", "Telegram: batch painted");
 
     // ---- 6. release the lock, start again while references are queued ---------------------------------------
     code("Locks to delete", [Y + 1320, 160], `// My lock, plus locks left behind by crashed runs

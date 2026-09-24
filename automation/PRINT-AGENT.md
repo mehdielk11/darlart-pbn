@@ -35,3 +35,15 @@ The job is sent with `orientation: auto`: the API compares the artwork's width a
 - **Publish** the Print Agent: the published Artwork Agent can only call a published sub-workflow. Republish the Artwork Agent after it gained its "Run Print Agent" node.
 - **Cost:** no AI calls; about 20–60 s of VM time per variant.
 - Rebuild with `node scripts/build-print-agent-workflow.js`.
+
+## Featured image
+
+Before its print jobs, each run makes the missing `1xxx/<date+time>_featured.png` (at most `maxPerRun` folders): the artwork on a blank stretched canvas against a light wall, 1600 x 1600, from the pbn API `POST /v1/featured` (the portrait photo, or the landscape one for an artwork wider than tall). It is the product's first image: the Shopify Uploader waits for it and uploads a WebP copy. Folders that already have their print files get one too. An API error leaves the folder without it, and the next run tries again. A run that made one starts the Shopify Uploader, like a run that saved print files.
+
+## Telegram message
+
+**One message for the whole job**, not one per run: the Print Agent handles `maxPerRun` folders per run and starts itself again while work remains, so each run that made something adds it to a tally (the description of the Drive file `Artwork Agent/_print-report.json`), and the run that finds nothing left to do sends the tally once to `telegramChatId`, then deletes it. It lists the successful generations per folder (print files, mockup, featured image) and how many folders are ready for the Shopify draft. Failed jobs are not reported: the next run retries them.
+
+## Busy and failed runs
+
+A call that finds another run working waits 30 s and tries again (3 times), so work that arrives while a run is finishing is never left behind. A failed run's lock is released at once by the Darl'Art Error Handler (`ERROR-HANDLER.md`).

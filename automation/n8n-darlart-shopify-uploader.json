@@ -141,6 +141,12 @@
               "name": "onlineStorePublicationId",
               "value": "gid://shopify/Publication/400869785881",
               "type": "string"
+            },
+            {
+              "id": "setmode",
+              "name": "runMode",
+              "value": "={{ $json.mode || 'upload' }}",
+              "type": "string"
             }
           ]
         },
@@ -181,6 +187,331 @@
     },
     {
       "id": "cc000006-0000-4000-8000-000000000000",
+      "name": "Batch messages only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        330,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "batchmessagesonly",
+              "leftValue": "={{ $json.runMode === 'batch-messages' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000007-0000-4000-8000-000000000000",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        -760
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_shopify-uploader.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000008-0000-4000-8000-000000000000",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -760
+      ],
+      "parameters": {
+        "jsCode": "// Another run holds a fresh lock (refreshed less than 20 min ago)\nconst limit = Date.now() - 20 * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      }
+    },
+    {
+      "id": "cc000009-0000-4000-8000-000000000000",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -760
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000010-0000-4000-8000-000000000000",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -840
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_shopify-uploader.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000011-0000-4000-8000-000000000000",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -840
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_shopify-uploader.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "cc000012-0000-4000-8000-000000000000",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -840
+      ],
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst limit = Date.now() - 20 * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      }
+    },
+    {
+      "id": "cc000013-0000-4000-8000-000000000000",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -840
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000014-0000-4000-8000-000000000000",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -700
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000015-0000-4000-8000-000000000000",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -580
+      ],
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      }
+    },
+    {
+      "id": "cc000016-0000-4000-8000-000000000000",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -580
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000017-0000-4000-8000-000000000000",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -480
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "cc000018-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        -640
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "cc000019-0000-4000-8000-000000000000",
       "name": "Prices file",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -193,7 +524,7 @@
       }
     },
     {
-      "id": "cc000007-0000-4000-8000-000000000000",
+      "id": "cc000020-0000-4000-8000-000000000000",
       "name": "Export prices sheet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -217,7 +548,7 @@
       }
     },
     {
-      "id": "cc000008-0000-4000-8000-000000000000",
+      "id": "cc000021-0000-4000-8000-000000000000",
       "name": "Prices",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -230,7 +561,7 @@
       }
     },
     {
-      "id": "cc000009-0000-4000-8000-000000000000",
+      "id": "cc000022-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -273,7 +604,7 @@
       }
     },
     {
-      "id": "cc000010-0000-4000-8000-000000000000",
+      "id": "cc000023-0000-4000-8000-000000000000",
       "name": "Folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -282,11 +613,11 @@
         200
       ],
       "parameters": {
-        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
       }
     },
     {
-      "id": "cc000011-0000-4000-8000-000000000000",
+      "id": "cc000024-0000-4000-8000-000000000000",
       "name": "List folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -303,7 +634,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $json.id }}' in parents and trashed = false"
+              "value": "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}"
             },
             {
               "name": "fields",
@@ -329,7 +660,7 @@
       }
     },
     {
-      "id": "cc000012-0000-4000-8000-000000000000",
+      "id": "cc000025-0000-4000-8000-000000000000",
       "name": "Pending folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -338,11 +669,11 @@
         200
       ],
       "parameters": {
-        "jsCode": "// Keeps the folders that have their product JSON, artwork and mockup, and no <date+time>_shopify.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const markerName = stamp + \"_shopify.json\";\n    // the PNG made by the pbn API, and the WebP copies that go to Shopify\n    const names = { featuredPng: stamp + \"_featured.png\", featured: stamp + \"_featured.webp\", mockup: stamp + \"_mockup.webp\" };\n    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));\n    if (!product || !mockup || find(\"_shopify.json\")) return;\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, names, inDrive, markerName } });\n});\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 10);\nreturn todo.length ? todo : [{ json: { none: true } }];"
+        "jsCode": "// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <date+time>_shopify.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const featured = find(\"_featured.png\"); // made by the Print Agent\n    const markerName = stamp + \"_shopify.json\";\n    // the WebP copies that go to Shopify\n    const names = { featured: stamp + \"_featured.webp\", mockup: stamp + \"_mockup.webp\" };\n    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));\n    if (!product || !mockup || !featured || find(\"_shopify.json\")) return;\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName } });\n});\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 10);\nreturn todo.length ? todo : [{ json: { none: true } }];"
       }
     },
     {
-      "id": "cc000013-0000-4000-8000-000000000000",
+      "id": "cc000026-0000-4000-8000-000000000000",
       "name": "Loop over folders",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -355,7 +686,7 @@
       }
     },
     {
-      "id": "cc000014-0000-4000-8000-000000000000",
+      "id": "cc000027-0000-4000-8000-000000000000",
       "name": "Folders to upload?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -388,7 +719,31 @@
       }
     },
     {
-      "id": "cc000015-0000-4000-8000-000000000000",
+      "id": "cc000028-0000-4000-8000-000000000000",
+      "name": "Heartbeat (refresh lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2310,
+        460
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "id": "cc000029-0000-4000-8000-000000000000",
       "name": "Download product JSON",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -397,7 +752,7 @@
         300
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.productId }}?alt=media&supportsAllDrives=true",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.productId }}?alt=media&supportsAllDrives=true",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
@@ -411,7 +766,7 @@
       }
     },
     {
-      "id": "cc000016-0000-4000-8000-000000000000",
+      "id": "cc000030-0000-4000-8000-000000000000",
       "name": "Stage uploads",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -433,7 +788,7 @@
       }
     },
     {
-      "id": "cc000017-0000-4000-8000-000000000000",
+      "id": "cc000031-0000-4000-8000-000000000000",
       "name": "Upload targets",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -446,132 +801,7 @@
       }
     },
     {
-      "id": "cc000018-0000-4000-8000-000000000000",
-      "name": "Artwork for featured",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3080,
-        520
-      ],
-      "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.artworkId }}?alt=media&supportsAllDrives=true",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleDriveOAuth2Api",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file",
-              "outputPropertyName": "art"
-            }
-          },
-          "timeout": 120000
-        }
-      }
-    },
-    {
-      "id": "cc000019-0000-4000-8000-000000000000",
-      "name": "Make featured image",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3300,
-        520
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/featured",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "parameterType": "formBinaryData",
-              "name": "image",
-              "inputDataFieldName": "art"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 120000
-        }
-      }
-    },
-    {
-      "id": "cc000020-0000-4000-8000-000000000000",
-      "name": "Featured file",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3520,
-        520
-      ],
-      "parameters": {
-        "jsCode": "// The API's PNG (base64) as the binary \"image\"\nconst folder = $('Loop over folders').first().json;\nconst result = $('Make featured image').first().json;\nif (!result.image) throw new Error(\"Folder \" + folder.folder + \": the pbn API returned no featured image\");\nreturn [{\n    json: { template: result.template, name: folder.names.featuredPng },\n    binary: { image: { data: result.image, mimeType: \"image/png\", fileName: folder.names.featuredPng, fileExtension: \"png\" } },\n}];"
-      }
-    },
-    {
-      "id": "cc000021-0000-4000-8000-000000000000",
-      "name": "Featured PNG in Drive?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        3740,
-        700
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "featuredpngindrive",
-              "leftValue": "={{ $('Loop over folders').first().json.inDrive.featuredPng }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "cc000022-0000-4000-8000-000000000000",
-      "name": "Save featured PNG",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        3960,
-        780
-      ],
-      "parameters": {
-        "name": "={{ $('Loop over folders').first().json.names.featuredPng }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Loop over folders').first().json.folderId }}"
-        },
-        "inputDataFieldName": "image",
-        "options": {}
-      }
-    },
-    {
-      "id": "cc000023-0000-4000-8000-000000000000",
+      "id": "cc000032-0000-4000-8000-000000000000",
       "name": "Source images",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -580,11 +810,11 @@
         520
       ],
       "parameters": {
-        "jsCode": "// The mockup PNG to download (the featured PNG is already here)\nconst folder = $('Loop over folders').first().json;\nreturn [\n    { json: { kind: \"mockup\", fileId: folder.mockupId } },\n];"
+        "jsCode": "// The featured image and the mockup PNGs to download\nconst folder = $('Loop over folders').first().json;\nreturn [\n    { json: { kind: \"featured\", fileId: folder.featuredId } },\n    { json: { kind: \"mockup\", fileId: folder.mockupId } },\n];"
       }
     },
     {
-      "id": "cc000024-0000-4000-8000-000000000000",
+      "id": "cc000033-0000-4000-8000-000000000000",
       "name": "Download images",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -608,7 +838,7 @@
       }
     },
     {
-      "id": "cc000025-0000-4000-8000-000000000000",
+      "id": "cc000034-0000-4000-8000-000000000000",
       "name": "Images to convert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -617,11 +847,11 @@
         520
       ],
       "parameters": {
-        "jsCode": "// Featured image and mockup, in this order, each with the name of its WebP copy\nconst folder = $('Loop over folders').first().json;\nconst downloads = $('Download images').all();\nconst sources = $('Source images').all();\nconst byKind = {};\nsources.forEach((source, i) => { byKind[source.json.kind] = downloads[i].binary.image; });\nbyKind.featured = $('Featured file').first().binary.image;\nreturn [\"featured\", \"mockup\"].map((kind) => {\n    if (!byKind[kind]) throw new Error(\"Folder \" + folder.folder + \": no \" + kind + \" image to convert\");\n    return { json: { kind, name: folder.names[kind], inDrive: folder.inDrive[kind] }, binary: { image: byKind[kind] } };\n});"
+        "jsCode": "// Featured image and mockup, in this order, each with the name of its WebP copy\nconst folder = $('Loop over folders').first().json;\nconst downloads = $('Download images').all();\nconst sources = $('Source images').all();\nconst byKind = {};\nsources.forEach((source, i) => { byKind[source.json.kind] = downloads[i].binary.image; });\nreturn [\"featured\", \"mockup\"].map((kind) => {\n    if (!byKind[kind]) throw new Error(\"Folder \" + folder.folder + \": no \" + kind + \" image to convert\");\n    return { json: { kind, name: folder.names[kind], inDrive: folder.inDrive[kind] }, binary: { image: byKind[kind] } };\n});"
       }
     },
     {
-      "id": "cc000026-0000-4000-8000-000000000000",
+      "id": "cc000035-0000-4000-8000-000000000000",
       "name": "Convert to WebP",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -651,7 +881,7 @@
       }
     },
     {
-      "id": "cc000027-0000-4000-8000-000000000000",
+      "id": "cc000036-0000-4000-8000-000000000000",
       "name": "WebP files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -664,7 +894,7 @@
       }
     },
     {
-      "id": "cc000028-0000-4000-8000-000000000000",
+      "id": "cc000037-0000-4000-8000-000000000000",
       "name": "WebP in Drive?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -697,7 +927,7 @@
       }
     },
     {
-      "id": "cc000029-0000-4000-8000-000000000000",
+      "id": "cc000038-0000-4000-8000-000000000000",
       "name": "Save WebP",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -722,7 +952,7 @@
       }
     },
     {
-      "id": "cc000030-0000-4000-8000-000000000000",
+      "id": "cc000039-0000-4000-8000-000000000000",
       "name": "Upload WebP to Shopify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -750,7 +980,7 @@
       }
     },
     {
-      "id": "cc000031-0000-4000-8000-000000000000",
+      "id": "cc000040-0000-4000-8000-000000000000",
       "name": "Build product",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -763,7 +993,7 @@
       }
     },
     {
-      "id": "cc000032-0000-4000-8000-000000000000",
+      "id": "cc000041-0000-4000-8000-000000000000",
       "name": "Create draft product",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -785,7 +1015,7 @@
       }
     },
     {
-      "id": "cc000033-0000-4000-8000-000000000000",
+      "id": "cc000042-0000-4000-8000-000000000000",
       "name": "Image order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -798,7 +1028,7 @@
       }
     },
     {
-      "id": "cc000034-0000-4000-8000-000000000000",
+      "id": "cc000043-0000-4000-8000-000000000000",
       "name": "Reorder images",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -820,7 +1050,7 @@
       }
     },
     {
-      "id": "cc000035-0000-4000-8000-000000000000",
+      "id": "cc000044-0000-4000-8000-000000000000",
       "name": "Reorder sent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -833,7 +1063,7 @@
       }
     },
     {
-      "id": "cc000036-0000-4000-8000-000000000000",
+      "id": "cc000045-0000-4000-8000-000000000000",
       "name": "Wait for reorder",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -848,7 +1078,7 @@
       }
     },
     {
-      "id": "cc000037-0000-4000-8000-000000000000",
+      "id": "cc000046-0000-4000-8000-000000000000",
       "name": "Read image order",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -870,7 +1100,7 @@
       }
     },
     {
-      "id": "cc000038-0000-4000-8000-000000000000",
+      "id": "cc000047-0000-4000-8000-000000000000",
       "name": "Order confirmed?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -883,7 +1113,7 @@
       }
     },
     {
-      "id": "cc000039-0000-4000-8000-000000000000",
+      "id": "cc000048-0000-4000-8000-000000000000",
       "name": "Images in order?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -916,7 +1146,7 @@
       }
     },
     {
-      "id": "cc000040-0000-4000-8000-000000000000",
+      "id": "cc000049-0000-4000-8000-000000000000",
       "name": "Check again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -949,7 +1179,7 @@
       }
     },
     {
-      "id": "cc000041-0000-4000-8000-000000000000",
+      "id": "cc000050-0000-4000-8000-000000000000",
       "name": "Images out of order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -962,7 +1192,7 @@
       }
     },
     {
-      "id": "cc000042-0000-4000-8000-000000000000",
+      "id": "cc000051-0000-4000-8000-000000000000",
       "name": "Shopify marker",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -971,11 +1201,11 @@
         200
       ],
       "parameters": {
-        "jsCode": "// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Image order').first().json.product;\nconst store = settings.shopDomain.replace(\".myshopify.com\", \"\");\nconst marker = {\n    productId: product.id,\n    handle: product.handle,\n    title: product.title,\n    status: product.status,\n    adminUrl: \"https://admin.shopify.com/store/\" + store + \"/products/\" + product.id.split(\"/\").pop(),\n    variants: product.variantsCount ? product.variantsCount.count : null,\n    images: $('Image order').first().json.wanted,\n    onlineStore: (() => {\n        const r = $('Publish to Online Store').first().json;\n        const errors = [...(r.errors || []), ...(((r.data || {}).publishablePublish || {}).userErrors || [])].map((e) => e.message);\n        if (r.error) errors.push(typeof r.error === \"string\" ? r.error : (r.error.message || JSON.stringify(r.error)));\n        return errors.length ? \"not published: \" + errors.join(\"; \") : \"published\";\n    })(),\n    pricesVersion: $('Prices').first().json.pricesVersion,\n    uploadedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n};\nreturn [{\n    json: { folder: folder.folder, title: product.title, adminUrl: marker.adminUrl },\n    binary: { data: { data: Buffer.from(JSON.stringify(marker, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: folder.markerName } },\n}];"
+        "jsCode": "// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Image order').first().json.product;\nconst store = settings.shopDomain.replace(\".myshopify.com\", \"\");\nconst marker = {\n    productId: product.id,\n    handle: product.handle,\n    title: product.title,\n    status: product.status,\n    adminUrl: \"https://admin.shopify.com/store/\" + store + \"/products/\" + product.id.split(\"/\").pop(),\n    variants: product.variantsCount ? product.variantsCount.count : null,\n    images: $('Image order').first().json.wanted,\n    onlineStore: (() => {\n        const r = $('Publish to Online Store').first().json;\n        const errors = [...(r.errors || []), ...(((r.data || {}).publishablePublish || {}).userErrors || [])].map((e) => e.message);\n        if (r.error) errors.push(typeof r.error === \"string\" ? r.error : (r.error.message || JSON.stringify(r.error)));\n        return errors.length ? \"not published: \" + errors.join(\"; \") : \"published\";\n    })(),\n    pricesVersion: $('Prices').first().json.pricesVersion,\n    uploadedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n};\nreturn [{\n    json: { folder: folder.folder, title: product.title, adminUrl: marker.adminUrl, variants: marker.variants, onlineStore: marker.onlineStore },\n    binary: { data: { data: Buffer.from(JSON.stringify(marker, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: folder.markerName } },\n}];"
       }
     },
     {
-      "id": "cc000043-0000-4000-8000-000000000000",
+      "id": "cc000052-0000-4000-8000-000000000000",
       "name": "Publish to Online Store",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -998,7 +1228,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000044-0000-4000-8000-000000000000",
+      "id": "cc000053-0000-4000-8000-000000000000",
       "name": "Save marker",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1023,7 +1253,20 @@
       }
     },
     {
-      "id": "cc000045-0000-4000-8000-000000000000",
+      "id": "cc000054-0000-4000-8000-000000000000",
+      "name": "Uploaded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7480,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const product = $('Shopify marker').first().json;\nreturn [{ json: { ...product, markerId: $input.first().json.id } }];"
+      }
+    },
+    {
+      "id": "cc000055-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1032,11 +1275,43 @@
         60
       ],
       "parameters": {
-        "jsCode": "// What this run uploaded (visible in the execution log)\nconst saved = $input.all().map((item) => item.json.name).filter(Boolean);\nreturn [{ json: { uploaded: saved.length, markers: saved } }];"
+        "jsCode": "// What this run uploaded (visible in the execution log)\nconst products = $input.all().map((item) => item.json).filter((p) => p.folder);\nreturn [{ json: { uploaded: products.length, products } }];"
       }
     },
     {
-      "id": "cc000046-0000-4000-8000-000000000000",
+      "id": "cc000056-0000-4000-8000-000000000000",
+      "name": "Upload report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        60
+      ],
+      "parameters": {
+        "jsCode": "const settings = $('Settings').first().json;\nif (!String(settings.telegramChatId || \"\").trim()) return [];\nconst products = $input.first().json.products || [];\nif (!products.length) return [];\nconst lines = [\"Shopify Uploader: \" + products.length + \" draft\" + (products.length === 1 ? \"\" : \"s\") + \" created\"];\nfor (const p of products.sort((a, b) => Number(a.folder) - Number(b.folder))) {\n    lines.push(\"- \" + p.folder + \" \" + p.title + (p.variants ? \", \" + p.variants + \" variants\" : \"\") + (p.onlineStore === \"published\" ? \", on the Online Store\" : \", NOT on the Online Store (\" + String(p.onlineStore || \"\").replace(/^not published: /, \"\") + \")\"));\n    lines.push(\"  \" + p.adminUrl);\n}\nlines.push(\"\", \"Review each draft and set it to Active to put it on sale.\");\nreturn [{ json: { text: lines.join(\"\\n\").slice(0, 4000) } }];"
+      }
+    },
+    {
+      "id": "cc000057-0000-4000-8000-000000000000",
+      "name": "Telegram: upload report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        60
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000058-0000-4000-8000-000000000000",
       "name": "Batch messages on?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1070,7 +1345,137 @@
       "executeOnce": true
     },
     {
-      "id": "cc000047-0000-4000-8000-000000000000",
+      "id": "cc000059-0000-4000-8000-000000000000",
+      "name": "Batch messages mode",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { mode: \"batch-messages\" } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000060-0000-4000-8000-000000000000",
+      "name": "Check batches",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        -600
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000061-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Summary').isExecuted && $('Summary').first().json.uploaded > 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000062-0000-4000-8000-000000000000",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        -600
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000063-0000-4000-8000-000000000000",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        -600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000064-0000-4000-8000-000000000000",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3740,
+        -680
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000065-0000-4000-8000-000000000000",
       "name": "List painted batches",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1113,7 +1518,7 @@
       }
     },
     {
-      "id": "cc000048-0000-4000-8000-000000000000",
+      "id": "cc000066-0000-4000-8000-000000000000",
       "name": "Painted batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1126,7 +1531,7 @@
       }
     },
     {
-      "id": "cc000049-0000-4000-8000-000000000000",
+      "id": "cc000067-0000-4000-8000-000000000000",
       "name": "Download batch manifests",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1149,7 +1554,7 @@
       }
     },
     {
-      "id": "cc000050-0000-4000-8000-000000000000",
+      "id": "cc000068-0000-4000-8000-000000000000",
       "name": "Batch folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1162,7 +1567,7 @@
       }
     },
     {
-      "id": "cc000051-0000-4000-8000-000000000000",
+      "id": "cc000069-0000-4000-8000-000000000000",
       "name": "List batch folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1205,7 +1610,7 @@
       }
     },
     {
-      "id": "cc000052-0000-4000-8000-000000000000",
+      "id": "cc000070-0000-4000-8000-000000000000",
       "name": "Batch status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1218,7 +1623,7 @@
       }
     },
     {
-      "id": "cc000053-0000-4000-8000-000000000000",
+      "id": "cc000071-0000-4000-8000-000000000000",
       "name": "Markers to read",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1231,7 +1636,7 @@
       }
     },
     {
-      "id": "cc000054-0000-4000-8000-000000000000",
+      "id": "cc000072-0000-4000-8000-000000000000",
       "name": "Download markers",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1254,7 +1659,7 @@
       }
     },
     {
-      "id": "cc000055-0000-4000-8000-000000000000",
+      "id": "cc000073-0000-4000-8000-000000000000",
       "name": "Batch messages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1267,7 +1672,7 @@
       }
     },
     {
-      "id": "cc000056-0000-4000-8000-000000000000",
+      "id": "cc000074-0000-4000-8000-000000000000",
       "name": "Send batch message",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1286,7 +1691,7 @@
       "onError": "continueErrorOutput"
     },
     {
-      "id": "cc000057-0000-4000-8000-000000000000",
+      "id": "cc000075-0000-4000-8000-000000000000",
       "name": "Sent batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1299,7 +1704,7 @@
       }
     },
     {
-      "id": "cc000058-0000-4000-8000-000000000000",
+      "id": "cc000076-0000-4000-8000-000000000000",
       "name": "Save batch manifest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1321,7 +1726,7 @@
       }
     },
     {
-      "id": "cc000059-0000-4000-8000-000000000000",
+      "id": "cc000077-0000-4000-8000-000000000000",
       "name": "Batches to rename",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1334,7 +1739,7 @@
       }
     },
     {
-      "id": "cc000060-0000-4000-8000-000000000000",
+      "id": "cc000078-0000-4000-8000-000000000000",
       "name": "Rename sent batch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1394,7 +1799,167 @@
       "main": [
         [
           {
+            "node": "Batch messages only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
+      "main": [
+        [
+          {
             "node": "Find prices sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch messages only?": {
+      "main": [
+        [
+          {
+            "node": "Batch messages on?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List locks",
             "type": "main",
             "index": 0
           }
@@ -1500,7 +2065,7 @@
         ],
         [
           {
-            "node": "Batch messages on?",
+            "node": "Batch messages mode",
             "type": "main",
             "index": 0
           }
@@ -1516,6 +2081,17 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Heartbeat (refresh lock)": {
+      "main": [
         [
           {
             "node": "Download product JSON",
@@ -1551,57 +2127,7 @@
       "main": [
         [
           {
-            "node": "Artwork for featured",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Artwork for featured": {
-      "main": [
-        [
-          {
-            "node": "Make featured image",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Make featured image": {
-      "main": [
-        [
-          {
-            "node": "Featured file",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Featured file": {
-      "main": [
-        [
-          {
-            "node": "Featured PNG in Drive?",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Source images",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Featured PNG in Drive?": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Save featured PNG",
             "type": "main",
             "index": 0
           }
@@ -1841,6 +2367,17 @@
       "main": [
         [
           {
+            "node": "Uploaded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uploaded": {
+      "main": [
+        [
+          {
             "node": "Loop over folders",
             "type": "main",
             "index": 0
@@ -1852,7 +2389,78 @@
       "main": [
         [
           {
-            "node": "Batch messages on?",
+            "node": "Upload report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Batch messages mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload report": {
+      "main": [
+        [
+          {
+            "node": "Telegram: upload report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch messages mode": {
+      "main": [
+        [
+          {
+            "node": "Check batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check batches": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
             "type": "main",
             "index": 0
           }
@@ -2016,7 +2624,8 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Africa/Casablanca"
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1"
   },
   "pinData": {}
 }
