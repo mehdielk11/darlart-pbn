@@ -66,8 +66,8 @@
             },
             {
               "id": "set1",
-              "name": "pricesFileName",
-              "value": "shopify-prices.csv",
+              "name": "pricesSheetId",
+              "value": "1279ywKi2r5Y5ovUIaZs6kXoIv5QmP4V0BPg9ZJtZypk",
               "type": "string"
             },
             {
@@ -114,7 +114,7 @@
     },
     {
       "id": "cc000005-0000-4000-8000-000000000000",
-      "name": "Find prices CSV",
+      "name": "Find prices sheet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -122,30 +122,18 @@
         200
       ],
       "parameters": {
-        "url": "https://www.googleapis.com/drive/v3/files",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Settings').first().json.pricesSheetId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
-              "name": "q",
-              "value": "=name = '{{ $('Settings').first().json.pricesFileName }}' and '{{ $('Settings').first().json.agentFolderId }}' in parents and trashed = false"
-            },
-            {
               "name": "fields",
-              "value": "files(id,name,mimeType,modifiedTime)"
-            },
-            {
-              "name": "pageSize",
-              "value": "1000"
+              "value": "id,name,mimeType,modifiedTime,trashed"
             },
             {
               "name": "supportsAllDrives",
-              "value": "true"
-            },
-            {
-              "name": "includeItemsFromAllDrives",
               "value": "true"
             }
           ]
@@ -165,12 +153,12 @@
         200
       ],
       "parameters": {
-        "jsCode": "const settings = $('Settings').first().json;\nconst file = ($input.first().json.files || [])[0];\nif (!file) throw new Error(\"No \" + settings.pricesFileName + \" in the Artwork Agent folder: upload the prices CSV there\");\nreturn [{ json: { id: file.id, name: file.name, modifiedTime: file.modifiedTime } }];"
+        "jsCode": "const file = $input.first().json;\nif (!file.id || file.trashed) throw new Error(\"The prices sheet (pricesSheetId in Settings) is missing or in the trash\");\nif (file.mimeType !== \"application/vnd.google-apps.spreadsheet\") throw new Error(file.name + \" is not a Google Sheet: pricesSheetId must point to the prices spreadsheet\");\nreturn [{ json: { id: file.id, name: file.name, modifiedTime: file.modifiedTime } }];"
       }
     },
     {
       "id": "cc000007-0000-4000-8000-000000000000",
-      "name": "Download prices CSV",
+      "name": "Export prices sheet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -178,7 +166,7 @@
         200
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?alt=media&supportsAllDrives=true",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/export?mimeType=text/csv",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
@@ -188,7 +176,7 @@
               "outputPropertyName": "data"
             }
           },
-          "timeout": 120000
+          "timeout": 60000
         }
       }
     },
@@ -202,7 +190,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits\nconst settings = $('Settings').first().json;\nconst file = $('Prices file').first().json;\nconst text = String($input.first().json.data || \"\").replace(/^\\uFEFF/, \"\");\nconst lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean);\nconst split = (line) => line.split(/[,;]/).map((c) => c.trim().replace(/^\"|\"$/g, \"\"));\nconst header = split(lines.shift() || \"\").map((h) => h.toLowerCase().replace(/\\s+/g, \"_\"));\nconst col = (name) => header.indexOf(name);\nfor (const name of [\"canvas_type\", \"size\", \"colors\", \"price\"]) {\n    if (col(name) < 0) throw new Error(file.name + \": missing column \" + name + \" (columns: canvas_type,size,colors,price)\");\n}\nconst money = (value) => Number(String(value).replace(/\\s/g, \"\").replace(\",\", \".\"));\nconst rows = [];\nconst seen = new Set();\nlines.forEach((line, i) => {\n    const cells = split(line);\n    const size = cells[col(\"size\")].toLowerCase().replace(/\\s*cm$/, \"\").replace(/\\s*[x×]\\s*/, \"x\");\n    let canvasType = cells[col(\"canvas_type\")];\n    if (!/canvas$/i.test(canvasType)) canvasType += \" Canvas\"; // \"Rolled\" -> \"Rolled Canvas\", the store's wording\n    const colors = String(parseInt(cells[col(\"colors\")], 10));\n    const price = money(cells[col(\"price\")]);\n    const compareCell = col(\"compare_at_price\") >= 0 ? cells[col(\"compare_at_price\")] : \"\";\n    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);\n    const where = file.name + \" line \" + (i + 2);\n    if (!/^\\d+x\\d+$/.test(size)) throw new Error(where + \": size must look like 30x40\");\n    if (colors === \"NaN\") throw new Error(where + \": colors must be a number\");\n    if (!(price > 0)) throw new Error(where + \": price must be a number above 0\");\n    const key = size + \"|\" + canvasType + \"|\" + colors;\n    if (seen.has(key)) throw new Error(where + \": \" + key.replace(/\\|/g, \" / \") + \" is listed twice\");\n    seen.add(key);\n    rows.push({ size, canvasType, colors, price: price.toFixed(2), compareAtPrice: compareAt > price ? compareAt.toFixed(2) : null });\n});\nif (!rows.length) throw new Error(file.name + \" has no prices\");\nif (rows.length > 100) throw new Error(file.name + \": Shopify allows 100 variants per product, the CSV has \" + rows.length);\n\nconst area = (s) => s.split(\"x\").reduce((a, b) => a * Number(b), 1);\nconst unique = (values) => [...new Set(values)];\nconst sizes = unique(rows.map((r) => r.size)).sort((a, b) => area(a) - area(b));\nconst canvasTypes = unique(rows.map((r) => r.canvasType)).sort();\nconst colors = unique(rows.map((r) => r.colors)).sort((a, b) => a - b);\nrows.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);\n\nconst productOptions = [\n    { name: \"Size\", position: 1, values: sizes.map((name) => ({ name })) },\n    { name: \"Canvas Type\", position: 2, values: canvasTypes.map((name) => ({ name })) },\n    { name: \"Colors\", position: 3, values: colors.map((name) => ({ name })) },\n];\nconst variants = rows.map((r, i) => ({\n    optionValues: [\n        { optionName: \"Size\", name: r.size },\n        { optionName: \"Canvas Type\", name: r.canvasType },\n        { optionName: \"Colors\", name: r.colors },\n    ],\n    price: r.price,\n    compareAtPrice: r.compareAtPrice,\n    position: i + 1,\n    inventoryPolicy: \"DENY\",\n    inventoryItem: { tracked: false, requiresShipping: true },\n}));\nreturn [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, productOptions, variants } }];"
+        "jsCode": "// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits\nconst settings = $('Settings').first().json;\nconst file = $('Prices file').first().json;\nconst text = String($input.first().json.data || \"\").replace(/^\\uFEFF/, \"\");\n// empty rows of the sheet export as \",,,\" lines\nconst lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;\"\\s]/g, \"\"));\n// one CSV line into cells; a quoted cell may hold a comma (e.g. \"179,00\" in a French-format sheet)\nconst split = (line) => {\n    const cells = [];\n    let cell = \"\";\n    let quoted = false;\n    for (let i = 0; i < line.length; i++) {\n        const ch = line[i];\n        if (quoted) {\n            if (ch === '\"' && line[i + 1] === '\"') { cell += '\"'; i++; }\n            else if (ch === '\"') quoted = false;\n            else cell += ch;\n        } else if (ch === '\"') quoted = true;\n        else if (ch === \",\" || ch === \";\") { cells.push(cell.trim()); cell = \"\"; }\n        else cell += ch;\n    }\n    cells.push(cell.trim());\n    return cells;\n};\nconst header = split(lines.shift() || \"\").map((h) => h.toLowerCase().replace(/\\s+/g, \"_\"));\nconst col = (name) => header.indexOf(name);\nfor (const name of [\"canvas_type\", \"size\", \"colors\", \"price\"]) {\n    if (col(name) < 0) throw new Error(file.name + \": missing column \" + name + \" (columns: canvas_type,size,colors,price)\");\n}\n// \"179\", \"179.00\", \"179,00\" or \"179,00 MAD\"\nconst money = (value) => Number(String(value).replace(/[^\\d,.-]/g, \"\").replace(\",\", \".\"));\nconst rows = [];\nconst seen = new Set();\nlines.forEach((line, i) => {\n    const cells = split(line);\n    const size = cells[col(\"size\")].toLowerCase().replace(/\\s*cm$/, \"\").replace(/\\s*[x×]\\s*/, \"x\");\n    let canvasType = cells[col(\"canvas_type\")];\n    if (!/canvas$/i.test(canvasType)) canvasType += \" Canvas\"; // \"Rolled\" -> \"Rolled Canvas\", the store's wording\n    const colors = String(parseInt(cells[col(\"colors\")], 10));\n    const price = money(cells[col(\"price\")]);\n    const compareCell = col(\"compare_at_price\") >= 0 ? cells[col(\"compare_at_price\")] : \"\";\n    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);\n    const where = file.name + \" line \" + (i + 2);\n    if (!/^\\d+x\\d+$/.test(size)) throw new Error(where + \": size must look like 30x40\");\n    if (colors === \"NaN\") throw new Error(where + \": colors must be a number\");\n    if (!(price > 0)) throw new Error(where + \": price must be a number above 0\");\n    const key = size + \"|\" + canvasType + \"|\" + colors;\n    if (seen.has(key)) throw new Error(where + \": \" + key.replace(/\\|/g, \" / \") + \" is listed twice\");\n    seen.add(key);\n    rows.push({ size, canvasType, colors, price: price.toFixed(2), compareAtPrice: compareAt > price ? compareAt.toFixed(2) : null });\n});\nif (!rows.length) throw new Error(file.name + \" has no prices\");\nif (rows.length > 100) throw new Error(file.name + \": Shopify allows 100 variants per product, the CSV has \" + rows.length);\n\nconst area = (s) => s.split(\"x\").reduce((a, b) => a * Number(b), 1);\nconst unique = (values) => [...new Set(values)];\nconst sizes = unique(rows.map((r) => r.size)).sort((a, b) => area(a) - area(b));\nconst canvasTypes = unique(rows.map((r) => r.canvasType)).sort();\nconst colors = unique(rows.map((r) => r.colors)).sort((a, b) => a - b);\nrows.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);\n\nconst productOptions = [\n    { name: \"Size\", position: 1, values: sizes.map((name) => ({ name })) },\n    { name: \"Canvas Type\", position: 2, values: canvasTypes.map((name) => ({ name })) },\n    { name: \"Colors\", position: 3, values: colors.map((name) => ({ name })) },\n];\nconst variants = rows.map((r, i) => ({\n    optionValues: [\n        { optionName: \"Size\", name: r.size },\n        { optionName: \"Canvas Type\", name: r.canvasType },\n        { optionName: \"Colors\", name: r.colors },\n    ],\n    price: r.price,\n    compareAtPrice: r.compareAtPrice,\n    position: i + 1,\n    inventoryPolicy: \"DENY\",\n    inventoryItem: { tracked: false, requiresShipping: true },\n}));\nreturn [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, productOptions, variants } }];"
       }
     },
     {
@@ -794,14 +782,14 @@
       "main": [
         [
           {
-            "node": "Find prices CSV",
+            "node": "Find prices sheet",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Find prices CSV": {
+    "Find prices sheet": {
       "main": [
         [
           {
@@ -816,14 +804,14 @@
       "main": [
         [
           {
-            "node": "Download prices CSV",
+            "node": "Export prices sheet",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download prices CSV": {
+    "Export prices sheet": {
       "main": [
         [
           {

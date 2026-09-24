@@ -3,7 +3,7 @@
 `n8n-darlart-shopify-uploader.json` (built by `scripts/build-shopify-uploader-workflow.js`): turns every finished `Artwork Agent/1xxx` folder into a **draft** product on darlart.ma.
 
 ```
-Print Agent finished / Run now / every day 05:00 -> shopify-prices.csv (Drive) -> Drive "Artwork Agent" folders
+Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Drive) -> Drive "Artwork Agent" folders
   -> folders with _product.json + _art.png + _mockup.png and no _shopify.json, one by one:
      staged upload of the artwork and the mockup to Shopify
      -> productSet: draft product (texts, collections, variants + prices, images)
@@ -21,18 +21,19 @@ Print Agent finished / Run now / every day 05:00 -> shopify-prices.csv (Drive) -
 - SKU per variant: folder + size digits + color count + canvas type initial (R Rolled, S Stretched), e.g. folder 1001, 20x25, 12 colors, Rolled = `1001202512R`.
 - Status `DRAFT`: review it in Shopify and publish it yourself.
 
-## Prices: `shopify-prices.csv`
+## Prices: Google Sheet "Darl'Art Prices"
 
-In the Drive "Artwork Agent" folder (a copy is in `automation/shopify-prices.csv`). It is read on every run, so after you edit it, every product uploaded from then on gets the new prices. Products already uploaded keep their prices.
+In the Drive "Artwork Agent" folder (`pricesSheetId` in Settings). Its first tab is read on every run, so edit the sheet directly: every product uploaded after the change gets the new prices. Products already uploaded keep their prices.
 
-```
-canvas_type,size,colors,price[,compare_at_price]
-Rolled,32x40,12,179.00
-```
+| canvas_type | size | colors | price | compare_at_price (optional) |
+|---|---|---|---|---|
+| Rolled | 20x25 | 12 | 179 | |
 
 - `canvas_type`: `Rolled` becomes "Rolled Canvas" (the store's wording).
+- `price`: 179, 179.00 or 179,00 all work.
 - `compare_at_price`: optional. Without it the compare-at price is `price x compareAtMultiplier` (2).
-- Each row becomes one variant (Shopify allows 100 at most). A wrong line stops the run with the line number.
+- Each row becomes one variant (Shopify allows 100 at most). Empty rows are ignored; a wrong row stops the run with its line number.
+- Keep the column names in row 1 and the prices on the first tab.
 
 ## Shared images
 

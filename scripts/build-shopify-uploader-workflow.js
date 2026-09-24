@@ -1,12 +1,12 @@
 /**
  * Builds automation/n8n-darlart-shopify-uploader.json, the "Shopify Uploader" n8n workflow:
  *
- *   Print Agent finished / Run now / every day -> prices CSV (Drive) + Drive "Artwork Agent" folders
+ *   Print Agent finished / Run now / every day -> prices Google Sheet (Drive) + Drive "Artwork Agent" folders
  *   -> folders that have a product JSON, an artwork and a mockup but no <date+time>_shopify.json yet, one by one:
  *      upload the artwork + mockup to Shopify -> draft product (texts from the product JSON, variants and prices
  *      from the CSV, images: artwork, mockup, then the shared images) -> <date+time>_shopify.json in the folder
  *
- * The prices CSV (shopify-prices.csv in the "Artwork Agent" folder) is read on every run, so a new price
+ * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
  * applies to every product uploaded after the change. Columns: canvas_type,size,colors,price[,compare_at_price].
  * The product's handle is the product JSON's handle plus the folder number (e.g. blue-iris-1003): a rerun updates
  * the same draft instead of creating a second one, and never touches an existing product.
@@ -19,7 +19,7 @@ const root = path.join(__dirname, "..");
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent"
-    pricesFileName: "shopify-prices.csv", // in the "Artwork Agent" folder
+    pricesSheetId: "1279ywKi2r5Y5ovUIaZs6kXoIv5QmP4V0BPg9ZJtZypk", // Google Sheet "Darl'Art Prices" (its first tab is read)
     shopDomain: "smgi0i-0a.myshopify.com", // darlart.ma
     apiVersion: "2026-07",
     status: "DRAFT",
@@ -116,30 +116,62 @@ connect("Every day", "Settings");
 connect("When called by Print Agent", "Settings");
 
 // ---- 2. prices, read fresh on every run ---------------------------------------------------------
-driveList("Find prices CSV", [440, 200], "=name = '{{ $('Settings').first().json.pricesFileName }}' and '{{ $('Settings').first().json.agentFolderId }}' in parents and trashed = false");
-connect("Settings", "Find prices CSV");
+node("Find prices sheet", "n8n-nodes-base.httpRequest", 4.2, [440, 200], {
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $('Settings').first().json.pricesSheetId }}",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    sendQuery: true,
+    queryParameters: { parameters: [{ name: "fields", value: "id,name,mimeType,modifiedTime,trashed" }, { name: "supportsAllDrives", value: "true" }] },
+    options: { timeout: 30000 },
+});
+connect("Settings", "Find prices sheet");
 
-code("Prices file", [660, 200], `const settings = $('Settings').first().json;
-const file = ($input.first().json.files || [])[0];
-if (!file) throw new Error("No " + settings.pricesFileName + " in the Artwork Agent folder: upload the prices CSV there");
+code("Prices file", [660, 200], `const file = $input.first().json;
+if (!file.id || file.trashed) throw new Error("The prices sheet (pricesSheetId in Settings) is missing or in the trash");
+if (file.mimeType !== "application/vnd.google-apps.spreadsheet") throw new Error(file.name + " is not a Google Sheet: pricesSheetId must point to the prices spreadsheet");
 return [{ json: { id: file.id, name: file.name, modifiedTime: file.modifiedTime } }];`);
-connect("Find prices CSV", "Prices file");
+connect("Find prices sheet", "Prices file");
 
-driveDownload("Download prices CSV", [880, 200], "$json.id", "text");
-connect("Prices file", "Download prices CSV");
+// the sheet's first tab, as CSV
+node("Export prices sheet", "n8n-nodes-base.httpRequest", 4.2, [880, 200], {
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/export?mimeType=text/csv",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    options: { response: { response: { responseFormat: "text", outputPropertyName: "data" } }, timeout: 60000 },
+});
+connect("Prices file", "Export prices sheet");
 
 code("Prices", [1100, 200], `// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits
 const settings = $('Settings').first().json;
 const file = $('Prices file').first().json;
 const text = String($input.first().json.data || "").replace(/^\\uFEFF/, "");
-const lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean);
-const split = (line) => line.split(/[,;]/).map((c) => c.trim().replace(/^"|"$/g, ""));
+// empty rows of the sheet export as ",,," lines
+const lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;"\\s]/g, ""));
+// one CSV line into cells; a quoted cell may hold a comma (e.g. "179,00" in a French-format sheet)
+const split = (line) => {
+    const cells = [];
+    let cell = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (quoted) {
+            if (ch === '"' && line[i + 1] === '"') { cell += '"'; i++; }
+            else if (ch === '"') quoted = false;
+            else cell += ch;
+        } else if (ch === '"') quoted = true;
+        else if (ch === "," || ch === ";") { cells.push(cell.trim()); cell = ""; }
+        else cell += ch;
+    }
+    cells.push(cell.trim());
+    return cells;
+};
 const header = split(lines.shift() || "").map((h) => h.toLowerCase().replace(/\\s+/g, "_"));
 const col = (name) => header.indexOf(name);
 for (const name of ["canvas_type", "size", "colors", "price"]) {
     if (col(name) < 0) throw new Error(file.name + ": missing column " + name + " (columns: canvas_type,size,colors,price)");
 }
-const money = (value) => Number(String(value).replace(/\\s/g, "").replace(",", "."));
+// "179", "179.00", "179,00" or "179,00 MAD"
+const money = (value) => Number(String(value).replace(/[^\\d,.-]/g, "").replace(",", "."));
 const rows = [];
 const seen = new Set();
 lines.forEach((line, i) => {
@@ -188,7 +220,7 @@ const variants = rows.map((r, i) => ({
     inventoryItem: { tracked: false, requiresShipping: true },
 }));
 return [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, productOptions, variants } }];`);
-connect("Download prices CSV", "Prices");
+connect("Export prices sheet", "Prices");
 
 // ---- 3. folders waiting for Shopify ------------------------------------------------------------------
 driveList("List Artwork Agent folders", [1320, 200], "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
