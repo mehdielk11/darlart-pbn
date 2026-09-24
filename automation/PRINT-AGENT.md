@@ -6,7 +6,7 @@
 Artwork Agent finished / Run now / every day 04:00
   -> queue lock (one worker at a time)
   -> folders still missing print files, oldest first (maxPerRun per run)
-  -> one pbn job at a time: canvasSizes x colorsList (default 60x75, 40x50, 32x40, 20x25 x 12/24/36/48), HARD, orientation auto
+  -> one pbn job at a time: canvasSizes x colorsList (default 60x75 x 12/24/36/48), HARD, orientation auto
   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, then 1xxx/<stamp>_mockup.png
   -> release the lock; if files were saved, start again (picks up folders that arrived meanwhile)
 ```
@@ -18,7 +18,7 @@ Artwork Agent finished / Run now / every day 04:00
 - `<stamp>_mockup.png`: one kit mockup, from the first canvas size at `mockupColors` (48). It's saved last, so it also marks the folder as done.
 
 ## Orientation and crop
-The job is sent with `orientation: auto`: the API compares the artwork's width and height, so a portrait artwork becomes **60x75** and a landscape (or square) one **75x60** (same for 40x50, 32x40 and 20x25). It crops automatically to the exact ratio without distortion (`cropMode: attention` keeps the most interesting area). The size the API chose is part of the file names.
+The job is sent with `orientation: auto`: the API compares the artwork's width and height, so a portrait artwork becomes **60x75** and a landscape (or square) one **75x60**. It crops automatically to the exact ratio without distortion (`cropMode: attention` keeps the most interesting area). The size the API chose is part of the file names.
 
 ## Canvas sizes and variants
 `canvasSizes` and `colorsList` in **Settings** decide what is made, e.g. `30x40,40x50` and `12,24,36,48`. The website's size buttons play no part. A folder is complete when every size × color exists, in either orientation. Adding a size later makes every folder pending again, for that size only.

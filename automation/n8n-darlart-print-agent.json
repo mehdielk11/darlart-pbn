@@ -79,7 +79,7 @@
             {
               "id": "set3",
               "name": "canvasSizes",
-              "value": "60x75,40x50,32x40,20x25",
+              "value": "60x75",
               "type": "string"
             },
             {
