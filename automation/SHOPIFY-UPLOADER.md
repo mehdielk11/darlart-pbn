@@ -21,7 +21,7 @@ Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Dri
 - Images, in an enforced order: 1 the featured image, 2 the mockup, 3-5 the shared images (`sharedImages` order in Settings). The artwork itself is not uploaded: it is shown on the featured image. After creating the product, the workflow reorders its images and reads the order back every 3 seconds until it matches. If it still doesn't match after 30 seconds, the run stops and that folder gets no marker, so the next run tries it again.
 - Options Size / Canvas Type / Colors with one variant per sheet row of a size the store sells (`sizes` in Settings: 20x25, 32x40, 40x50; 3 sizes x 2 canvas types x 4 color counts = 24 variants), the same as the store's other kits (not tracked, inventory policy DENY).
 - SKU per variant: folder + size digits + color count + canvas type initial (R Rolled, S Stretched), e.g. folder 1001, 20x25, 12 colors, Rolled = `1001202512R`.
-- Status `DRAFT`: review it in Shopify and publish it yourself.
+- Status `DRAFT`, already on the **Online Store** channel ("Boutique en ligne", `onlineStorePublicationId`): review it and set it to Active, and it shows in its collections with no other step. This needs the `write_publications` scope on the Shopify credential; without it the product is still created and `_shopify.json` says `"onlineStore": "not published: ..."`.
 
 ## Prices: Google Sheet "Darl'Art Prices"
 
@@ -50,6 +50,13 @@ Shopify only gets WebP files, never PNGs: the pbn API (`POST /v1/webp`, quality 
 ## Shared images
 
 Upload the 3 images once in Shopify admin > Content > Files, copy each link, and paste them comma-separated into `sharedImages` in the Settings node. A file ID (`gid://shopify/MediaImage/...`) works too, and keeps Shopify from storing a new copy for each product.
+
+## Batch messages (Telegram)
+
+After each run, and also when there was nothing to upload, the Uploader reads the batch manifests in `Artwork Ref/Queue/Done` (`batchDoneFolderId`), written by the Artwork Worker:
+- **complete** (every painted folder of the batch has its `_shopify.json`): one message to `telegramChatId` with the drafts and their admin links, the references that could not be painted and the files refused at upload. The manifest is then renamed `<batchId>_batch_sent.json` and never read again.
+- **stuck** (still not complete `batchStuckHours` (6) after it was painted): one warning listing what each folder misses (product JSON, mockup or Shopify draft). The complete message follows when the batch is finally in Shopify.
+- A Telegram error leaves the manifest unchanged, so the next run sends the message again. With `telegramChatId` empty, nothing is sent.
 
 ## Notes
 

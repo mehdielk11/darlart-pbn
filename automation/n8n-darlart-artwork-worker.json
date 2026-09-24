@@ -1,0 +1,2106 @@
+{
+  "name": "Darl'Art Artwork Worker",
+  "nodes": [
+    {
+      "id": "ab000001-0000-4000-8000-000000000000",
+      "name": "When called by Artwork Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "ab000002-0000-4000-8000-000000000000",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ab000003-0000-4000-8000-000000000000",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ab000004-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "colors",
+              "value": 48,
+              "type": "number"
+            },
+            {
+              "id": "set1",
+              "name": "exclude",
+              "value": "3801,3811",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "paletteId",
+              "value": "darlart-v3",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "pbnApiUrl",
+              "value": "http://127.0.0.1:3000",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "refFolderId",
+              "value": "1iGdgyIplbyQx52QOK1jUcwOuwuYTlWM-",
+              "type": "string"
+            },
+            {
+              "id": "set5",
+              "name": "queueFolderId",
+              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
+              "type": "string"
+            },
+            {
+              "id": "set6",
+              "name": "doneFolderId",
+              "value": "1qph_ttrwCa303b2GxsHGpdLujqUm2y_B",
+              "type": "string"
+            },
+            {
+              "id": "set7",
+              "name": "failedFolderId",
+              "value": "1CbfwyL5REPwYkSFEgR4iQpQSK38TZ89U",
+              "type": "string"
+            },
+            {
+              "id": "set8",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set9",
+              "name": "firstFolderNumber",
+              "value": 1001,
+              "type": "number"
+            },
+            {
+              "id": "set10",
+              "name": "imageModel",
+              "value": "gpt-image-2",
+              "type": "string"
+            },
+            {
+              "id": "set11",
+              "name": "imageQuality",
+              "value": "medium",
+              "type": "string"
+            },
+            {
+              "id": "set12",
+              "name": "canvasSize",
+              "value": "60x75",
+              "type": "string"
+            },
+            {
+              "id": "set13",
+              "name": "orientation",
+              "value": "portrait",
+              "type": "string"
+            },
+            {
+              "id": "set14",
+              "name": "imageSize",
+              "value": "1024x1280",
+              "type": "string"
+            },
+            {
+              "id": "set15",
+              "name": "maxTries",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "set16",
+              "name": "lockStaleMinutes",
+              "value": 45,
+              "type": "number"
+            },
+            {
+              "id": "set17",
+              "name": "timezone",
+              "value": "Africa/Casablanca",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ab000005-0000-4000-8000-000000000000",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000006-0000-4000-8000-000000000000",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Another worker holds a fresh lock (less than lockStaleMinutes old): it also paints the references just queued\nconst settings = $('Settings').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      }
+    },
+    {
+      "id": "ab000007-0000-4000-8000-000000000000",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000008-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        360
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ab000009-0000-4000-8000-000000000000",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_artwork-worker.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.queueFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000010-0000-4000-8000-000000000000",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000011-0000-4000-8000-000000000000",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        120
+      ],
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst settings = $('Settings').first().json;\nconst mine = $('Create lock').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      }
+    },
+    {
+      "id": "ab000012-0000-4000-8000-000000000000",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000013-0000-4000-8000-000000000000",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        280
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000014-0000-4000-8000-000000000000",
+      "name": "List queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        40
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000015-0000-4000-8000-000000000000",
+      "name": "Next reference",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        40
+      ],
+      "parameters": {
+        "jsCode": "// The oldest queued reference (<batchId>_<nn>.<ext>, oldest batch first) and its batch manifest\nconst files = $input.first().json.files || [];\nconst images = files.filter((f) => new RegExp(\"^\\\\d{4}-\\\\d{2}-\\\\d{2}_\\\\d{2}-\\\\d{2}-\\\\d{2}_\\\\d{2}\\\\.(jpg|png|webp)$\").test(f.name)).sort((a, b) => (a.name < b.name ? -1 : 1));\nif (!images.length) return [{ json: { none: true } }];\nconst image = images[0];\nconst batchId = image.name.slice(0, 19);\nconst manifest = files.find((f) => f.name === batchId + \"_batch.json\");\nreturn [{ json: { none: false, fileId: image.id, queueName: image.name, extension: image.name.split(\".\").pop(), batchId, manifestId: manifest ? manifest.id : \"\", remaining: images.length - 1 } }];"
+      }
+    },
+    {
+      "id": "ab000016-0000-4000-8000-000000000000",
+      "name": "Anything queued?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingqueued",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000017-0000-4000-8000-000000000000",
+      "name": "Has manifest?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Hasmanifest",
+              "leftValue": "={{ !!$json.manifestId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000018-0000-4000-8000-000000000000",
+      "name": "Download manifest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        -120
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.manifestId }}?alt=media&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000019-0000-4000-8000-000000000000",
+      "name": "Start attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "// One more try for this reference: after maxTries runs that stopped midway, it is set aside as failed\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst manifest = next.manifestId && $('Download manifest').isExecuted ? $('Download manifest').first().json : null;\nlet tries = 1;\nlet originalName = next.queueName;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) {\n        entry.tries = (Number(entry.tries) || 0) + 1;\n        tries = entry.tries;\n        originalName = entry.originalName || originalName;\n    }\n}\nconst out = { json: { tries, giveUp: tries > Number(settings.maxTries), originalName, manifest, hasManifest: !!manifest } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
+      }
+    },
+    {
+      "id": "ab000020-0000-4000-8000-000000000000",
+      "name": "Record the try?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Recordthetry",
+              "leftValue": "={{ $json.hasManifest }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000021-0000-4000-8000-000000000000",
+      "name": "Save manifest (try)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        -120
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $('Next reference').first().json.manifestId + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "manifest",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000022-0000-4000-8000-000000000000",
+      "name": "Tries left?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Triesleft",
+              "leftValue": "={{ !$('Start attempt').first().json.giveUp }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000023-0000-4000-8000-000000000000",
+      "name": "Download reference",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        -120
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Next reference').first().json.fileId }}?alt=media&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "reference"
+            }
+          },
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "ab000024-0000-4000-8000-000000000000",
+      "name": "Result: stopped too often",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        120
+      ],
+      "parameters": {
+        "jsCode": "const settings = $('Settings').first().json;\nreturn [{ json: { status: \"failed\", reason: \"the run stopped before the end \" + settings.maxTries + \" times\" } }];"
+      }
+    },
+    {
+      "id": "ab000025-0000-4000-8000-000000000000",
+      "name": "Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "// The queued image becomes the \"reference\" file, and the run gets its date+time stamp\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst file = $input.first().binary && $input.first().binary.reference;\nif (!file) throw new Error(\"Could not download the queued reference \" + next.queueName);\nconst stamp = $now.setZone(settings.timezone).toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nconst referenceName = stamp + \"_ref.\" + next.extension;\nreturn [{\n    json: {\n        stamp,\n        referenceName,\n        artworkName: stamp + \"_art.png\",\n        paletteName: stamp + \"_palette.json\",\n    },\n    binary: { reference: { ...file, fileName: referenceName } },\n}];"
+      }
+    },
+    {
+      "id": "ab000026-0000-4000-8000-000000000000",
+      "name": "Build image prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
+      }
+    },
+    {
+      "id": "ab000027-0000-4000-8000-000000000000",
+      "name": "Generate ART",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4620,
+        -120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/edits",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ $('Settings').first().json.imageModel }}"
+            },
+            {
+              "name": "prompt",
+              "value": "={{ $('Build image prompt').last().json.imagePrompt }}"
+            },
+            {
+              "name": "size",
+              "value": "={{ $('Settings').first().json.imageSize }}"
+            },
+            {
+              "name": "quality",
+              "value": "={{ $('Settings').first().json.imageQuality }}"
+            },
+            {
+              "name": "output_format",
+              "value": "png"
+            },
+            {
+              "name": "n",
+              "value": "1"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "reference"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      }
+    },
+    {
+      "id": "ab000028-0000-4000-8000-000000000000",
+      "name": "Raw artwork file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4840,
+        -120
+      ],
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "data[0].b64_json",
+        "binaryPropertyName": "artwork",
+        "options": {
+          "fileName": "artwork.png",
+          "mimeType": "image/png"
+        }
+      }
+    },
+    {
+      "id": "ab000029-0000-4000-8000-000000000000",
+      "name": "Check artwork",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        5060,
+        -120
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "Check the attached image.\nclean = false if it contains ANY of these:\n- a color palette, color swatches, color chips, a color bar or strip, or a legend;\n- any text, letters, numbers, labels, logo, signature or watermark;\n- a border, frame, white margin, mockup, canvas edge or paper around the painting;\n- a pixel-art, blocky or mosaic look (visible square pixels or blocks).\nOtherwise clean = true. \"problems\" lists what you found, or is empty.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You check artwork files before they go to a paint-by-numbers production tool. You look at the image and report problems. Be strict.",
+          "passthroughBinaryImages": true
+        }
+      }
+    },
+    {
+      "id": "ab000030-0000-4000-8000-000000000000",
+      "name": "Checker model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        5020,
+        100
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000031-0000-4000-8000-000000000000",
+      "name": "Check format",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        5200,
+        100
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"clean\": {\n      \"type\": \"boolean\"\n    },\n    \"problems\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"clean\",\n    \"problems\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "ab000032-0000-4000-8000-000000000000",
+      "name": "Artwork clean?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5380,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Artworkclean",
+              "leftValue": "={{ $json.output.clean }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000033-0000-4000-8000-000000000000",
+      "name": "Count attempts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5600,
+        80
+      ],
+      "parameters": {
+        "jsCode": "// A problem was found in the artwork: paint again, at most MAX_ATTEMPTS images in all\nconst MAX_ATTEMPTS = 3;\nconst attempt = $runIndex + 2; // this node runs after attempt 1, 2...\nreturn [{\n    json: { retry: attempt <= MAX_ATTEMPTS, attempt, problems: $json.output ? $json.output.problems : \"\" },\n    binary: $('Prepare').first().binary,\n}];"
+      }
+    },
+    {
+      "id": "ab000034-0000-4000-8000-000000000000",
+      "name": "Paint again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5820,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Paintagain",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000035-0000-4000-8000-000000000000",
+      "name": "Result: not painted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6040,
+        180
+      ],
+      "parameters": {
+        "jsCode": "// 3 paintings, none clean: the reference is set aside in Artwork Ref/Failed\nconst last = $('Count attempts').last().json;\nreturn [{ json: { status: \"failed\", reason: \"not painted cleanly in 3 tries\" + (last.problems ? \" (\" + last.problems + \")\" : \"\") } }];"
+      }
+    },
+    {
+      "id": "ab000036-0000-4000-8000-000000000000",
+      "name": "Approved artwork",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5600,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "// The checker (AI Agent) only outputs its verdict: take the approved image from the latest paint attempt\nreturn [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwork } }];"
+      }
+    },
+    {
+      "id": "ab000037-0000-4000-8000-000000000000",
+      "name": "Snap to palette (48 colors)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5820,
+        -320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/recolor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "colors",
+              "value": "={{ $('Settings').first().json.colors }}"
+            },
+            {
+              "name": "palette",
+              "value": "={{ $('Settings').first().json.paletteId }}"
+            },
+            {
+              "name": "exclude",
+              "value": "={{ $('Settings').first().json.exclude }}"
+            },
+            {
+              "name": "smooth",
+              "value": "3"
+            },
+            {
+              "name": "canvasSize",
+              "value": "={{ $('Settings').first().json.canvasSize }}"
+            },
+            {
+              "name": "orientation",
+              "value": "={{ $('Settings').first().json.orientation }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "artwork"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      }
+    },
+    {
+      "id": "ab000038-0000-4000-8000-000000000000",
+      "name": "Check palette",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6040,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "// Every pixel of the final artwork is a Darl'Art color: check the count and the codes before saving\nconst PALETTE = {\"1001\":\"#F5FAC4\",\"1002\":\"#EBF5B0\",\"1003\":\"#DFF39E\",\"1004\":\"#D3F191\",\"1005\":\"#CCEE8D\",\"1006\":\"#C3E87E\",\"1007\":\"#BAE476\",\"1008\":\"#B0DD66\",\"1009\":\"#A2D959\",\"1010\":\"#97D147\",\"1011\":\"#6A7042\",\"1012\":\"#555A35\",\"1013\":\"#404328\",\"1014\":\"#30321E\",\"1015\":\"#222415\",\"1101\":\"#EBFFCC\",\"1102\":\"#DAF9B5\",\"1103\":\"#CCF3A2\",\"1104\":\"#BFED93\",\"1105\":\"#B0E78A\",\"1106\":\"#A6DF7E\",\"1107\":\"#9ADC72\",\"1108\":\"#8ED366\",\"1109\":\"#82D15C\",\"1110\":\"#6EC449\",\"1111\":\"#597B3E\",\"1112\":\"#476232\",\"1113\":\"#354A25\",\"1114\":\"#28371C\",\"1115\":\"#1C2714\",\"1201\":\"#D5F6C9\",\"1202\":\"#C1EEB3\",\"1203\":\"#B3E8A4\",\"1204\":\"#A4E297\",\"1205\":\"#ACF393\",\"1206\":\"#A0E885\",\"1207\":\"#96E57C\",\"1208\":\"#8DE074\",\"1209\":\"#77D364\",\"1210\":\"#60C752\",\"1211\":\"#527A45\",\"1212\":\"#426237\",\"1213\":\"#314929\",\"1214\":\"#25371F\",\"1215\":\"#1A2716\",\"1301\":\"#BFEFD9\",\"1302\":\"#A4E4BF\",\"1303\":\"#96DFB2\",\"1304\":\"#85D8A2\",\"1305\":\"#85D691\",\"1306\":\"#7CCF87\",\"1307\":\"#71C97F\",\"1308\":\"#5CBF6C\",\"1309\":\"#4CB862\",\"1310\":\"#2EA555\",\"1311\":\"#336C4C\",\"1312\":\"#29563D\",\"1313\":\"#1F412E\",\"1314\":\"#173122\",\"1315\":\"#102318\",\"1401\":\"#B9F1D6\",\"1402\":\"#9FE7C2\",\"1403\":\"#8CDFB5\",\"1404\":\"#7AD5AA\",\"1405\":\"#68CC9A\",\"1406\":\"#5DC391\",\"1407\":\"#4EBB84\",\"1408\":\"#41B47B\",\"1409\":\"#23A565\",\"1410\":\"#079A53\",\"1411\":\"#166D43\",\"1412\":\"#125736\",\"1413\":\"#0D4128\",\"1414\":\"#0A311E\",\"1415\":\"#072315\",\"1501\":\"#ADEFD4\",\"1502\":\"#8EE2C8\",\"1503\":\"#79D6B7\",\"1504\":\"#66CDAF\",\"1505\":\"#57C69B\",\"1506\":\"#4CC093\",\"1507\":\"#3DB285\",\"1508\":\"#26A97D\",\"1509\":\"#02946D\",\"1510\":\"#028B5F\",\"1511\":\"#04634D\",\"1512\":\"#034F3E\",\"1513\":\"#023B2E\",\"1514\":\"#022D23\",\"1515\":\"#012019\",\"1601\":\"#9AE6E2\",\"1602\":\"#81DCD5\",\"1603\":\"#69CEC8\",\"1604\":\"#55C3BA\",\"1605\":\"#4FC0AE\",\"1606\":\"#42B6A3\",\"1607\":\"#37AE9B\",\"1608\":\"#189D88\",\"1609\":\"#059885\",\"1610\":\"#007D6B\",\"1611\":\"#00574F\",\"1612\":\"#00463F\",\"1613\":\"#00342F\",\"1614\":\"#002724\",\"1615\":\"#001C19\",\"1701\":\"#98E7EB\",\"1702\":\"#7AD9DB\",\"1703\":\"#5ECECF\",\"1704\":\"#4CC4C2\",\"1705\":\"#4DC0BB\",\"1706\":\"#3EB7B0\",\"1707\":\"#2AA9A2\",\"1708\":\"#0B9D93\",\"1709\":\"#008D84\",\"1710\":\"#007972\",\"1711\":\"#005A58\",\"1712\":\"#004846\",\"1713\":\"#003635\",\"1714\":\"#002828\",\"1715\":\"#001D1C\",\"1801\":\"#8DE4F5\",\"1802\":\"#68D3E5\",\"1803\":\"#52C9DD\",\"1804\":\"#3ABBD1\",\"1805\":\"#3BB6C8\",\"1806\":\"#2AADC1\",\"1807\":\"#119FB3\",\"1808\":\"#0093A7\",\"1809\":\"#008298\",\"1810\":\"#016F88\",\"1811\":\"#00525D\",\"1812\":\"#00424A\",\"1813\":\"#003138\",\"1814\":\"#00252A\",\"1815\":\"#001A1E\",\"1901\":\"#8DE3FA\",\"1902\":\"#69D2EF\",\"1903\":\"#4EC5E3\",\"1904\":\"#34BBD9\",\"1905\":\"#32B3D3\",\"1906\":\"#15A3C7\",\"1907\":\"#029CC0\",\"1908\":\"#0090B5\",\"1909\":\"#007BA5\",\"1910\":\"#006A92\",\"1911\":\"#004C5C\",\"1912\":\"#003D4A\",\"1913\":\"#002E37\",\"1914\":\"#002229\",\"1915\":\"#00181D\",\"2001\":\"#87E1FC\",\"2002\":\"#63CFF3\",\"2003\":\"#49C4ED\",\"2004\":\"#35BAE5\",\"2005\":\"#2DB0DA\",\"2006\":\"#11A4D0\",\"2007\":\"#009DCA\",\"2008\":\"#008CBD\",\"2009\":\"#017DB1\",\"2010\":\"#0068A1\",\"2011\":\"#004B60\",\"2012\":\"#003C4D\",\"2013\":\"#002D3A\",\"2014\":\"#00222B\",\"2015\":\"#00181F\",\"2101\":\"#8CE3FF\",\"2102\":\"#66D2F9\",\"2103\":\"#48C2F1\",\"2104\":\"#35B9EA\",\"2105\":\"#32B5E9\",\"2106\":\"#06A0DC\",\"2107\":\"#0394D3\",\"2108\":\"#0388CB\",\"2109\":\"#007CC2\",\"2110\":\"#0064B0\",\"2111\":\"#004C66\",\"2112\":\"#003D52\",\"2113\":\"#002E3D\",\"2114\":\"#00222E\",\"2115\":\"#001821\",\"2201\":\"#8EE1FF\",\"2202\":\"#6DD0F0\",\"2203\":\"#51C1EF\",\"2204\":\"#3CB6E7\",\"2205\":\"#32A7DC\",\"2206\":\"#129BD2\",\"2207\":\"#038FCA\",\"2208\":\"#0084C2\",\"2209\":\"#0172B6\",\"2210\":\"#005DA3\",\"2211\":\"#004763\",\"2212\":\"#00394F\",\"2213\":\"#002B3B\",\"2214\":\"#00202D\",\"2215\":\"#001720\",\"2301\":\"#8AD9F8\",\"2302\":\"#70C9F1\",\"2303\":\"#56BDE8\",\"2304\":\"#43ADDD\",\"2305\":\"#30A6D8\",\"2306\":\"#269BD0\",\"2307\":\"#018CC3\",\"2308\":\"#007CB8\",\"2309\":\"#025798\",\"2310\":\"#005A99\",\"2311\":\"#01445F\",\"2312\":\"#01364C\",\"2313\":\"#012939\",\"2314\":\"#001F2B\",\"2315\":\"#00161E\",\"2401\":\"#93D5F5\",\"2402\":\"#72C1E8\",\"2403\":\"#58B1DD\",\"2404\":\"#43A4D1\",\"2405\":\"#329CCC\",\"2406\":\"#3395C6\",\"2407\":\"#0083B7\",\"2408\":\"#0176AC\",\"2409\":\"#00649F\",\"2410\":\"#004E87\",\"2411\":\"#00405C\",\"2412\":\"#00334A\",\"2413\":\"#002637\",\"2414\":\"#001D29\",\"2415\":\"#00141D\",\"2501\":\"#9ED1F0\",\"2502\":\"#7ABADD\",\"2503\":\"#65A8D2\",\"2504\":\"#529BC6\",\"2505\":\"#539AC4\",\"2506\":\"#4089B4\",\"2507\":\"#2F7DAD\",\"2508\":\"#166A99\",\"2509\":\"#025A8C\",\"2510\":\"#023F75\",\"2511\":\"#013453\",\"2512\":\"#012A42\",\"2513\":\"#011F32\",\"2514\":\"#001725\",\"2515\":\"#00111B\",\"2601\":\"#A2D1EB\",\"2602\":\"#82BADB\",\"2603\":\"#6BABCF\",\"2604\":\"#5C9DC3\",\"2605\":\"#558AB4\",\"2606\":\"#467DA6\",\"2607\":\"#3D749D\",\"2608\":\"#236391\",\"2609\":\"#205F8B\",\"2610\":\"#01366A\",\"2611\":\"#00243C\",\"2612\":\"#001D30\",\"2613\":\"#001624\",\"2614\":\"#00101B\",\"2615\":\"#000C13\",\"2701\":\"#B4C1E4\",\"2702\":\"#99ACD6\",\"2703\":\"#8099C2\",\"2704\":\"#728AB6\",\"2705\":\"#527CA6\",\"2706\":\"#4E78A2\",\"2707\":\"#406B95\",\"2708\":\"#38638D\",\"2709\":\"#1C4670\",\"2710\":\"#002454\",\"2711\":\"#011132\",\"2712\":\"#010E28\",\"2713\":\"#010A1E\",\"2714\":\"#000816\",\"2715\":\"#000510\",\"2801\":\"#C0BFDE\",\"2802\":\"#A8A8CA\",\"2803\":\"#9696BA\",\"2804\":\"#8484AA\",\"2805\":\"#7779A0\",\"2806\":\"#676992\",\"2807\":\"#64668F\",\"2808\":\"#51537A\",\"2809\":\"#3C3E65\",\"2810\":\"#0E093F\",\"2811\":\"#040426\",\"2812\":\"#03031E\",\"2813\":\"#020217\",\"2814\":\"#020211\",\"2815\":\"#01010C\",\"2901\":\"#CAC9D7\",\"2902\":\"#B0B1C5\",\"2903\":\"#A0A0B8\",\"2904\":\"#8F8FA7\",\"2905\":\"#8281A0\",\"2906\":\"#727191\",\"2907\":\"#656182\",\"2908\":\"#554F71\",\"2909\":\"#443A5F\",\"2910\":\"#250034\",\"2911\":\"#180322\",\"2912\":\"#13021B\",\"2913\":\"#0E0214\",\"2914\":\"#0B010F\",\"2915\":\"#08010B\",\"3001\":\"#F1CFDF\",\"3002\":\"#E0B9CC\",\"3003\":\"#D0A3B8\",\"3004\":\"#C494AE\",\"3005\":\"#A67892\",\"3006\":\"#9A6883\",\"3007\":\"#905976\",\"3008\":\"#7E4764\",\"3009\":\"#672C4C\",\"3010\":\"#3E0019\",\"3011\":\"#280008\",\"3012\":\"#220007\",\"3013\":\"#1B0006\",\"3014\":\"#150005\",\"3015\":\"#0F0004\",\"3101\":\"#EEC0DA\",\"3102\":\"#E1A6C4\",\"3103\":\"#D392B4\",\"3104\":\"#CA82A7\",\"3105\":\"#B97197\",\"3106\":\"#AE6489\",\"3107\":\"#9F5179\",\"3108\":\"#8F3C66\",\"3109\":\"#7C234F\",\"3110\":\"#5A000A\",\"3111\":\"#370005\",\"3112\":\"#2C0004\",\"3113\":\"#210003\",\"3114\":\"#190002\",\"3115\":\"#120002\",\"3201\":\"#F4B9D7\",\"3202\":\"#EAA2C7\",\"3203\":\"#E18CB6\",\"3204\":\"#D67BA6\",\"3205\":\"#C76C98\",\"3206\":\"#BE5D8A\",\"3207\":\"#B6517D\",\"3208\":\"#A73862\",\"3209\":\"#97224F\",\"3210\":\"#710002\",\"3211\":\"#460002\",\"3212\":\"#380002\",\"3213\":\"#2A0001\",\"3214\":\"#200001\",\"3215\":\"#160001\",\"3301\":\"#F8D0CE\",\"3302\":\"#EFBAB6\",\"3303\":\"#E7AAA7\",\"3304\":\"#E09B96\",\"3305\":\"#DF928C\",\"3306\":\"#CD746E\",\"3307\":\"#CE756F\",\"3308\":\"#C56660\",\"3309\":\"#BB544F\",\"3310\":\"#A63E35\",\"3311\":\"#633631\",\"3312\":\"#4F2B27\",\"3313\":\"#3B201D\",\"3314\":\"#2D1816\",\"3315\":\"#201110\",\"3401\":\"#FCDBCA\",\"3402\":\"#F6C7B5\",\"3403\":\"#F0B9A4\",\"3404\":\"#E9AB94\",\"3405\":\"#EA9882\",\"3406\":\"#E99179\",\"3407\":\"#E3836A\",\"3408\":\"#DB775F\",\"3409\":\"#CE644C\",\"3410\":\"#C15234\",\"3411\":\"#6C4935\",\"3412\":\"#4B3B2B\",\"3413\":\"#3A3728\",\"3414\":\"#25251B\",\"3415\":\"#14130E\",\"3501\":\"#F0DACD\",\"3502\":\"#E7C8B6\",\"3503\":\"#DCB7A4\",\"3504\":\"#D4A996\",\"3505\":\"#D59E89\",\"3506\":\"#CC937F\",\"3507\":\"#C4866F\",\"3508\":\"#B87660\",\"3509\":\"#A9674D\",\"3510\":\"#98573B\",\"3511\":\"#6E4B37\",\"3512\":\"#474030\",\"3513\":\"#30312B\",\"3514\":\"#23241F\",\"3515\":\"#0E130D\",\"3601\":\"#ECDCCF\",\"3602\":\"#DDC7B9\",\"3603\":\"#D5BAA5\",\"3604\":\"#CAAB97\",\"3605\":\"#C19E8A\",\"3606\":\"#B8927F\",\"3607\":\"#AB8570\",\"3608\":\"#A67C66\",\"3609\":\"#916B56\",\"3610\":\"#7C563F\",\"3611\":\"#664C3B\",\"3612\":\"#523D2F\",\"3613\":\"#3D2E23\",\"3614\":\"#2E221B\",\"3615\":\"#211813\",\"3701\":\"#D4D4D4\",\"3702\":\"#C0C0C0\",\"3703\":\"#B1B1B1\",\"3704\":\"#A5A5A3\",\"3705\":\"#9E9E92\",\"3706\":\"#919185\",\"3707\":\"#838377\",\"3708\":\"#78786C\",\"3709\":\"#68685C\",\"3710\":\"#545547\",\"3711\":\"#43443F\",\"3712\":\"#363632\",\"3713\":\"#282926\",\"3714\":\"#1E1F1C\",\"3715\":\"#151614\",\"3802\":\"#F3F3F3\",\"3803\":\"#E7E7E7\",\"3804\":\"#DADADA\",\"3805\":\"#CCCCCC\",\"3806\":\"#BCBCBC\",\"3807\":\"#AAAAAA\",\"3808\":\"#959595\",\"3809\":\"#7C7C7C\",\"3810\":\"#5A5A5A\",\"0101\":\"#FFBBE4\",\"0102\":\"#FFA8CA\",\"0103\":\"#FF93B5\",\"0104\":\"#FF80A3\",\"0105\":\"#FC6286\",\"0106\":\"#F95379\",\"0107\":\"#F4446B\",\"0108\":\"#F02252\",\"0109\":\"#E20030\",\"0110\":\"#DC0000\",\"0111\":\"#5A0000\",\"0112\":\"#470000\",\"0113\":\"#350000\",\"0114\":\"#240000\",\"0115\":\"#140000\",\"0201\":\"#FFC6CD\",\"0202\":\"#FFAFB8\",\"0203\":\"#FF9BA7\",\"0204\":\"#FE8992\",\"0205\":\"#FF7A83\",\"0206\":\"#FC737D\",\"0207\":\"#FB6570\",\"0208\":\"#F54C53\",\"0209\":\"#F1404A\",\"0210\":\"#DF0207\",\"0211\":\"#561920\",\"0212\":\"#45141A\",\"0213\":\"#340F13\",\"0214\":\"#270B0E\",\"0215\":\"#1C080A\",\"0301\":\"#FFC6CC\",\"0302\":\"#FEACB2\",\"0303\":\"#FFA0A6\",\"0304\":\"#FF8F95\",\"0305\":\"#FF9188\",\"0306\":\"#FF8B82\",\"0307\":\"#FF7C74\",\"0308\":\"#FF665E\",\"0309\":\"#FF5F53\",\"0310\":\"#FA3218\",\"0311\":\"#64352F\",\"0312\":\"#502A26\",\"0313\":\"#3C201C\",\"0314\":\"#2D1815\",\"0315\":\"#20110F\",\"0401\":\"#FED1CC\",\"0402\":\"#FFBDB1\",\"0403\":\"#FEAA9F\",\"0404\":\"#FF9F93\",\"0405\":\"#FF957D\",\"0406\":\"#FF8C71\",\"0407\":\"#FF8168\",\"0408\":\"#FE7155\",\"0409\":\"#FF6040\",\"0410\":\"#F94C21\",\"0411\":\"#684531\",\"0412\":\"#533727\",\"0413\":\"#3E291D\",\"0414\":\"#2F1F16\",\"0415\":\"#211610\",\"0501\":\"#FFD9C6\",\"0502\":\"#FEC4B0\",\"0503\":\"#FFB39C\",\"0504\":\"#FFA88D\",\"0505\":\"#FEB080\",\"0506\":\"#FEAA7B\",\"0507\":\"#FF9A64\",\"0508\":\"#FF915E\",\"0509\":\"#FF8752\",\"0510\":\"#FF692A\",\"0511\":\"#685836\",\"0512\":\"#53462B\",\"0513\":\"#3E3520\",\"0514\":\"#2F2818\",\"0515\":\"#211C11\",\"0601\":\"#FFE2C0\",\"0602\":\"#FED3A9\",\"0603\":\"#FFC796\",\"0604\":\"#FFBC87\",\"0605\":\"#FEC182\",\"0606\":\"#FEB775\",\"0607\":\"#FFAE6C\",\"0608\":\"#FFA157\",\"0609\":\"#FF9348\",\"0610\":\"#FF812A\",\"0611\":\"#756937\",\"0612\":\"#5E542C\",\"0613\":\"#463F21\",\"0614\":\"#352F19\",\"0615\":\"#252212\",\"0701\":\"#FFEFC3\",\"0702\":\"#FFE0A7\",\"0703\":\"#FFD799\",\"0704\":\"#FFCE89\",\"0705\":\"#FFCB7F\",\"0706\":\"#FFC571\",\"0707\":\"#FEBC66\",\"0708\":\"#FFB35B\",\"0709\":\"#FEAA48\",\"0710\":\"#FF9E33\",\"0711\":\"#837D3F\",\"0712\":\"#696432\",\"0713\":\"#4F4B26\",\"0714\":\"#3B381C\",\"0715\":\"#2A2814\",\"0801\":\"#FFF7C5\",\"0802\":\"#FFF2AC\",\"0803\":\"#FFEA9E\",\"0804\":\"#FFE18B\",\"0805\":\"#FEDC7B\",\"0806\":\"#FFD573\",\"0807\":\"#FFCC63\",\"0808\":\"#FFC557\",\"0809\":\"#FEC049\",\"0810\":\"#FFB636\",\"0811\":\"#7A7940\",\"0812\":\"#626133\",\"0813\":\"#494926\",\"0814\":\"#37361D\",\"0815\":\"#272714\",\"0901\":\"#FFFFC7\",\"0902\":\"#FFFFAF\",\"0903\":\"#FEFE9A\",\"0904\":\"#FFFF8D\",\"0905\":\"#FFFF81\",\"0906\":\"#FFFF71\",\"0907\":\"#FFFF69\",\"0908\":\"#FEFF5B\",\"0909\":\"#FFF643\",\"0910\":\"#FFF12E\",\"0911\":\"#85853F\",\"0912\":\"#66652F\",\"0913\":\"#4D4C23\",\"0914\":\"#39391A\",\"0915\":\"#292913\"};\nconst settings = $('Settings').first().json;\nconst result = $input.first().json;\nconst colors = result.colors || [];\nconst bad = colors.filter((c) => PALETTE[c.code] !== c.hex);\nif (bad.length) throw new Error(\"Colors outside the Darl'Art palette: \" + bad.map((c) => c.code + \" \" + c.hex).join(\", \"));\nif (colors.length !== Number(settings.colors)) throw new Error(\"The artwork has \" + colors.length + \" colors instead of \" + settings.colors);\nconst prepared = $('Prepare').first().json;\nconst paletteJson = {\n    artwork: prepared.artworkName,\n    reference: prepared.referenceName,\n    palette: settings.paletteId,\n    colorCount: colors.length,\n    width: result.width,\n    height: result.height,\n    colors: colors.map((c) => ({ code: c.code, hex: c.hex, rgb: c.rgb, percent: c.percent })),\n};\nreturn [{ json: { image: result.image, paletteJson } }];"
+      }
+    },
+    {
+      "id": "ab000039-0000-4000-8000-000000000000",
+      "name": "Artwork file",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        6260,
+        -320
+      ],
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "image",
+        "binaryPropertyName": "artwork",
+        "options": {
+          "fileName": "={{ $('Prepare').first().json.artworkName }}",
+          "mimeType": "image/png"
+        }
+      }
+    },
+    {
+      "id": "ab000040-0000-4000-8000-000000000000",
+      "name": "List Artwork Agent folders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6480,
+        -320
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000041-0000-4000-8000-000000000000",
+      "name": "Next folder number",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6700,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "// The new folder is the next free number: 1001, 1002, ... (folders with other names are ignored)\nconst first = Number($('Settings').first().json.firstFolderNumber) || 1001;\nconst numbers = (($input.first().json.files) || []).map((f) => String(f.name).trim()).filter((n) => /^\\d+$/.test(n)).map(Number);\nconst next = numbers.length ? Math.max(first - 1, ...numbers) + 1 : first;\nreturn [{ json: { folderName: String(next) } }];"
+      }
+    },
+    {
+      "id": "ab000042-0000-4000-8000-000000000000",
+      "name": "Create folder (Artwork Agent/1xxx)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        6920,
+        -320
+      ],
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $json.folderName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Settings').first().json.agentFolderId }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000043-0000-4000-8000-000000000000",
+      "name": "Files for the folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7140,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "// Artwork Ref + Artwork Gen (+ the palette JSON), one item per file\nconst folderId = $input.first().json.id;\nconst prepared = $('Prepare').first();\nconst paletteJson = $('Check palette').first().json.paletteJson;\nreturn [\n    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },\n    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },\n    {\n        json: { folderId, name: prepared.json.paletteName },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: prepared.json.paletteName } },\n    },\n];"
+      }
+    },
+    {
+      "id": "ab000044-0000-4000-8000-000000000000",
+      "name": "Upload to folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        7360,
+        -320
+      ],
+      "parameters": {
+        "name": "={{ $json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.folderId }}"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000045-0000-4000-8000-000000000000",
+      "name": "Run Titling Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        7580,
+        -480
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tOSHbCt7hJ6ORh8a"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000046-0000-4000-8000-000000000000",
+      "name": "Run Print Agent",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        7800,
+        -480
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ytxV3m341mDLCdt4"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000047-0000-4000-8000-000000000000",
+      "name": "Result: painted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7580,
+        -320
+      ],
+      "parameters": {
+        "jsCode": "const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\nreturn [{ json: { status: \"done\", folder: folder.name, folderId: folder.id, referenceName: $('Prepare').first().json.referenceName } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ab000048-0000-4000-8000-000000000000",
+      "name": "Update entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7800,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// The manifest records what became of the reference; the batch is painted once nothing of it is queued\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst result = $input.first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst now = $now.setZone(settings.timezone).toISO();\nlet painted = false;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || \"\", folder: result.folder || \"\", folderId: result.folderId || \"\", finishedAt: now });\n    painted = manifest.files.every((e) => e.status !== \"queued\");\n    if (painted) Object.assign(manifest, { paintedAt: now, notified: false });\n}\n// a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is\nconst move = result.status === \"done\"\n    ? { to: settings.refFolderId, name: result.referenceName }\n    : { to: settings.failedFolderId, name: next.queueName };\nconst out = { json: { status: result.status, folder: result.folder || \"\", painted, hasManifest: !!manifest, move } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
+      }
+    },
+    {
+      "id": "ab000049-0000-4000-8000-000000000000",
+      "name": "Record the result?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8020,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Recordtheresult",
+              "leftValue": "={{ $json.hasManifest }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000050-0000-4000-8000-000000000000",
+      "name": "Save manifest (result)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8240,
+        -80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $('Next reference').first().json.manifestId + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "manifest",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000051-0000-4000-8000-000000000000",
+      "name": "Move reference out of the queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8460,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Next reference').first().json.fileId + '?supportsAllDrives=true&fields=id,name,parents&addParents=' + $('Update entry').first().json.move.to + '&removeParents=' + $('Settings').first().json.queueFolderId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Update entry').first().json.move.name }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000052-0000-4000-8000-000000000000",
+      "name": "Batch painted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8680,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Batchpainted",
+              "leftValue": "={{ $('Update entry').first().json.painted }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000053-0000-4000-8000-000000000000",
+      "name": "Move manifest to Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8900,
+        -80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Next reference').first().json.manifestId + '?supportsAllDrives=true&fields=id,name,parents&addParents=' + $('Settings').first().json.doneFolderId + '&removeParents=' + $('Settings').first().json.queueFolderId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "ab000054-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9120,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Next reference').isExecuted && !$('Next reference').first().json.none;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed } }));"
+      }
+    },
+    {
+      "id": "ab000055-0000-4000-8000-000000000000",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9340,
+        160
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000056-0000-4000-8000-000000000000",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        9560,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "ab000057-0000-4000-8000-000000000000",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        9780,
+        80
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "When called by Artwork Agent": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
+      "main": [
+        [
+          {
+            "node": "List queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List queue": {
+      "main": [
+        [
+          {
+            "node": "Next reference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next reference": {
+      "main": [
+        [
+          {
+            "node": "Anything queued?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything queued?": {
+      "main": [
+        [
+          {
+            "node": "Has manifest?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has manifest?": {
+      "main": [
+        [
+          {
+            "node": "Download manifest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Start attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download manifest": {
+      "main": [
+        [
+          {
+            "node": "Start attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start attempt": {
+      "main": [
+        [
+          {
+            "node": "Record the try?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record the try?": {
+      "main": [
+        [
+          {
+            "node": "Save manifest (try)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tries left?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save manifest (try)": {
+      "main": [
+        [
+          {
+            "node": "Tries left?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tries left?": {
+      "main": [
+        [
+          {
+            "node": "Download reference",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Result: stopped too often",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download reference": {
+      "main": [
+        [
+          {
+            "node": "Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare": {
+      "main": [
+        [
+          {
+            "node": "Build image prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build image prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate ART",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate ART": {
+      "main": [
+        [
+          {
+            "node": "Raw artwork file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Raw artwork file": {
+      "main": [
+        [
+          {
+            "node": "Check artwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checker model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Check artwork",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check format": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Check artwork",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check artwork": {
+      "main": [
+        [
+          {
+            "node": "Artwork clean?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artwork clean?": {
+      "main": [
+        [
+          {
+            "node": "Approved artwork",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Count attempts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count attempts": {
+      "main": [
+        [
+          {
+            "node": "Paint again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paint again?": {
+      "main": [
+        [
+          {
+            "node": "Generate ART",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Result: not painted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved artwork": {
+      "main": [
+        [
+          {
+            "node": "Snap to palette (48 colors)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snap to palette (48 colors)": {
+      "main": [
+        [
+          {
+            "node": "Check palette",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check palette": {
+      "main": [
+        [
+          {
+            "node": "Artwork file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artwork file": {
+      "main": [
+        [
+          {
+            "node": "List Artwork Agent folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Artwork Agent folders": {
+      "main": [
+        [
+          {
+            "node": "Next folder number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next folder number": {
+      "main": [
+        [
+          {
+            "node": "Create folder (Artwork Agent/1xxx)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create folder (Artwork Agent/1xxx)": {
+      "main": [
+        [
+          {
+            "node": "Files for the folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Files for the folder": {
+      "main": [
+        [
+          {
+            "node": "Upload to folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to folder": {
+      "main": [
+        [
+          {
+            "node": "Run Titling Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Run Print Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Result: painted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: painted": {
+      "main": [
+        [
+          {
+            "node": "Update entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: not painted": {
+      "main": [
+        [
+          {
+            "node": "Update entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: stopped too often": {
+      "main": [
+        [
+          {
+            "node": "Update entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update entry": {
+      "main": [
+        [
+          {
+            "node": "Record the result?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record the result?": {
+      "main": [
+        [
+          {
+            "node": "Save manifest (result)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move reference out of the queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save manifest (result)": {
+      "main": [
+        [
+          {
+            "node": "Move reference out of the queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move reference out of the queue": {
+      "main": [
+        [
+          {
+            "node": "Batch painted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch painted?": {
+      "main": [
+        [
+          {
+            "node": "Move manifest to Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move manifest to Done": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca"
+  },
+  "pinData": {}
+}

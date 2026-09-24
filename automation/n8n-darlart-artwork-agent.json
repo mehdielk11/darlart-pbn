@@ -12,31 +12,44 @@
       ],
       "parameters": {
         "formTitle": "Darl'Art Artwork Agent",
-        "formDescription": "Upload the artwork reference. The agent paints it with exactly 48 Darl'Art colors and saves everything in Drive (Artwork Agent). It takes 1 to 3 minutes: keep this page open.",
+        "formDescription": "Upload up to 20 artwork references (JPG, PNG or WEBP, 5 MB each). Each one is painted with exactly 48 Darl'Art colors, one after another (about 2 minutes each), and saved in Drive (Artwork Agent/1xxx). You can close this page after sending.",
         "formFields": {
           "values": [
             {
-              "fieldLabel": "Artwork reference",
+              "fieldLabel": "Artwork references",
               "fieldType": "file",
-              "multipleFiles": false,
+              "multipleFiles": true,
               "acceptFileTypes": ".jpg,.jpeg,.png,.webp",
               "requiredField": true
             }
           ]
         },
         "options": {
-          "buttonLabel": "Generate artwork",
+          "buttonLabel": "Queue artworks",
           "appendAttribution": false
         }
       }
     },
     {
       "id": "aa000002-0000-4000-8000-000000000000",
+      "name": "Check uploads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Every uploaded file is checked: a real JPG, PNG or WEBP (read from the file's first bytes, so a renamed PDF is\n// refused) of MAX_MB at most. Up to MAX_FILES good files are queued, one item each; the refused ones are listed.\nconst MAX_MB = 5;\nconst MAX_FILES = 20;\nconst item = $input.first();\nconst keys = Object.keys(item.binary || {});\nconst batchId = $now.setZone(\"Africa/Casablanca\").toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nconst accepted = [];\nconst refused = [];\nfor (const key of keys) {\n    const file = item.binary[key];\n    const name = file.fileName || key;\n    const bytes = await this.helpers.getBinaryDataBuffer(0, key);\n    const head = bytes.subarray(0, 12);\n    const ascii = (from, to) => head.subarray(from, to).toString(\"latin1\");\n    let format = \"\";\n    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) format = \"jpg\";\n    else if (head[0] === 0x89 && ascii(1, 4) === \"PNG\") format = \"png\";\n    else if (ascii(0, 4) === \"RIFF\" && ascii(8, 12) === \"WEBP\") format = \"webp\";\n    let reason = \"\";\n    if (!format) reason = \"not a JPG, PNG or WEBP image\";\n    else if (bytes.length > MAX_MB * 1024 * 1024) reason = (bytes.length / 1024 / 1024).toFixed(1) + \" MB, the maximum is \" + MAX_MB + \" MB\";\n    else if (bytes.length < 100) reason = \"empty or damaged\";\n    else if (accepted.length >= MAX_FILES) reason = \"more than \" + MAX_FILES + \" files in one upload\";\n    if (reason) { refused.push({ name, reason }); continue; }\n    const queueName = batchId + \"_\" + String(accepted.length + 1).padStart(2, \"0\") + \".\" + format;\n    const mimeType = { jpg: \"image/jpeg\", png: \"image/png\", webp: \"image/webp\" }[format];\n    accepted.push({ json: { batchId, queueName, originalName: name }, binary: { reference: { ...file, mimeType, fileName: queueName, fileExtension: format } } });\n}\nif (!accepted.length) return [{ json: { none: true, batchId, refused } }];\nreturn accepted.map((a) => ({ json: { ...a.json, refused }, binary: a.binary }));"
+      }
+    },
+    {
+      "id": "aa000003-0000-4000-8000-000000000000",
       "name": "Settings",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        220,
+        440,
         0
       ],
       "parameters": {
@@ -44,108 +57,30 @@
           "assignments": [
             {
               "id": "set0",
-              "name": "colors",
-              "value": 48,
-              "type": "number"
+              "name": "queueFolderId",
+              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
+              "type": "string"
             },
             {
               "id": "set1",
-              "name": "exclude",
-              "value": "3801,3811",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "paletteId",
-              "value": "darlart-v3",
-              "type": "string"
-            },
-            {
-              "id": "set3",
-              "name": "pbnApiUrl",
-              "value": "http://127.0.0.1:3000",
-              "type": "string"
-            },
-            {
-              "id": "set4",
-              "name": "refFolderId",
-              "value": "1iGdgyIplbyQx52QOK1jUcwOuwuYTlWM-",
-              "type": "string"
-            },
-            {
-              "id": "set5",
               "name": "agentFolderId",
               "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set6",
-              "name": "firstFolderNumber",
-              "value": 1001,
-              "type": "number"
-            },
-            {
-              "id": "set7",
-              "name": "imageModel",
-              "value": "gpt-image-2",
-              "type": "string"
-            },
-            {
-              "id": "set8",
-              "name": "imageQuality",
-              "value": "medium",
-              "type": "string"
-            },
-            {
-              "id": "set9",
-              "name": "canvasSize",
-              "value": "60x75",
-              "type": "string"
-            },
-            {
-              "id": "set10",
-              "name": "orientation",
-              "value": "portrait",
-              "type": "string"
-            },
-            {
-              "id": "set11",
-              "name": "imageSize",
-              "value": "1024x1280",
-              "type": "string"
-            },
-            {
-              "id": "set12",
-              "name": "timezone",
-              "value": "Africa/Casablanca",
               "type": "string"
             }
           ]
         },
         "options": {}
-      }
-    },
-    {
-      "id": "aa000003-0000-4000-8000-000000000000",
-      "name": "Check upload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        110,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "// Only JPG, PNG or WEBP images up to MAX_MB are accepted. The format is read from the file's first bytes,\n// so a renamed file (e.g. a PDF called photo.jpg) is refused. Nothing else runs for a refused file.\nconst MAX_MB = 5;\nconst item = $input.first();\nconst key = Object.keys(item.binary || {})[0];\nif (!key) return [{ json: { valid: false, reason: \"No file was uploaded.\" } }];\nconst file = item.binary[key];\nconst bytes = await this.helpers.getBinaryDataBuffer(0, key);\nconst size = bytes.length;\nconst head = bytes.subarray(0, 12);\nconst ascii = (from, to) => head.subarray(from, to).toString(\"latin1\");\nlet format = \"\";\nif (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) format = \"jpg\";\nelse if (head[0] === 0x89 && ascii(1, 4) === \"PNG\") format = \"png\";\nelse if (ascii(0, 4) === \"RIFF\" && ascii(8, 12) === \"WEBP\") format = \"webp\";\nconst mb = (size / 1024 / 1024).toFixed(1);\nlet reason = \"\";\nif (!format) reason = \"This file is not a JPG, PNG or WEBP image. Please upload a photo in one of these formats.\";\nelse if (size > MAX_MB * 1024 * 1024) reason = \"The image is \" + mb + \" MB. The maximum is \" + MAX_MB + \" MB: please upload a smaller or compressed image.\";\nelse if (size < 100) reason = \"The image is empty or damaged. Please upload another file.\";\nconst mimeType = { jpg: \"image/jpeg\", png: \"image/png\", webp: \"image/webp\" }[format] || file.mimeType;\nreturn [{\n    json: { valid: !reason, reason, format, extension: format, bytes: size, fileName: file.fileName || \"\" },\n    // the file goes on with its real type\n    binary: { [key]: { ...file, mimeType, fileExtension: format || file.fileExtension } },\n}];"
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "aa000004-0000-4000-8000-000000000000",
-      "name": "Upload OK?",
+      "name": "Anything to queue?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        330,
-        -200
+        660,
+        0
       ],
       "parameters": {
         "conditions": {
@@ -156,8 +91,8 @@
           },
           "conditions": [
             {
-              "id": "uploadok",
-              "leftValue": "={{ $json.valid }}",
+              "id": "Anythingtoqueue",
+              "leftValue": "={{ !$('Check uploads').first().json.none }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -173,43 +108,28 @@
     },
     {
       "id": "aa000005-0000-4000-8000-000000000000",
-      "name": "Page: invalid upload",
-      "type": "n8n-nodes-base.form",
-      "typeVersion": 2.3,
+      "name": "Queue files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        550,
-        -360
+        880,
+        -100
       ],
       "parameters": {
-        "operation": "completion",
-        "respondWith": "showText",
-        "responseText": "=<div style=\"font-family:system-ui,sans-serif;text-align:center\"><h2>This file can't be used</h2><p>{{ $json.reason }}</p><p><a href=\"javascript:history.back()\">Try again</a></p></div>"
+        "jsCode": "// The accepted references, with their files, for the queue folder\nreturn $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));"
       }
     },
     {
       "id": "aa000006-0000-4000-8000-000000000000",
-      "name": "Prepare",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        440,
-        0
-      ],
-      "parameters": {
-        "jsCode": "// The uploaded image becomes the \"reference\" file, and the run gets its date+time stamp\nconst settings = $('Settings').first().json;\nconst checked = $('Check upload').first();\nconst key = Object.keys(checked.binary || {})[0];\nif (!key) throw new Error(\"No image in the form submission\");\nconst file = checked.binary[key];\nconst extension = checked.json.extension; // the real format, read from the file's bytes\nconst stamp = $now.setZone(settings.timezone).toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nreturn [{\n    json: {\n        stamp,\n        referenceName: stamp + \"_ref.\" + extension,\n        artworkName: stamp + \"_art.png\",\n        paletteName: stamp + \"_palette.json\",\n    },\n    binary: { reference: file },\n}];"
-      }
-    },
-    {
-      "id": "aa000007-0000-4000-8000-000000000000",
-      "name": "Save reference (Artwork Ref)",
+      "name": "Save queued references",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        660,
-        0
+        1100,
+        -100
       ],
       "parameters": {
-        "name": "={{ $('Prepare').first().json.referenceName }}",
+        "name": "={{ $json.queueName }}",
         "driveId": {
           "__rl": true,
           "mode": "list",
@@ -218,410 +138,36 @@
         "folderId": {
           "__rl": true,
           "mode": "id",
-          "value": "={{ $('Settings').first().json.refFolderId }}"
+          "value": "={{ $('Settings').first().json.queueFolderId }}"
         },
         "inputDataFieldName": "reference",
         "options": {}
       }
     },
     {
-      "id": "aa000008-0000-4000-8000-000000000000",
-      "name": "Build image prompt",
+      "id": "aa000007-0000-4000-8000-000000000000",
+      "name": "Batch manifest",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        880,
-        0
-      ],
-      "parameters": {
-        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
-      }
-    },
-    {
-      "id": "aa000009-0000-4000-8000-000000000000",
-      "name": "Generate ART",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        0
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/images/edits",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "model",
-              "value": "={{ $('Settings').first().json.imageModel }}"
-            },
-            {
-              "name": "prompt",
-              "value": "={{ $('Build image prompt').last().json.imagePrompt }}"
-            },
-            {
-              "name": "size",
-              "value": "={{ $('Settings').first().json.imageSize }}"
-            },
-            {
-              "name": "quality",
-              "value": "={{ $('Settings').first().json.imageQuality }}"
-            },
-            {
-              "name": "output_format",
-              "value": "png"
-            },
-            {
-              "name": "n",
-              "value": "1"
-            },
-            {
-              "parameterType": "formBinaryData",
-              "name": "image",
-              "inputDataFieldName": "reference"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 300000
-        }
-      }
-    },
-    {
-      "id": "aa000010-0000-4000-8000-000000000000",
-      "name": "Raw artwork file",
-      "type": "n8n-nodes-base.convertToFile",
-      "typeVersion": 1.1,
       "position": [
         1320,
-        0
+        -100
       ],
       "parameters": {
-        "operation": "toBinary",
-        "sourceProperty": "data[0].b64_json",
-        "binaryPropertyName": "artwork",
-        "options": {
-          "fileName": "artwork.png",
-          "mimeType": "image/png"
-        }
+        "jsCode": "// <batchId>_batch.json: what the worker paints and what it made of each reference\nconst accepted = $('Check uploads').all().map((item) => item.json);\nconst manifest = {\n    batchId: accepted[0].batchId,\n    submittedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n    files: accepted.map((a) => ({ queueName: a.queueName, originalName: a.originalName, status: \"queued\", tries: 0 })),\n    refused: accepted[0].refused,\n};\nconst fileName = manifest.batchId + \"_batch.json\";\nreturn [{\n    json: { fileName },\n    binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName } },\n}];"
       }
     },
     {
-      "id": "aa000011-0000-4000-8000-000000000000",
-      "name": "Check artwork",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 2.2,
+      "id": "aa000008-0000-4000-8000-000000000000",
+      "name": "Save batch manifest",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
       "position": [
         1540,
-        0
+        -100
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "Check the attached image.\nclean = false if it contains ANY of these:\n- a color palette, color swatches, color chips, a color bar or strip, or a legend;\n- any text, letters, numbers, labels, logo, signature or watermark;\n- a border, frame, white margin, mockup, canvas edge or paper around the painting;\n- a pixel-art, blocky or mosaic look (visible square pixels or blocks).\nOtherwise clean = true. \"problems\" lists what you found, or is empty.",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "You check artwork files before they go to a paint-by-numbers production tool. You look at the image and report problems. Be strict.",
-          "passthroughBinaryImages": true
-        }
-      }
-    },
-    {
-      "id": "aa000012-0000-4000-8000-000000000000",
-      "name": "Checker model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        1500,
-        220
-      ],
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-5-mini",
-          "mode": "id"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000013-0000-4000-8000-000000000000",
-      "name": "Check format",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
-      "position": [
-        1680,
-        220
-      ],
-      "parameters": {
-        "schemaType": "manual",
-        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"clean\": {\n      \"type\": \"boolean\"\n    },\n    \"problems\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"clean\",\n    \"problems\"\n  ]\n}"
-      }
-    },
-    {
-      "id": "aa000014-0000-4000-8000-000000000000",
-      "name": "Artwork clean?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1860,
-        0
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "Artworkclean",
-              "leftValue": "={{ $json.output.clean }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000015-0000-4000-8000-000000000000",
-      "name": "Count attempts",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2080,
-        200
-      ],
-      "parameters": {
-        "jsCode": "// A problem was found in the artwork: paint again, at most MAX_ATTEMPTS images in all\nconst MAX_ATTEMPTS = 3;\nconst attempt = $runIndex + 2; // this node runs after attempt 1, 2...\nreturn [{\n    json: { retry: attempt <= MAX_ATTEMPTS, attempt, problems: $json.output ? $json.output.problems : \"\" },\n    binary: $('Prepare').first().binary,\n}];"
-      }
-    },
-    {
-      "id": "aa000016-0000-4000-8000-000000000000",
-      "name": "Paint again?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2300,
-        200
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "Paintagain",
-              "leftValue": "={{ $json.retry }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000017-0000-4000-8000-000000000000",
-      "name": "Page: artwork failed",
-      "type": "n8n-nodes-base.form",
-      "typeVersion": 2.3,
-      "position": [
-        2520,
-        300
-      ],
-      "parameters": {
-        "operation": "completion",
-        "respondWith": "showText",
-        "responseText": "<div style=\"font-family:system-ui,sans-serif;text-align:center\"><h2>Something went wrong</h2><p>The artwork could not be painted cleanly after 3 tries. The reference is saved in Artwork Ref. Please submit it again.</p><p><a href=\"javascript:history.back()\">Try again</a></p></div>"
-      }
-    },
-    {
-      "id": "aa000018-0000-4000-8000-000000000000",
-      "name": "Snap to palette (48 colors)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2300,
-        -200
-      ],
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/recolor",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "colors",
-              "value": "={{ $('Settings').first().json.colors }}"
-            },
-            {
-              "name": "palette",
-              "value": "={{ $('Settings').first().json.paletteId }}"
-            },
-            {
-              "name": "exclude",
-              "value": "={{ $('Settings').first().json.exclude }}"
-            },
-            {
-              "name": "smooth",
-              "value": "3"
-            },
-            {
-              "name": "canvasSize",
-              "value": "={{ $('Settings').first().json.canvasSize }}"
-            },
-            {
-              "name": "orientation",
-              "value": "={{ $('Settings').first().json.orientation }}"
-            },
-            {
-              "parameterType": "formBinaryData",
-              "name": "image",
-              "inputDataFieldName": "artwork"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 180000
-        }
-      }
-    },
-    {
-      "id": "aa000019-0000-4000-8000-000000000000",
-      "name": "Approved artwork",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2080,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "// The checker (AI Agent) only outputs its verdict: take the approved image from the latest paint attempt\nreturn [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwork } }];"
-      }
-    },
-    {
-      "id": "aa000020-0000-4000-8000-000000000000",
-      "name": "Check palette",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2520,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "// Every pixel of the final artwork is a Darl'Art color: check the count and the codes before saving\nconst PALETTE = {\"1001\":\"#F5FAC4\",\"1002\":\"#EBF5B0\",\"1003\":\"#DFF39E\",\"1004\":\"#D3F191\",\"1005\":\"#CCEE8D\",\"1006\":\"#C3E87E\",\"1007\":\"#BAE476\",\"1008\":\"#B0DD66\",\"1009\":\"#A2D959\",\"1010\":\"#97D147\",\"1011\":\"#6A7042\",\"1012\":\"#555A35\",\"1013\":\"#404328\",\"1014\":\"#30321E\",\"1015\":\"#222415\",\"1101\":\"#EBFFCC\",\"1102\":\"#DAF9B5\",\"1103\":\"#CCF3A2\",\"1104\":\"#BFED93\",\"1105\":\"#B0E78A\",\"1106\":\"#A6DF7E\",\"1107\":\"#9ADC72\",\"1108\":\"#8ED366\",\"1109\":\"#82D15C\",\"1110\":\"#6EC449\",\"1111\":\"#597B3E\",\"1112\":\"#476232\",\"1113\":\"#354A25\",\"1114\":\"#28371C\",\"1115\":\"#1C2714\",\"1201\":\"#D5F6C9\",\"1202\":\"#C1EEB3\",\"1203\":\"#B3E8A4\",\"1204\":\"#A4E297\",\"1205\":\"#ACF393\",\"1206\":\"#A0E885\",\"1207\":\"#96E57C\",\"1208\":\"#8DE074\",\"1209\":\"#77D364\",\"1210\":\"#60C752\",\"1211\":\"#527A45\",\"1212\":\"#426237\",\"1213\":\"#314929\",\"1214\":\"#25371F\",\"1215\":\"#1A2716\",\"1301\":\"#BFEFD9\",\"1302\":\"#A4E4BF\",\"1303\":\"#96DFB2\",\"1304\":\"#85D8A2\",\"1305\":\"#85D691\",\"1306\":\"#7CCF87\",\"1307\":\"#71C97F\",\"1308\":\"#5CBF6C\",\"1309\":\"#4CB862\",\"1310\":\"#2EA555\",\"1311\":\"#336C4C\",\"1312\":\"#29563D\",\"1313\":\"#1F412E\",\"1314\":\"#173122\",\"1315\":\"#102318\",\"1401\":\"#B9F1D6\",\"1402\":\"#9FE7C2\",\"1403\":\"#8CDFB5\",\"1404\":\"#7AD5AA\",\"1405\":\"#68CC9A\",\"1406\":\"#5DC391\",\"1407\":\"#4EBB84\",\"1408\":\"#41B47B\",\"1409\":\"#23A565\",\"1410\":\"#079A53\",\"1411\":\"#166D43\",\"1412\":\"#125736\",\"1413\":\"#0D4128\",\"1414\":\"#0A311E\",\"1415\":\"#072315\",\"1501\":\"#ADEFD4\",\"1502\":\"#8EE2C8\",\"1503\":\"#79D6B7\",\"1504\":\"#66CDAF\",\"1505\":\"#57C69B\",\"1506\":\"#4CC093\",\"1507\":\"#3DB285\",\"1508\":\"#26A97D\",\"1509\":\"#02946D\",\"1510\":\"#028B5F\",\"1511\":\"#04634D\",\"1512\":\"#034F3E\",\"1513\":\"#023B2E\",\"1514\":\"#022D23\",\"1515\":\"#012019\",\"1601\":\"#9AE6E2\",\"1602\":\"#81DCD5\",\"1603\":\"#69CEC8\",\"1604\":\"#55C3BA\",\"1605\":\"#4FC0AE\",\"1606\":\"#42B6A3\",\"1607\":\"#37AE9B\",\"1608\":\"#189D88\",\"1609\":\"#059885\",\"1610\":\"#007D6B\",\"1611\":\"#00574F\",\"1612\":\"#00463F\",\"1613\":\"#00342F\",\"1614\":\"#002724\",\"1615\":\"#001C19\",\"1701\":\"#98E7EB\",\"1702\":\"#7AD9DB\",\"1703\":\"#5ECECF\",\"1704\":\"#4CC4C2\",\"1705\":\"#4DC0BB\",\"1706\":\"#3EB7B0\",\"1707\":\"#2AA9A2\",\"1708\":\"#0B9D93\",\"1709\":\"#008D84\",\"1710\":\"#007972\",\"1711\":\"#005A58\",\"1712\":\"#004846\",\"1713\":\"#003635\",\"1714\":\"#002828\",\"1715\":\"#001D1C\",\"1801\":\"#8DE4F5\",\"1802\":\"#68D3E5\",\"1803\":\"#52C9DD\",\"1804\":\"#3ABBD1\",\"1805\":\"#3BB6C8\",\"1806\":\"#2AADC1\",\"1807\":\"#119FB3\",\"1808\":\"#0093A7\",\"1809\":\"#008298\",\"1810\":\"#016F88\",\"1811\":\"#00525D\",\"1812\":\"#00424A\",\"1813\":\"#003138\",\"1814\":\"#00252A\",\"1815\":\"#001A1E\",\"1901\":\"#8DE3FA\",\"1902\":\"#69D2EF\",\"1903\":\"#4EC5E3\",\"1904\":\"#34BBD9\",\"1905\":\"#32B3D3\",\"1906\":\"#15A3C7\",\"1907\":\"#029CC0\",\"1908\":\"#0090B5\",\"1909\":\"#007BA5\",\"1910\":\"#006A92\",\"1911\":\"#004C5C\",\"1912\":\"#003D4A\",\"1913\":\"#002E37\",\"1914\":\"#002229\",\"1915\":\"#00181D\",\"2001\":\"#87E1FC\",\"2002\":\"#63CFF3\",\"2003\":\"#49C4ED\",\"2004\":\"#35BAE5\",\"2005\":\"#2DB0DA\",\"2006\":\"#11A4D0\",\"2007\":\"#009DCA\",\"2008\":\"#008CBD\",\"2009\":\"#017DB1\",\"2010\":\"#0068A1\",\"2011\":\"#004B60\",\"2012\":\"#003C4D\",\"2013\":\"#002D3A\",\"2014\":\"#00222B\",\"2015\":\"#00181F\",\"2101\":\"#8CE3FF\",\"2102\":\"#66D2F9\",\"2103\":\"#48C2F1\",\"2104\":\"#35B9EA\",\"2105\":\"#32B5E9\",\"2106\":\"#06A0DC\",\"2107\":\"#0394D3\",\"2108\":\"#0388CB\",\"2109\":\"#007CC2\",\"2110\":\"#0064B0\",\"2111\":\"#004C66\",\"2112\":\"#003D52\",\"2113\":\"#002E3D\",\"2114\":\"#00222E\",\"2115\":\"#001821\",\"2201\":\"#8EE1FF\",\"2202\":\"#6DD0F0\",\"2203\":\"#51C1EF\",\"2204\":\"#3CB6E7\",\"2205\":\"#32A7DC\",\"2206\":\"#129BD2\",\"2207\":\"#038FCA\",\"2208\":\"#0084C2\",\"2209\":\"#0172B6\",\"2210\":\"#005DA3\",\"2211\":\"#004763\",\"2212\":\"#00394F\",\"2213\":\"#002B3B\",\"2214\":\"#00202D\",\"2215\":\"#001720\",\"2301\":\"#8AD9F8\",\"2302\":\"#70C9F1\",\"2303\":\"#56BDE8\",\"2304\":\"#43ADDD\",\"2305\":\"#30A6D8\",\"2306\":\"#269BD0\",\"2307\":\"#018CC3\",\"2308\":\"#007CB8\",\"2309\":\"#025798\",\"2310\":\"#005A99\",\"2311\":\"#01445F\",\"2312\":\"#01364C\",\"2313\":\"#012939\",\"2314\":\"#001F2B\",\"2315\":\"#00161E\",\"2401\":\"#93D5F5\",\"2402\":\"#72C1E8\",\"2403\":\"#58B1DD\",\"2404\":\"#43A4D1\",\"2405\":\"#329CCC\",\"2406\":\"#3395C6\",\"2407\":\"#0083B7\",\"2408\":\"#0176AC\",\"2409\":\"#00649F\",\"2410\":\"#004E87\",\"2411\":\"#00405C\",\"2412\":\"#00334A\",\"2413\":\"#002637\",\"2414\":\"#001D29\",\"2415\":\"#00141D\",\"2501\":\"#9ED1F0\",\"2502\":\"#7ABADD\",\"2503\":\"#65A8D2\",\"2504\":\"#529BC6\",\"2505\":\"#539AC4\",\"2506\":\"#4089B4\",\"2507\":\"#2F7DAD\",\"2508\":\"#166A99\",\"2509\":\"#025A8C\",\"2510\":\"#023F75\",\"2511\":\"#013453\",\"2512\":\"#012A42\",\"2513\":\"#011F32\",\"2514\":\"#001725\",\"2515\":\"#00111B\",\"2601\":\"#A2D1EB\",\"2602\":\"#82BADB\",\"2603\":\"#6BABCF\",\"2604\":\"#5C9DC3\",\"2605\":\"#558AB4\",\"2606\":\"#467DA6\",\"2607\":\"#3D749D\",\"2608\":\"#236391\",\"2609\":\"#205F8B\",\"2610\":\"#01366A\",\"2611\":\"#00243C\",\"2612\":\"#001D30\",\"2613\":\"#001624\",\"2614\":\"#00101B\",\"2615\":\"#000C13\",\"2701\":\"#B4C1E4\",\"2702\":\"#99ACD6\",\"2703\":\"#8099C2\",\"2704\":\"#728AB6\",\"2705\":\"#527CA6\",\"2706\":\"#4E78A2\",\"2707\":\"#406B95\",\"2708\":\"#38638D\",\"2709\":\"#1C4670\",\"2710\":\"#002454\",\"2711\":\"#011132\",\"2712\":\"#010E28\",\"2713\":\"#010A1E\",\"2714\":\"#000816\",\"2715\":\"#000510\",\"2801\":\"#C0BFDE\",\"2802\":\"#A8A8CA\",\"2803\":\"#9696BA\",\"2804\":\"#8484AA\",\"2805\":\"#7779A0\",\"2806\":\"#676992\",\"2807\":\"#64668F\",\"2808\":\"#51537A\",\"2809\":\"#3C3E65\",\"2810\":\"#0E093F\",\"2811\":\"#040426\",\"2812\":\"#03031E\",\"2813\":\"#020217\",\"2814\":\"#020211\",\"2815\":\"#01010C\",\"2901\":\"#CAC9D7\",\"2902\":\"#B0B1C5\",\"2903\":\"#A0A0B8\",\"2904\":\"#8F8FA7\",\"2905\":\"#8281A0\",\"2906\":\"#727191\",\"2907\":\"#656182\",\"2908\":\"#554F71\",\"2909\":\"#443A5F\",\"2910\":\"#250034\",\"2911\":\"#180322\",\"2912\":\"#13021B\",\"2913\":\"#0E0214\",\"2914\":\"#0B010F\",\"2915\":\"#08010B\",\"3001\":\"#F1CFDF\",\"3002\":\"#E0B9CC\",\"3003\":\"#D0A3B8\",\"3004\":\"#C494AE\",\"3005\":\"#A67892\",\"3006\":\"#9A6883\",\"3007\":\"#905976\",\"3008\":\"#7E4764\",\"3009\":\"#672C4C\",\"3010\":\"#3E0019\",\"3011\":\"#280008\",\"3012\":\"#220007\",\"3013\":\"#1B0006\",\"3014\":\"#150005\",\"3015\":\"#0F0004\",\"3101\":\"#EEC0DA\",\"3102\":\"#E1A6C4\",\"3103\":\"#D392B4\",\"3104\":\"#CA82A7\",\"3105\":\"#B97197\",\"3106\":\"#AE6489\",\"3107\":\"#9F5179\",\"3108\":\"#8F3C66\",\"3109\":\"#7C234F\",\"3110\":\"#5A000A\",\"3111\":\"#370005\",\"3112\":\"#2C0004\",\"3113\":\"#210003\",\"3114\":\"#190002\",\"3115\":\"#120002\",\"3201\":\"#F4B9D7\",\"3202\":\"#EAA2C7\",\"3203\":\"#E18CB6\",\"3204\":\"#D67BA6\",\"3205\":\"#C76C98\",\"3206\":\"#BE5D8A\",\"3207\":\"#B6517D\",\"3208\":\"#A73862\",\"3209\":\"#97224F\",\"3210\":\"#710002\",\"3211\":\"#460002\",\"3212\":\"#380002\",\"3213\":\"#2A0001\",\"3214\":\"#200001\",\"3215\":\"#160001\",\"3301\":\"#F8D0CE\",\"3302\":\"#EFBAB6\",\"3303\":\"#E7AAA7\",\"3304\":\"#E09B96\",\"3305\":\"#DF928C\",\"3306\":\"#CD746E\",\"3307\":\"#CE756F\",\"3308\":\"#C56660\",\"3309\":\"#BB544F\",\"3310\":\"#A63E35\",\"3311\":\"#633631\",\"3312\":\"#4F2B27\",\"3313\":\"#3B201D\",\"3314\":\"#2D1816\",\"3315\":\"#201110\",\"3401\":\"#FCDBCA\",\"3402\":\"#F6C7B5\",\"3403\":\"#F0B9A4\",\"3404\":\"#E9AB94\",\"3405\":\"#EA9882\",\"3406\":\"#E99179\",\"3407\":\"#E3836A\",\"3408\":\"#DB775F\",\"3409\":\"#CE644C\",\"3410\":\"#C15234\",\"3411\":\"#6C4935\",\"3412\":\"#4B3B2B\",\"3413\":\"#3A3728\",\"3414\":\"#25251B\",\"3415\":\"#14130E\",\"3501\":\"#F0DACD\",\"3502\":\"#E7C8B6\",\"3503\":\"#DCB7A4\",\"3504\":\"#D4A996\",\"3505\":\"#D59E89\",\"3506\":\"#CC937F\",\"3507\":\"#C4866F\",\"3508\":\"#B87660\",\"3509\":\"#A9674D\",\"3510\":\"#98573B\",\"3511\":\"#6E4B37\",\"3512\":\"#474030\",\"3513\":\"#30312B\",\"3514\":\"#23241F\",\"3515\":\"#0E130D\",\"3601\":\"#ECDCCF\",\"3602\":\"#DDC7B9\",\"3603\":\"#D5BAA5\",\"3604\":\"#CAAB97\",\"3605\":\"#C19E8A\",\"3606\":\"#B8927F\",\"3607\":\"#AB8570\",\"3608\":\"#A67C66\",\"3609\":\"#916B56\",\"3610\":\"#7C563F\",\"3611\":\"#664C3B\",\"3612\":\"#523D2F\",\"3613\":\"#3D2E23\",\"3614\":\"#2E221B\",\"3615\":\"#211813\",\"3701\":\"#D4D4D4\",\"3702\":\"#C0C0C0\",\"3703\":\"#B1B1B1\",\"3704\":\"#A5A5A3\",\"3705\":\"#9E9E92\",\"3706\":\"#919185\",\"3707\":\"#838377\",\"3708\":\"#78786C\",\"3709\":\"#68685C\",\"3710\":\"#545547\",\"3711\":\"#43443F\",\"3712\":\"#363632\",\"3713\":\"#282926\",\"3714\":\"#1E1F1C\",\"3715\":\"#151614\",\"3802\":\"#F3F3F3\",\"3803\":\"#E7E7E7\",\"3804\":\"#DADADA\",\"3805\":\"#CCCCCC\",\"3806\":\"#BCBCBC\",\"3807\":\"#AAAAAA\",\"3808\":\"#959595\",\"3809\":\"#7C7C7C\",\"3810\":\"#5A5A5A\",\"0101\":\"#FFBBE4\",\"0102\":\"#FFA8CA\",\"0103\":\"#FF93B5\",\"0104\":\"#FF80A3\",\"0105\":\"#FC6286\",\"0106\":\"#F95379\",\"0107\":\"#F4446B\",\"0108\":\"#F02252\",\"0109\":\"#E20030\",\"0110\":\"#DC0000\",\"0111\":\"#5A0000\",\"0112\":\"#470000\",\"0113\":\"#350000\",\"0114\":\"#240000\",\"0115\":\"#140000\",\"0201\":\"#FFC6CD\",\"0202\":\"#FFAFB8\",\"0203\":\"#FF9BA7\",\"0204\":\"#FE8992\",\"0205\":\"#FF7A83\",\"0206\":\"#FC737D\",\"0207\":\"#FB6570\",\"0208\":\"#F54C53\",\"0209\":\"#F1404A\",\"0210\":\"#DF0207\",\"0211\":\"#561920\",\"0212\":\"#45141A\",\"0213\":\"#340F13\",\"0214\":\"#270B0E\",\"0215\":\"#1C080A\",\"0301\":\"#FFC6CC\",\"0302\":\"#FEACB2\",\"0303\":\"#FFA0A6\",\"0304\":\"#FF8F95\",\"0305\":\"#FF9188\",\"0306\":\"#FF8B82\",\"0307\":\"#FF7C74\",\"0308\":\"#FF665E\",\"0309\":\"#FF5F53\",\"0310\":\"#FA3218\",\"0311\":\"#64352F\",\"0312\":\"#502A26\",\"0313\":\"#3C201C\",\"0314\":\"#2D1815\",\"0315\":\"#20110F\",\"0401\":\"#FED1CC\",\"0402\":\"#FFBDB1\",\"0403\":\"#FEAA9F\",\"0404\":\"#FF9F93\",\"0405\":\"#FF957D\",\"0406\":\"#FF8C71\",\"0407\":\"#FF8168\",\"0408\":\"#FE7155\",\"0409\":\"#FF6040\",\"0410\":\"#F94C21\",\"0411\":\"#684531\",\"0412\":\"#533727\",\"0413\":\"#3E291D\",\"0414\":\"#2F1F16\",\"0415\":\"#211610\",\"0501\":\"#FFD9C6\",\"0502\":\"#FEC4B0\",\"0503\":\"#FFB39C\",\"0504\":\"#FFA88D\",\"0505\":\"#FEB080\",\"0506\":\"#FEAA7B\",\"0507\":\"#FF9A64\",\"0508\":\"#FF915E\",\"0509\":\"#FF8752\",\"0510\":\"#FF692A\",\"0511\":\"#685836\",\"0512\":\"#53462B\",\"0513\":\"#3E3520\",\"0514\":\"#2F2818\",\"0515\":\"#211C11\",\"0601\":\"#FFE2C0\",\"0602\":\"#FED3A9\",\"0603\":\"#FFC796\",\"0604\":\"#FFBC87\",\"0605\":\"#FEC182\",\"0606\":\"#FEB775\",\"0607\":\"#FFAE6C\",\"0608\":\"#FFA157\",\"0609\":\"#FF9348\",\"0610\":\"#FF812A\",\"0611\":\"#756937\",\"0612\":\"#5E542C\",\"0613\":\"#463F21\",\"0614\":\"#352F19\",\"0615\":\"#252212\",\"0701\":\"#FFEFC3\",\"0702\":\"#FFE0A7\",\"0703\":\"#FFD799\",\"0704\":\"#FFCE89\",\"0705\":\"#FFCB7F\",\"0706\":\"#FFC571\",\"0707\":\"#FEBC66\",\"0708\":\"#FFB35B\",\"0709\":\"#FEAA48\",\"0710\":\"#FF9E33\",\"0711\":\"#837D3F\",\"0712\":\"#696432\",\"0713\":\"#4F4B26\",\"0714\":\"#3B381C\",\"0715\":\"#2A2814\",\"0801\":\"#FFF7C5\",\"0802\":\"#FFF2AC\",\"0803\":\"#FFEA9E\",\"0804\":\"#FFE18B\",\"0805\":\"#FEDC7B\",\"0806\":\"#FFD573\",\"0807\":\"#FFCC63\",\"0808\":\"#FFC557\",\"0809\":\"#FEC049\",\"0810\":\"#FFB636\",\"0811\":\"#7A7940\",\"0812\":\"#626133\",\"0813\":\"#494926\",\"0814\":\"#37361D\",\"0815\":\"#272714\",\"0901\":\"#FFFFC7\",\"0902\":\"#FFFFAF\",\"0903\":\"#FEFE9A\",\"0904\":\"#FFFF8D\",\"0905\":\"#FFFF81\",\"0906\":\"#FFFF71\",\"0907\":\"#FFFF69\",\"0908\":\"#FEFF5B\",\"0909\":\"#FFF643\",\"0910\":\"#FFF12E\",\"0911\":\"#85853F\",\"0912\":\"#66652F\",\"0913\":\"#4D4C23\",\"0914\":\"#39391A\",\"0915\":\"#292913\"};\nconst settings = $('Settings').first().json;\nconst result = $input.first().json;\nconst colors = result.colors || [];\nconst bad = colors.filter((c) => PALETTE[c.code] !== c.hex);\nif (bad.length) throw new Error(\"Colors outside the Darl'Art palette: \" + bad.map((c) => c.code + \" \" + c.hex).join(\", \"));\nif (colors.length !== Number(settings.colors)) throw new Error(\"The artwork has \" + colors.length + \" colors instead of \" + settings.colors);\nconst prepared = $('Prepare').first().json;\nconst paletteJson = {\n    artwork: prepared.artworkName,\n    reference: prepared.referenceName,\n    palette: settings.paletteId,\n    colorCount: colors.length,\n    width: result.width,\n    height: result.height,\n    colors: colors.map((c) => ({ code: c.code, hex: c.hex, rgb: c.rgb, percent: c.percent })),\n};\nreturn [{ json: { image: result.image, paletteJson } }];"
-      }
-    },
-    {
-      "id": "aa000021-0000-4000-8000-000000000000",
-      "name": "Artwork file",
-      "type": "n8n-nodes-base.convertToFile",
-      "typeVersion": 1.1,
-      "position": [
-        2740,
-        -200
-      ],
-      "parameters": {
-        "operation": "toBinary",
-        "sourceProperty": "image",
-        "binaryPropertyName": "artwork",
-        "options": {
-          "fileName": "={{ $('Prepare').first().json.artworkName }}",
-          "mimeType": "image/png"
-        }
-      }
-    },
-    {
-      "id": "aa000022-0000-4000-8000-000000000000",
-      "name": "List Artwork Agent folders",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2960,
-        -200
-      ],
-      "parameters": {
-        "url": "https://www.googleapis.com/drive/v3/files",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleDriveOAuth2Api",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-            },
-            {
-              "name": "fields",
-              "value": "files(id,name)"
-            },
-            {
-              "name": "pageSize",
-              "value": "1000"
-            },
-            {
-              "name": "supportsAllDrives",
-              "value": "true"
-            },
-            {
-              "name": "includeItemsFromAllDrives",
-              "value": "true"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 30000
-        }
-      }
-    },
-    {
-      "id": "aa000023-0000-4000-8000-000000000000",
-      "name": "Next folder number",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3180,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "// The new folder is the next free number: 1001, 1002, ... (folders with other names are ignored)\nconst first = Number($('Settings').first().json.firstFolderNumber) || 1001;\nconst numbers = (($input.first().json.files) || []).map((f) => String(f.name).trim()).filter((n) => /^\\d+$/.test(n)).map(Number);\nconst next = numbers.length ? Math.max(first - 1, ...numbers) + 1 : first;\nreturn [{ json: { folderName: String(next) } }];"
-      }
-    },
-    {
-      "id": "aa000024-0000-4000-8000-000000000000",
-      "name": "Create folder (Artwork Agent/1xxx)",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        3400,
-        -200
-      ],
-      "parameters": {
-        "resource": "folder",
-        "name": "={{ $json.folderName }}",
+        "name": "={{ $json.fileName }}",
         "driveId": {
           "__rl": true,
           "mode": "list",
@@ -630,119 +176,86 @@
         "folderId": {
           "__rl": true,
           "mode": "id",
-          "value": "={{ $('Settings').first().json.agentFolderId }}"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000025-0000-4000-8000-000000000000",
-      "name": "Files for the folder",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3620,
-        -200
-      ],
-      "parameters": {
-        "jsCode": "// Artwork Ref + Artwork Gen (+ the palette JSON), one item per file\nconst folderId = $input.first().json.id;\nconst prepared = $('Prepare').first();\nconst paletteJson = $('Check palette').first().json.paletteJson;\nreturn [\n    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },\n    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },\n    {\n        json: { folderId, name: prepared.json.paletteName },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: prepared.json.paletteName } },\n    },\n];"
-      }
-    },
-    {
-      "id": "aa000026-0000-4000-8000-000000000000",
-      "name": "Upload to folder",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        3840,
-        -200
-      ],
-      "parameters": {
-        "name": "={{ $json.name }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.folderId }}"
+          "value": "={{ $('Settings').first().json.queueFolderId }}"
         },
         "inputDataFieldName": "data",
         "options": {}
       }
     },
     {
-      "id": "aa000027-0000-4000-8000-000000000000",
-      "name": "Build result page",
+      "id": "aa000009-0000-4000-8000-000000000000",
+      "name": "Start worker",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        -100
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "dO8EdyDM4ua2hRrA"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "aa000010-0000-4000-8000-000000000000",
+      "name": "Build queued page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4060,
-        -200
+        1980,
+        -100
       ],
       "parameters": {
-        "jsCode": "// Result: 1xxx = Artwork Ref + Artwork Gen, shown on the form's last page\nconst folder = $('Create folder (Artwork Agent/1xxx)').first().json;\nconst paletteJson = $('Check palette').first().json.paletteJson;\nconst png = \"data:image/png;base64,\" + $('Check palette').first().json.image;\nconst folderUrl = \"https://drive.google.com/drive/folders/\" + folder.id;\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\").replace(/\"/g, \"&quot;\");\nconst swatches = paletteJson.colors.map((c) => '<span class=\"sw\" title=\"' + esc(c.code + \" \" + c.hex + \" \" + c.percent + \"%\") + '\" style=\"background:' + c.hex + '\"></span>').join(\"\");\nconst html = `<style>\n  .r{font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;text-align:left;color:#1d2433}\n  .r img{width:100%;height:auto;border-radius:10px;display:block}\n  .r h2{margin:18px 0 6px;font-size:22px}\n  .r .b{display:inline-block;padding:10px 16px;border-radius:8px;background:#1d2433;color:#fff;text-decoration:none;margin:0 8px 14px 0}\n  .r .sw{display:inline-block;width:22px;height:22px;border-radius:4px;margin:0 4px 4px 0;border:1px solid #0002}\n  .r pre{background:#f3f4f6;padding:12px;border-radius:8px;overflow:auto;max-height:320px;font-size:12px}\n</style>\n<div class=\"r\">\n  <img src=\"${png}\" alt=\"Artwork ${esc(folder.name)}\">\n  <h2>Artwork ${esc(folder.name)}: ${paletteJson.colorCount} Darl'Art colors</h2>\n  <a class=\"b\" href=\"${folderUrl}\" target=\"_blank\">Open Drive folder ${esc(folder.name)}</a>\n  <a class=\"b\" href=\"${png}\" download=\"${esc(paletteJson.artwork)}\">Download artwork</a>\n  <div>${swatches}</div>\n  <pre>${esc(JSON.stringify(paletteJson.colors.map((c) => ({ code: c.code, hex: c.hex, percent: c.percent })), null, 1))}</pre>\n</div>`;\nreturn [{ json: { html, folder: folder.name, folderUrl } }];"
+        "jsCode": "// The page shown after sending: what was queued and what was refused\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst queued = first.none ? [] : checked.map((c) => c.originalName);\nconst refused = first.refused || [];\nconst folderUrl = \"https://drive.google.com/drive/folders/\" + $('Settings').first().json.agentFolderId;\nlet html = \"<h2>\" + queued.length + \" artwork\" + (queued.length > 1 ? \"s\" : \"\") + \" queued</h2>\"\n    + \"<p>They are painted one after another, about 2 minutes each, and appear in Drive as Artwork Agent/1xxx. You can close this page.</p>\"\n    + \"<ul>\" + queued.map((n) => \"<li>\" + esc(n) + \"</li>\").join(\"\") + \"</ul>\";\nif (refused.length) html += \"<h3>\" + refused.length + \" refused</h3><ul>\" + refused.map((r) => \"<li>\" + esc(r.name) + \": \" + esc(r.reason) + \"</li>\").join(\"\") + \"</ul>\";\nhtml += '<p><a href=\"' + folderUrl + '\" target=\"_blank\">Open Artwork Agent in Drive</a></p>';\nreturn [{ json: { html: '<div style=\"font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;text-align:left\">' + html + \"</div>\" } }];"
       },
       "executeOnce": true
     },
     {
-      "id": "aa000028-0000-4000-8000-000000000000",
-      "name": "Run Titling Agent",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        3840,
-        0
-      ],
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "tOSHbCt7hJ6ORh8a"
-        },
-        "mode": "once",
-        "options": {
-          "waitForSubWorkflow": false
-        }
-      },
-      "executeOnce": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "aa000029-0000-4000-8000-000000000000",
-      "name": "Run Print Agent",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        3840,
-        200
-      ],
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "ytxV3m341mDLCdt4"
-        },
-        "mode": "once",
-        "options": {
-          "waitForSubWorkflow": false
-        }
-      },
-      "executeOnce": true,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "aa000030-0000-4000-8000-000000000000",
-      "name": "Page: result",
+      "id": "aa000011-0000-4000-8000-000000000000",
+      "name": "Page: queued",
       "type": "n8n-nodes-base.form",
       "typeVersion": 2.3,
       "position": [
-        4280,
-        -200
+        2200,
+        -100
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}"
+      }
+    },
+    {
+      "id": "aa000012-0000-4000-8000-000000000000",
+      "name": "Build refused page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// The page shown after sending: what was queued and what was refused\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst queued = first.none ? [] : checked.map((c) => c.originalName);\nconst refused = first.refused || [];\nconst folderUrl = \"https://drive.google.com/drive/folders/\" + $('Settings').first().json.agentFolderId;\nlet html = \"<h2>Nothing was queued</h2><p>None of the files can be used:</p>\"\n    + \"<ul>\" + refused.map((r) => \"<li>\" + esc(r.name) + \": \" + esc(r.reason) + \"</li>\").join(\"\") + \"</ul>\"\n    + '<p><a href=\"javascript:history.back()\">Try again</a></p>';\nreturn [{ json: { html: '<div style=\"font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;text-align:left\">' + html + \"</div>\" } }];"
+      }
+    },
+    {
+      "id": "aa000013-0000-4000-8000-000000000000",
+      "name": "Page: nothing queued",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        160
       ],
       "parameters": {
         "operation": "completion",
@@ -756,36 +269,18 @@
       "main": [
         [
           {
-            "node": "Check upload",
+            "node": "Check uploads",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check upload": {
-      "main": [
-        [
-          {
-            "node": "Upload OK?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload OK?": {
+    "Check uploads": {
       "main": [
         [
           {
             "node": "Settings",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Page: invalid upload",
             "type": "main",
             "index": 0
           }
@@ -796,262 +291,102 @@
       "main": [
         [
           {
-            "node": "Prepare",
+            "node": "Anything to queue?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare": {
+    "Anything to queue?": {
       "main": [
         [
           {
-            "node": "Save reference (Artwork Ref)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Save reference (Artwork Ref)": {
-      "main": [
-        [
-          {
-            "node": "Build image prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build image prompt": {
-      "main": [
-        [
-          {
-            "node": "Generate ART",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Generate ART": {
-      "main": [
-        [
-          {
-            "node": "Raw artwork file",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Raw artwork file": {
-      "main": [
-        [
-          {
-            "node": "Check artwork",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Checker model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Check artwork",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check format": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Check artwork",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check artwork": {
-      "main": [
-        [
-          {
-            "node": "Artwork clean?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Artwork clean?": {
-      "main": [
-        [
-          {
-            "node": "Approved artwork",
+            "node": "Queue files",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Count attempts",
+            "node": "Build refused page",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Count attempts": {
+    "Queue files": {
       "main": [
         [
           {
-            "node": "Paint again?",
+            "node": "Save queued references",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Paint again?": {
+    "Save queued references": {
       "main": [
         [
           {
-            "node": "Generate ART",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Page: artwork failed",
+            "node": "Batch manifest",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Approved artwork": {
+    "Batch manifest": {
       "main": [
         [
           {
-            "node": "Snap to palette (48 colors)",
+            "node": "Save batch manifest",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Snap to palette (48 colors)": {
+    "Save batch manifest": {
       "main": [
         [
           {
-            "node": "Check palette",
+            "node": "Start worker",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Check palette": {
+    "Start worker": {
       "main": [
         [
           {
-            "node": "Artwork file",
+            "node": "Build queued page",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Artwork file": {
+    "Build queued page": {
       "main": [
         [
           {
-            "node": "List Artwork Agent folders",
+            "node": "Page: queued",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "List Artwork Agent folders": {
+    "Build refused page": {
       "main": [
         [
           {
-            "node": "Next folder number",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Next folder number": {
-      "main": [
-        [
-          {
-            "node": "Create folder (Artwork Agent/1xxx)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create folder (Artwork Agent/1xxx)": {
-      "main": [
-        [
-          {
-            "node": "Files for the folder",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Files for the folder": {
-      "main": [
-        [
-          {
-            "node": "Upload to folder",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload to folder": {
-      "main": [
-        [
-          {
-            "node": "Build result page",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Run Titling Agent",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Run Print Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build result page": {
-      "main": [
-        [
-          {
-            "node": "Page: result",
+            "node": "Page: nothing queued",
             "type": "main",
             "index": 0
           }

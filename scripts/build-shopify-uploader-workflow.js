@@ -10,6 +10,9 @@
  *
  * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
  * applies to every product uploaded after the change. Columns: canvas_type,size,colors,price[,compare_at_price].
+ * After each run, every artwork batch (manifests in Drive "Artwork Ref/Queue/Done", written by the Artwork Worker)
+ * whose drafts are all in Shopify gets one Telegram message; a batch still incomplete batchStuckHours after it was
+ * painted gets one warning listing what its folders miss.
  * The product's handle is the product JSON's handle plus the folder number (e.g. blue-iris-1003): a rerun updates
  * the same draft instead of creating a second one, and never touches an existing product.
  */
@@ -34,6 +37,13 @@ const SETTINGS = {
     sharedImages: "gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409",
     maxPerRun: 10, // folders handled per run, the rest wait for the next run
     pbnApiUrl: "http://127.0.0.1:3000", // makes the featured image (POST /v1/featured)
+    // batch messages: the chat the "Telegram account" bot writes to (empty = no messages)
+    telegramChatId: "-5252292447",
+    batchDoneFolderId: "1qph_ttrwCa303b2GxsHGpdLujqUm2y_B", // Drive "Artwork Ref/Queue/Done": manifests of painted batches
+    batchStuckHours: 6, // a batch not all in Shopify this long after it was painted gets a warning
+    // every product is put on the Online Store channel ("Boutique en ligne"), drafts included: a draft stays hidden
+    // until it is set to Active, then shows in its collections without any other step
+    onlineStorePublicationId: "gid://shopify/Publication/400869785881",
 };
 // ============================================================================================
 
@@ -253,12 +263,22 @@ $input.all().forEach((item, i) => {
     if (!product || !mockup || find("_shopify.json")) return;
     pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, names, inDrive, markerName } });
 });
-return pending.slice(0, Number(settings.maxPerRun) || 10);`);
+const todo = pending.slice(0, Number(settings.maxPerRun) || 10);
+return todo.length ? todo : [{ json: { none: true } }];`);
 connect("List folder files", "Pending folders");
 
 // ---- 4. one folder at a time ------------------------------------------------------------------------
 node("Loop over folders", "n8n-nodes-base.splitInBatches", 3, [2200, 200], { options: {} });
-connect("Pending folders", "Loop over folders");
+node("Folders to upload?", "n8n-nodes-base.if", 2, [2090, 380], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "folderstoupload", leftValue: "={{ !$json.none }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Pending folders", "Folders to upload?");
+connect("Folders to upload?", "Loop over folders", 0);
 
 driveDownload("Download product JSON", [2420, 300], "$json.productId", "json");
 connect("Loop over folders", "Download product JSON", 1);
@@ -577,6 +597,12 @@ const marker = {
     adminUrl: "https://admin.shopify.com/store/" + store + "/products/" + product.id.split("/").pop(),
     variants: product.variantsCount ? product.variantsCount.count : null,
     images: $('Image order').first().json.wanted,
+    onlineStore: (() => {
+        const r = $('Publish to Online Store').first().json;
+        const errors = [...(r.errors || []), ...(((r.data || {}).publishablePublish || {}).userErrors || [])].map((e) => e.message);
+        if (r.error) errors.push(typeof r.error === "string" ? r.error : (r.error.message || JSON.stringify(r.error)));
+        return errors.length ? "not published: " + errors.join("; ") : "published";
+    })(),
     pricesVersion: $('Prices').first().json.pricesVersion,
     uploadedAt: $now.setZone("Africa/Casablanca").toISO(),
 };
@@ -584,7 +610,14 @@ return [{
     json: { folder: folder.folder, title: product.title, adminUrl: marker.adminUrl },
     binary: { data: { data: Buffer.from(JSON.stringify(marker, null, 2)).toString("base64"), mimeType: "application/json", fileName: folder.markerName } },
 }];`);
-connect("Images in order?", "Shopify marker", 0);
+// needs the write_publications scope on the Shopify credential; an error is recorded in the marker, not fatal
+shopify("Publish to Online Store", [7040, 20], `={{ JSON.stringify({
+  query: 'mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) { publishablePublish(id: $id, input: $input) { userErrors { field message } } }',
+  variables: { id: $('Image order').first().json.productId, input: [{ publicationId: $('Settings').first().json.onlineStorePublicationId }] }
+}) }}`);
+nodes.find((n) => n.name === "Publish to Online Store").onError = "continueRegularOutput";
+connect("Images in order?", "Publish to Online Store", 0);
+connect("Publish to Online Store", "Shopify marker");
 
 node("Save marker", "n8n-nodes-base.googleDrive", 3, [7260, 200], {
     name: "={{ $('Loop over folders').first().json.markerName }}",
@@ -600,6 +633,177 @@ code("Summary", [2420, 60], `// What this run uploaded (visible in the execution
 const saved = $input.all().map((item) => item.json.name).filter(Boolean);
 return [{ json: { uploaded: saved.length, markers: saved } }];`);
 connect("Loop over folders", "Summary", 0);
+
+// ---- batch messages: runs after the uploads, and also when there was nothing to upload -------------------------
+node("Batch messages on?", "n8n-nodes-base.if", 2, [2640, -300], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "batchmessageson", leftValue: "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+}, { executeOnce: true });
+connect("Summary", "Batch messages on?");
+connect("Folders to upload?", "Batch messages on?", 1);
+
+driveList("List painted batches", [2860, -300], "='{{ $('Settings').first().json.batchDoneFolderId }}' in parents and name contains '_batch.json' and trashed = false");
+connect("Batch messages on?", "List painted batches", 0);
+
+code("Painted batches", [3080, -300], `// One item per batch manifest not announced yet (announced ones are renamed <batchId>_batch_sent.json)
+return ($input.first().json.files || []).filter((f) => /_batch\\.json$/.test(f.name)).map((f) => ({ json: { manifestId: f.id, manifestName: f.name } }));`);
+connect("List painted batches", "Painted batches");
+
+driveDownload("Download batch manifests", [3300, -300], "$json.manifestId", "json");
+connect("Painted batches", "Download batch manifests");
+
+code("Batch folders", [3520, -300], `// One item per painted folder of each batch, to look at its files (a batch with no folder gets one empty item)
+const listed = $('Painted batches').all();
+const out = [];
+$input.all().forEach((item, i) => {
+    const manifest = item.json;
+    if (!manifest || !Array.isArray(manifest.files) || manifest.notified === true) return;
+    const base = { manifestId: listed[i].json.manifestId, batchId: manifest.batchId };
+    const done = manifest.files.filter((e) => e.status === "done" && e.folderId);
+    if (!done.length) out.push({ json: { ...base, folderId: "", folder: "" } });
+    for (const entry of done) out.push({ json: { ...base, folderId: entry.folderId, folder: entry.folder } });
+});
+return out;`);
+connect("Download batch manifests", "Batch folders");
+
+driveList("List batch folder files", [3740, -300], `={{ $json.folderId ? "'" + $json.folderId + "' in parents and trashed = false" : "name = '__none__' and trashed = false" }}`);
+connect("Batch folders", "List batch folder files");
+
+code("Batch status", [3960, -300], `// A batch is complete when every painted folder has its <date+time>_shopify.json; stuck when it is still not
+// complete batchStuckHours after it was painted (announced once, then again when it completes)
+const settings = $('Settings').first().json;
+const folders = $('Batch folders').all();
+const manifests = {};
+$('Download batch manifests').all().forEach((item, i) => { manifests[$('Painted batches').all()[i].json.manifestId] = item.json; });
+const batches = {};
+$input.all().forEach((item, i) => {
+    const f = folders[i].json;
+    const batch = (batches[f.manifestId] = batches[f.manifestId] || { manifestId: f.manifestId, batchId: f.batchId, markers: [], missing: [] });
+    if (!f.folderId) return;
+    const names = (item.json.files || []).map((x) => x.name);
+    const marker = (item.json.files || []).find((x) => /_shopify\\.json$/.test(x.name));
+    if (marker) { batch.markers.push({ folder: f.folder, fileId: marker.id }); return; }
+    const lacks = [];
+    if (!names.some((n) => /_product\\.json$/.test(n))) lacks.push("product JSON");
+    if (!names.some((n) => /_mockup\\.png$/.test(n))) lacks.push("mockup");
+    lacks.push("Shopify draft");
+    batch.missing.push({ folder: f.folder, lacks });
+});
+const out = [];
+for (const batch of Object.values(batches)) {
+    const manifest = manifests[batch.manifestId];
+    const hours = (Date.now() - new Date(manifest.paintedAt || manifest.submittedAt).getTime()) / 3600000;
+    const complete = batch.missing.length === 0;
+    const stuck = !complete && hours >= Number(settings.batchStuckHours) && manifest.notified !== "stuck";
+    if (complete || stuck) out.push({ json: { ...batch, kind: complete ? "complete" : "stuck" } });
+}
+return out;`);
+connect("List batch folder files", "Batch status");
+
+code("Markers to read", [4180, -300], `// The Shopify markers of the batches to announce (their admin links); one placeholder when there is none
+const out = [];
+for (const item of $input.all()) for (const m of item.json.markers) out.push({ json: { batchId: item.json.batchId, folder: m.folder, fileId: m.fileId } });
+return out.length ? out : [{ json: { placeholder: true } }];`);
+connect("Batch status", "Markers to read");
+
+// a placeholder item reads Drive's "about" instead of a file, so the batches without any draft still get their message
+node("Download markers", "n8n-nodes-base.httpRequest", 4.2, [4400, -300], {
+    url: "={{ $json.placeholder ? 'https://www.googleapis.com/drive/v3/about?fields=kind' : 'https://www.googleapis.com/drive/v3/files/' + $json.fileId + '?alt=media&supportsAllDrives=true' }}",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    options: { response: { response: { responseFormat: "json" } }, timeout: 30000 },
+});
+connect("Markers to read", "Download markers");
+
+code("Batch messages", [4620, -300], `// One Telegram message per batch, and its manifest marked as announced
+const settings = $('Settings').first().json;
+const toRead = $('Markers to read').all();
+const links = {};
+$input.all().forEach((item, i) => {
+    const m = toRead[i].json;
+    if (m.placeholder) return;
+    (links[m.batchId] = links[m.batchId] || []).push({ folder: m.folder, title: item.json.title || "", url: item.json.adminUrl || "" });
+});
+const manifests = {};
+$('Download batch manifests').all().forEach((item, i) => { manifests[$('Painted batches').all()[i].json.manifestId] = item.json; });
+return $('Batch status').all().map((item) => {
+    const batch = item.json;
+    const manifest = JSON.parse(JSON.stringify(manifests[batch.manifestId]));
+    const drafts = (links[batch.batchId] || []).sort((a, b) => Number(a.folder) - Number(b.folder));
+    const failed = manifest.files.filter((e) => e.status === "failed");
+    const refused = manifest.refused || [];
+    const lines = [];
+    if (batch.kind === "complete") {
+        lines.push("Artwork batch " + batch.batchId + ": " + drafts.length + " draft" + (drafts.length === 1 ? "" : "s") + " ready in Shopify");
+    } else {
+        lines.push("Artwork batch " + batch.batchId + " is still not all in Shopify after " + settings.batchStuckHours + " h");
+        for (const m of batch.missing) lines.push("- " + m.folder + " is missing: " + m.lacks.join(", "));
+        if (drafts.length) lines.push("", "Ready so far:");
+    }
+    for (const d of drafts) lines.push("- " + d.folder + (d.title ? " " + d.title : "") + (d.url ? ": " + d.url : ""));
+    if (failed.length) {
+        lines.push("", failed.length + " not painted:");
+        for (const e of failed) lines.push("- " + e.originalName + ": " + (e.reason || "failed"));
+    }
+    if (refused.length) {
+        lines.push("", refused.length + " refused at upload:");
+        for (const r of refused) lines.push("- " + r.name + ": " + r.reason);
+    }
+    manifest.notified = batch.kind === "complete" ? true : "stuck";
+    manifest.notifiedAt = $now.setZone("Africa/Casablanca").toISO();
+    return {
+        json: { manifestId: batch.manifestId, batchId: batch.batchId, kind: batch.kind, text: lines.join("\\n").slice(0, 4000), rename: batch.kind === "complete" ? batch.batchId + "_batch_sent.json" : "" },
+        binary: { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: batch.batchId + "_batch.json" } },
+    };
+});`);
+connect("Download markers", "Batch messages");
+
+// a Telegram error leaves the manifest as it was, so the next run tries the message again
+node("Send batch message", "n8n-nodes-base.telegram", 1.2, [4840, -300], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ $json.text }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+}, { onError: "continueErrorOutput" });
+connect("Batch messages", "Send batch message");
+
+code("Sent batches", [5060, -380], `// The batches whose message went out, with their updated manifest
+return $input.all().map((item, i) => {
+    const sent = $('Batch messages').itemMatching(i);
+    return { json: sent.json, binary: sent.binary };
+});`);
+connect("Send batch message", "Sent batches", 0);
+
+node("Save batch manifest", "n8n-nodes-base.httpRequest", 4.2, [5280, -380], {
+    method: "PATCH",
+    url: "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.manifestId + '?uploadType=media&supportsAllDrives=true' }}",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    sendBody: true,
+    contentType: "binaryData",
+    inputDataFieldName: "manifest",
+    options: { timeout: 30000 },
+});
+connect("Sent batches", "Save batch manifest");
+
+code("Batches to rename", [5500, -380], `// A complete batch is renamed <batchId>_batch_sent.json: later runs no longer read it
+return $('Sent batches').all().filter((item) => item.json.rename).map((item) => ({ json: item.json }));`);
+connect("Save batch manifest", "Batches to rename");
+
+node("Rename sent batch", "n8n-nodes-base.httpRequest", 4.2, [5720, -380], {
+    method: "PATCH",
+    url: "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.manifestId + '?supportsAllDrives=true&fields=id,name' }}",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: $json.rename }) }}",
+    options: { timeout: 30000 },
+});
+connect("Batches to rename", "Rename sent batch");
 
 const workflow = { name: "Darl'Art Shopify Uploader", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-shopify-uploader.json");

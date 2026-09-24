@@ -1,17 +1,35 @@
 # Darl'Art Artwork Agent (n8n)
 
-`n8n-darlart-artwork-agent.json`: upload a reference image in a form, get a painted artwork that uses **exactly 48 Darl'Art colors**, saved in Google Drive.
+Upload up to 20 reference images in a form, get painted artworks that use **exactly 48 Darl'Art colors**, saved in Google Drive. Two workflows, built by `scripts/build-artwork-agent-workflow.js`:
+
+- `n8n-darlart-artwork-agent.json`, **Darl'Art Artwork Agent** (the form): checks and queues the uploads, answers at once;
+- `n8n-darlart-artwork-worker.json`, **Darl'Art Artwork Worker**: paints the queue, one reference per run.
 
 ```
-Formulaire (upload) -> Check upload (JPG/PNG/WEBP from the file's bytes, max 5 MB; else an error page)
-  -> Save reference (Drive "Artwork Ref")
+Formulaire (1 to 20 files) -> Check uploads (each file: JPG/PNG/WEBP from its bytes, max 5 MB; max 20 files)
+  -> queue the good ones in Drive "Artwork Ref/Queue" as <batchId>_<nn>.<ext> + <batchId>_batch.json (manifest)
+  -> Start worker (not awaited) -> page: "N queued, M refused (reasons)"
+
+Artwork Worker (called by the form, every hour, Run now), one reference per run:
+  queue lock (one worker at a time) -> oldest queued reference
   -> Generate ART (gpt-image-2 at 1024x1280 = 4:5: reference + fixed prompt, the reference's own colors)
   -> Check artwork (gpt-5-mini: no swatches/text/border, up to 3 tries)
   -> Snap to palette (pbn API /v1/recolor: exact 60x75 ratio, cropped never stretched; every pixel -> one of 48 Darl'Art colors)
-  -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON -> result page
-                                                                         -> Run Titling Agent (product JSON, not awaited)
-                                                                         -> Run Print Agent (print files + mockup, queued, not awaited)
+  -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON
+                                        -> Run Titling Agent (product JSON, not awaited)
+                                        -> Run Print Agent (print files + mockup, queued, not awaited)
+  -> the reference moves to "Artwork Ref" (renamed <stamp>_ref.<ext>), or to "Artwork Ref/Failed"
+  -> the manifest records the result; a batch with nothing left queued moves to "Artwork Ref/Queue/Done"
+  -> release the lock, run again (stops when the queue is empty)
 ```
+
+## Batches and the queue
+
+- **One at a time:** the worker holds a Drive lock file in `Queue`, so two batches sent together are painted one after the other and folder numbers never repeat. A lock older than `lockStaleMinutes` (45) belongs to a crashed run and is removed.
+- **Failures:** 3 paintings with swatches, text or borders set the reference aside in `Artwork Ref/Failed`. A reference whose run stopped midway `maxTries` times (3) is set aside too. The manifest records the reason.
+- **Crashes:** a reference stays in `Queue` until it is painted or set aside, so the hourly run picks it up again.
+- **The manifest** `<batchId>_batch.json` lists each reference (`queued`, `done` with its folder, `failed` with the reason) and the files refused at upload. Once nothing is queued, it moves to `Queue/Done`. The Shopify Uploader then sends **one Telegram message per batch** when all its drafts are in Shopify (see `SHOPIFY-UPLOADER.md`).
+- Form uploads are limited by n8n's `N8N_FORMDATA_FILE_SIZE_MAX` (200 MB by default): 20 files of 5 MB fit.
 
 ## Why the palette is strict
 
@@ -26,16 +44,16 @@ Every artwork is a **60x75 cm portrait** (4:5), whatever the reference's shape: 
 ## Output
 
 `Artwork Agent/1001`, `1002`, ... (next free number), each containing:
-- `2026-09-23_14-05-33_ref.jpg`: the reference as uploaded (also kept in `Artwork Ref`);
+- `2026-09-23_14-05-33_ref.jpg`: the reference as uploaded (also kept in `Artwork Ref` under the same name);
 - `2026-09-23_14-05-33_art.png`: the 48-color artwork;
 - `2026-09-23_14-05-33_palette.json`: the 48 colors (code, hex, rgb, area percent).
 
 ## Setup
 
 1. The pbn API must include `/v1/recolor` (redeploy the VM: `git pull && npm ci && npm run build:server && sudo systemctl restart pbn-api`).
-2. Import the workflow, then pick the credentials: **OpenAI** on `Checker model` and `Generate ART`; **Google Drive** on `Save reference`, `List Artwork Agent folders`, `Create folder`, `Upload to folder`; the pbn API **x-api-key header** on `Snap to palette`.
-3. **Settings** node: Drive folder IDs (`Artwork Ref`, `Artwork Agent` already created in My Drive), colors (48), excluded codes, pbn API URL, image model.
-4. Activate, open the Formulaire production URL.
+2. Import both workflows, then pick the credentials: **OpenAI** on `Checker model` and `Generate ART`; **Google Drive** on every Drive node; the pbn API **x-api-key header** on `Snap to palette`.
+3. **Settings** nodes: Drive folder IDs (`Artwork Ref`, its `Queue`, `Queue/Done` and `Failed`, `Artwork Agent`), colors (48), excluded codes, pbn API URL, image model. The form's "Start worker" node calls the worker by ID (`SETTINGS_WORKER_WORKFLOW_ID` in the generator).
+4. Publish both, open the Formulaire production URL.
 
 After changing `server/palettes/darlart-v3.json`, run `node scripts/build-artwork-agent-workflow.js` and re-import (Check palette embeds the palette).
 
