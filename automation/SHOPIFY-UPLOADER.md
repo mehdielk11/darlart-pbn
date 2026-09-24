@@ -17,7 +17,7 @@ Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Dri
 - Never added to a Mini Kits or Kids Kits collection (filled by hand later): those collections are dropped, and so are tags they match on (`mini-kit`, `kids-kits`...).
 - Handle: the product JSON's handle plus the folder number, e.g. `blue-iris-1003`. A rerun updates that same draft instead of creating a second one, and an existing product with the plain handle is never touched.
 - Images, in an enforced order: 1 the artwork, 2 the mockup, 3-5 the shared images (`sharedImages` order in Settings). After creating the product, the workflow reorders its images and reads the order back every 3 seconds until it matches. If it still doesn't match after 30 seconds, the run stops and that folder gets no marker, so the next run tries it again.
-- Options Size / Canvas Type / Colors with one variant per CSV row, the same as the store's other kits (not tracked, inventory policy DENY).
+- Options Size / Canvas Type / Colors with one variant per sheet row of a size the store sells (`sizes` in Settings: 20x25, 32x40, 40x50; 3 sizes x 2 canvas types x 4 color counts = 24 variants), the same as the store's other kits (not tracked, inventory policy DENY).
 - SKU per variant: folder + size digits + color count + canvas type initial (R Rolled, S Stretched), e.g. folder 1001, 20x25, 12 colors, Rolled = `1001202512R`.
 - Status `DRAFT`: review it in Shopify and publish it yourself.
 
@@ -32,7 +32,7 @@ In the Drive "Artwork Agent" folder (`pricesSheetId` in Settings). Its first tab
 - `canvas_type`: `Rolled` becomes "Rolled Canvas" (the store's wording).
 - `price`: 179, 179.00 or 179,00 all work.
 - `compare_at_price`: optional. Without it the compare-at price is `price x compareAtMultiplier` (2).
-- Each row becomes one variant (Shopify allows 100 at most). Empty rows are ignored; a wrong row stops the run with its line number.
+- Each row of a size listed in `sizes` (Settings) becomes one variant (Shopify allows 100 at most). Rows of other sizes (e.g. 60x75, the size the Print Agent makes: it is not sold) are skipped, and every size in `sizes` must have prices. Empty rows are ignored; a wrong row stops the run with its line number.
 - Keep the column names in row 1 and the prices on the first tab.
 
 ## Shared images

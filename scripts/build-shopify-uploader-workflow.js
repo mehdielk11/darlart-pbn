@@ -19,10 +19,12 @@ const root = path.join(__dirname, "..");
 // ===== Settings written into the workflow (all editable later in the "Settings" node) =====
 const SETTINGS = {
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent"
-    pricesSheetId: "1279ywKi2r5Y5ovUIaZs6kXoIv5QmP4V0BPg9ZJtZypk", // Google Sheet "Darl'Art Prices" (its first tab is read)
+    pricesSheetId: "1iv2qOUSHPMWgdlZ5ZoCxx9WPljK9V3eWKZp7cYlB9Pk", // Google Sheet "Darl'Art Prices" (its first tab is read)
     shopDomain: "smgi0i-0a.myshopify.com", // darlart.ma
     apiVersion: "2026-07",
     status: "DRAFT",
+    // the sizes sold: sheet rows of any other size (e.g. 60x75, the print size: it is not sold) are skipped
+    sizes: "20x25,32x40,40x50",
     compareAtMultiplier: 2, // compare-at price = price x this, when the CSV has no compare_at_price
     // the images shown on every product after the artwork and the mockup: Shopify Files URLs
     // (Content > Files > copy link) or file IDs (gid://shopify/MediaImage/...), comma-separated
@@ -172,11 +174,14 @@ for (const name of ["canvas_type", "size", "colors", "price"]) {
 }
 // "179", "179.00", "179,00" or "179,00 MAD"
 const money = (value) => Number(String(value).replace(/[^\\d,.-]/g, "").replace(",", "."));
+const normSize = (value) => String(value || "").toLowerCase().trim().replace(/\\s*cm$/, "").replace(/\\s*[x×]\\s*/, "x");
+const soldSizes = String(settings.sizes || "").split(",").map(normSize).filter(Boolean);
 const rows = [];
 const seen = new Set();
 lines.forEach((line, i) => {
     const cells = split(line);
-    const size = cells[col("size")].toLowerCase().replace(/\\s*cm$/, "").replace(/\\s*[x×]\\s*/, "x");
+    const size = normSize(cells[col("size")]);
+    if (soldSizes.length && !soldSizes.includes(size)) return; // not a size the store sells
     let canvasType = cells[col("canvas_type")];
     if (!/canvas$/i.test(canvasType)) canvasType += " Canvas"; // "Rolled" -> "Rolled Canvas", the store's wording
     const colors = String(parseInt(cells[col("colors")], 10));
@@ -192,7 +197,9 @@ lines.forEach((line, i) => {
     seen.add(key);
     rows.push({ size, canvasType, colors, price: price.toFixed(2), compareAtPrice: compareAt > price ? compareAt.toFixed(2) : null });
 });
-if (!rows.length) throw new Error(file.name + " has no prices");
+if (!rows.length) throw new Error(file.name + " has no prices" + (soldSizes.length ? " for the sizes in Settings (" + soldSizes.join(", ") + ")" : ""));
+const missing = soldSizes.filter((s) => !rows.some((r) => r.size === s));
+if (missing.length) throw new Error(file.name + " has no prices for " + missing.join(", ") + " (sizes in Settings)");
 if (rows.length > 100) throw new Error(file.name + ": Shopify allows 100 variants per product, the CSV has " + rows.length);
 
 const area = (s) => s.split("x").reduce((a, b) => a * Number(b), 1);
