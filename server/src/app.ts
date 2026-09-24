@@ -6,7 +6,8 @@
  * GET  /v1/jobs/:id/files/:name    download template.pdf, template.svg, preview.png or palette.json
  * POST /v1/analyze                 photo complexity, suggested difficulty and a crop suggestion
  * POST /v1/recolor                 repaint an image with exactly N palette colors (PNG as base64 + the colors used)
- * POST /v1/featured                featured product image: the artwork on a canvas photo (JPEG as base64)
+ * POST /v1/featured                featured product image: the artwork on a canvas photo (PNG as base64)
+ * POST /v1/webp                    a WebP copy of an image, for Shopify (WebP as base64)
  * GET  /v1/palettes                available palettes
  * GET  /health                     liveness check (no API key)
  */
@@ -24,7 +25,7 @@ import { OUTPUT_FILES } from "./generate";
 import { assertReadableImage, attentionCrop, CROP_MODES, CropMode, loadForAnalysis } from "./image";
 import { JobManager, JobOptions, publicJob } from "./jobs";
 import { isValidPaletteId, listPalettes, loadPalette, NO_PALETTE } from "./palettes";
-import { buildFeatured } from "./mockup";
+import { buildFeatured, toWebp, WEBP_QUALITY } from "./mockup";
 import { recolorToPalette } from "./recolor";
 
 class HttpError extends Error {
@@ -398,7 +399,33 @@ export async function buildApp(jobs: JobManager) {
         } catch (e) {
             throw new HttpError(422, e instanceof Error ? e.message : String(e));
         }
-        return { template: result.template.name, width: size, height: size, contentType: "image/jpeg", image: result.jpeg.toString("base64") };
+        return { template: result.template.name, width: size, height: size, contentType: "image/png", image: result.png.toString("base64") };
+    });
+
+    // A WebP copy of an image (multipart "image" or "imageUrl"). Optional "quality" (50-100) and "maxSide" (64-4096).
+    app.post("/v1/webp", async (request) => {
+        const { fields, image } = await readInput(request);
+        const errors: string[] = [];
+        const quality = Number(asString(fields.quality) || String(WEBP_QUALITY));
+        if (!Number.isInteger(quality) || quality < 50 || quality > 100) {
+            errors.push("quality must be an integer between 50 and 100");
+        }
+        const maxSideText = asString(fields.maxSide);
+        const maxSide = maxSideText ? Number(maxSideText) : undefined;
+        if (maxSide !== undefined && (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096)) {
+            errors.push("maxSide must be an integer between 64 and 4096");
+        }
+        if (errors.length) {
+            throw new HttpError(400, "Invalid request", errors);
+        }
+        const resolved = await resolveImage(fields, image);
+        let result;
+        try {
+            result = await toWebp(resolved.image, quality, maxSide);
+        } catch (e) {
+            throw new HttpError(422, e instanceof Error ? e.message : String(e));
+        }
+        return { width: result.width, height: result.height, bytes: result.webp.length, sourceBytes: resolved.image.length, contentType: "image/webp", image: result.webp.toString("base64") };
     });
 
     return app;

@@ -103,7 +103,7 @@
             {
               "id": "set7",
               "name": "sharedImages",
-              "value": "gid://shopify/MediaImage/53174515335449,gid://shopify/MediaImage/53174515302681,gid://shopify/MediaImage/53174515368217",
+              "value": "gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409",
               "type": "string"
             },
             {
@@ -314,7 +314,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// Keeps the folders that have their product JSON, artwork and mockup, and no <date+time>_shopify.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const markerName = stamp + \"_shopify.json\";\n    const featuredName = stamp + \"_featured.jpg\";\n    if (!product || !mockup || find(\"_shopify.json\")) return;\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredName, hasFeatured: !!find(\"_featured.jpg\"), markerName } });\n});\nreturn pending.slice(0, Number(settings.maxPerRun) || 10);"
+        "jsCode": "// Keeps the folders that have their product JSON, artwork and mockup, and no <date+time>_shopify.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const markerName = stamp + \"_shopify.json\";\n    // the PNG made by the pbn API, and the WebP copies that go to Shopify\n    const names = { featuredPng: stamp + \"_featured.png\", featured: stamp + \"_featured.webp\", mockup: stamp + \"_mockup.webp\" };\n    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));\n    if (!product || !mockup || find(\"_shopify.json\")) return;\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, names, inDrive, markerName } });\n});\nreturn pending.slice(0, Number(settings.maxPerRun) || 10);"
       }
     },
     {
@@ -369,7 +369,7 @@
         "nodeCredentialType": "shopifyOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',\n  variables: { input: [\n    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-artwork.png', mimeType: 'image/png', httpMethod: 'PUT' },\n    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.png', mimeType: 'image/png', httpMethod: 'PUT' },\n    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-featured.jpg', mimeType: 'image/jpeg', httpMethod: 'PUT' }\n  ] }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',\n  variables: { input: [\n    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.webp', mimeType: 'image/webp', httpMethod: 'PUT' },\n    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-featured.webp', mimeType: 'image/webp', httpMethod: 'PUT' }\n  ] }\n}) }}",
         "options": {
           "timeout": 120000
         }
@@ -385,7 +385,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// Where the artwork and the mockup go: a URL, the headers to send with the file, and the address Shopify reads it from\nconst response = $input.first().json;\nconst errors = [...(response.errors || []), ...(((response.data || {}).stagedUploadsCreate || {}).userErrors || [])].map((e) => e.message);\nif (errors.length) throw new Error(\"Shopify staged upload: \" + errors.join(\"; \"));\nconst targets = response.data.stagedUploadsCreate.stagedTargets;\nconst target = (t) => ({ url: t.url, resourceUrl: t.resourceUrl, headers: Object.fromEntries(t.parameters.map((p) => [p.name, p.value])) });\nreturn [{ json: { art: target(targets[0]), mockup: target(targets[1]), featured: target(targets[2]) } }];"
+        "jsCode": "// Where the WebP mockup and featured image go: a URL, the headers to send with the file, and the address Shopify reads it from\nconst response = $input.first().json;\nconst errors = [...(response.errors || []), ...(((response.data || {}).stagedUploadsCreate || {}).userErrors || [])].map((e) => e.message);\nif (errors.length) throw new Error(\"Shopify staged upload: \" + errors.join(\"; \"));\nconst targets = response.data.stagedUploadsCreate.stagedTargets;\nconst target = (t) => ({ url: t.url, resourceUrl: t.resourceUrl, headers: Object.fromEntries(t.parameters.map((p) => [p.name, p.value])) });\nreturn [{ json: { mockup: target(targets[0]), featured: target(targets[1]) } }];"
       }
     },
     {
@@ -452,45 +452,17 @@
         520
       ],
       "parameters": {
-        "jsCode": "// The API's JPEG (base64) as the binary \"featured\", for Shopify and for Drive\nconst folder = $('Loop over folders').first().json;\nconst result = $('Make featured image').first().json;\nif (!result.image) throw new Error(\"Folder \" + folder.folder + \": the pbn API returned no featured image\");\nreturn [{\n    json: { template: result.template, featuredName: folder.featuredName },\n    binary: { featured: { data: result.image, mimeType: \"image/jpeg\", fileName: folder.featuredName, fileExtension: \"jpg\" } },\n}];"
+        "jsCode": "// The API's PNG (base64) as the binary \"image\"\nconst folder = $('Loop over folders').first().json;\nconst result = $('Make featured image').first().json;\nif (!result.image) throw new Error(\"Folder \" + folder.folder + \": the pbn API returned no featured image\");\nreturn [{\n    json: { template: result.template, name: folder.names.featuredPng },\n    binary: { image: { data: result.image, mimeType: \"image/png\", fileName: folder.names.featuredPng, fileExtension: \"png\" } },\n}];"
       }
     },
     {
       "id": "cc000020-0000-4000-8000-000000000000",
-      "name": "Upload featured",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        3740,
-        520
-      ],
-      "parameters": {
-        "method": "PUT",
-        "url": "={{ $('Upload targets').first().json.featured.url }}",
-        "sendHeaders": true,
-        "specifyHeaders": "json",
-        "jsonHeaders": "={{ JSON.stringify($('Upload targets').first().json.featured.headers) }}",
-        "sendBody": true,
-        "contentType": "binaryData",
-        "inputDataFieldName": "featured",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
-            }
-          },
-          "timeout": 120000
-        }
-      }
-    },
-    {
-      "id": "cc000021-0000-4000-8000-000000000000",
-      "name": "Featured in Drive?",
+      "name": "Featured PNG in Drive?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3960,
-        520
+        3740,
+        700
       ],
       "parameters": {
         "conditions": {
@@ -501,8 +473,8 @@
           },
           "conditions": [
             {
-              "id": "featuredindrive",
-              "leftValue": "={{ $('Loop over folders').first().json.hasFeatured }}",
+              "id": "featuredpngindrive",
+              "leftValue": "={{ $('Loop over folders').first().json.inDrive.featuredPng }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -517,29 +489,16 @@
       }
     },
     {
-      "id": "cc000022-0000-4000-8000-000000000000",
-      "name": "Featured for Drive",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4180,
-        640
-      ],
-      "parameters": {
-        "jsCode": "const featured = $('Featured file').first();\nreturn [{ json: featured.json, binary: featured.binary }];"
-      }
-    },
-    {
-      "id": "cc000023-0000-4000-8000-000000000000",
-      "name": "Save featured image",
+      "id": "cc000021-0000-4000-8000-000000000000",
+      "name": "Save featured PNG",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        4400,
-        640
+        3960,
+        780
       ],
       "parameters": {
-        "name": "={{ $('Loop over folders').first().json.featuredName }}",
+        "name": "={{ $('Loop over folders').first().json.names.featuredPng }}",
         "driveId": {
           "__rl": true,
           "mode": "list",
@@ -550,28 +509,41 @@
           "mode": "id",
           "value": "={{ $('Loop over folders').first().json.folderId }}"
         },
-        "inputDataFieldName": "featured",
+        "inputDataFieldName": "image",
         "options": {}
       }
     },
     {
-      "id": "cc000024-0000-4000-8000-000000000000",
-      "name": "Download artwork",
+      "id": "cc000022-0000-4000-8000-000000000000",
+      "name": "Source images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        520
+      ],
+      "parameters": {
+        "jsCode": "// The mockup PNG to download (the featured PNG is already here)\nconst folder = $('Loop over folders').first().json;\nreturn [\n    { json: { kind: \"mockup\", fileId: folder.mockupId } },\n];"
+      }
+    },
+    {
+      "id": "cc000023-0000-4000-8000-000000000000",
+      "name": "Download images",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3080,
-        300
+        3960,
+        520
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.artworkId }}?alt=media&supportsAllDrives=true",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.fileId }}?alt=media&supportsAllDrives=true",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
           "response": {
             "response": {
               "responseFormat": "file",
-              "outputPropertyName": "art"
+              "outputPropertyName": "image"
             }
           },
           "timeout": 120000
@@ -579,75 +551,137 @@
       }
     },
     {
+      "id": "cc000024-0000-4000-8000-000000000000",
+      "name": "Images to convert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4180,
+        520
+      ],
+      "parameters": {
+        "jsCode": "// Featured image and mockup, in this order, each with the name of its WebP copy\nconst folder = $('Loop over folders').first().json;\nconst downloads = $('Download images').all();\nconst sources = $('Source images').all();\nconst byKind = {};\nsources.forEach((source, i) => { byKind[source.json.kind] = downloads[i].binary.image; });\nbyKind.featured = $('Featured file').first().binary.image;\nreturn [\"featured\", \"mockup\"].map((kind) => {\n    if (!byKind[kind]) throw new Error(\"Folder \" + folder.folder + \": no \" + kind + \" image to convert\");\n    return { json: { kind, name: folder.names[kind], inDrive: folder.inDrive[kind] }, binary: { image: byKind[kind] } };\n});"
+      }
+    },
+    {
       "id": "cc000025-0000-4000-8000-000000000000",
-      "name": "Upload artwork",
+      "name": "Convert to WebP",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
-        300
+        4400,
+        520
       ],
       "parameters": {
-        "method": "PUT",
-        "url": "={{ $('Upload targets').first().json.art.url }}",
-        "sendHeaders": true,
-        "specifyHeaders": "json",
-        "jsonHeaders": "={{ JSON.stringify($('Upload targets').first().json.art.headers) }}",
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/webp",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "contentType": "binaryData",
-        "inputDataFieldName": "art",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "text"
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "image"
             }
-          },
+          ]
+        },
+        "options": {
           "timeout": 120000
         }
       }
     },
     {
       "id": "cc000026-0000-4000-8000-000000000000",
-      "name": "Download mockup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "WebP files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        3520,
-        300
+        4620,
+        520
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over folders').first().json.mockupId }}?alt=media&supportsAllDrives=true",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleDriveOAuth2Api",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file",
-              "outputPropertyName": "mockup"
-            }
-          },
-          "timeout": 120000
-        }
+        "jsCode": "// The API's WebP (base64) as the binary \"webp\", one item per image, in the same order\nconst folder = $('Loop over folders').first().json;\nconst images = $('Images to convert').all();\nreturn $input.all().map((item, i) => {\n    const source = images[i].json;\n    if (!item.json.image || item.json.contentType !== \"image/webp\") throw new Error(\"Folder \" + folder.folder + \": the pbn API returned no WebP for the \" + source.kind);\n    return {\n        json: { ...source, bytes: item.json.bytes, sourceBytes: item.json.sourceBytes },\n        binary: { webp: { data: item.json.image, mimeType: \"image/webp\", fileName: source.name, fileExtension: \"webp\" } },\n    };\n});"
       }
     },
     {
       "id": "cc000027-0000-4000-8000-000000000000",
-      "name": "Upload mockup",
+      "name": "WebP in Drive?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        700
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "webpindrive",
+              "leftValue": "={{ $json.inDrive }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000028-0000-4000-8000-000000000000",
+      "name": "Save WebP",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5060,
+        780
+      ],
+      "parameters": {
+        "name": "={{ $json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Loop over folders').first().json.folderId }}"
+        },
+        "inputDataFieldName": "webp",
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000029-0000-4000-8000-000000000000",
+      "name": "Upload WebP to Shopify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3740,
+        4840,
         300
       ],
       "parameters": {
         "method": "PUT",
-        "url": "={{ $('Upload targets').first().json.mockup.url }}",
+        "url": "={{ $('Upload targets').first().json[$json.kind].url }}",
         "sendHeaders": true,
         "specifyHeaders": "json",
-        "jsonHeaders": "={{ JSON.stringify($('Upload targets').first().json.mockup.headers) }}",
+        "jsonHeaders": "={{ JSON.stringify($('Upload targets').first().json[$json.kind].headers) }}",
         "sendBody": true,
         "contentType": "binaryData",
-        "inputDataFieldName": "mockup",
+        "inputDataFieldName": "webp",
         "options": {
           "response": {
             "response": {
@@ -659,25 +693,25 @@
       }
     },
     {
-      "id": "cc000028-0000-4000-8000-000000000000",
+      "id": "cc000030-0000-4000-8000-000000000000",
       "name": "Build product",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3960,
+        5060,
         300
       ],
       "parameters": {
-        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 artwork, 3 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title + \" - paint by numbers canvas\", art: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.art.resourceUrl, contentType: \"IMAGE\", alt: alts.art },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits and Kids Kits collections are filled by hand later: never a collection with \"mini kit\" or \"kids kit\" in\n// its title, and never a tag those collections match on (mini-kit, kids-kits...)\nconst kitCollection = (title) => /\b(mini|kids?)[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(\"x\", \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
+        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits and Kids Kits collections are filled by hand later: never a collection with \"mini kit\" or \"kids kit\" in\n// its title, and never a tag those collections match on (mini-kit, kids-kits...)\nconst kitCollection = (title) => /\b(mini|kids?)[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(\"x\", \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
       }
     },
     {
-      "id": "cc000029-0000-4000-8000-000000000000",
+      "id": "cc000031-0000-4000-8000-000000000000",
       "name": "Create draft product",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4180,
+        5280,
         300
       ],
       "parameters": {
@@ -694,25 +728,25 @@
       }
     },
     {
-      "id": "cc000030-0000-4000-8000-000000000000",
+      "id": "cc000032-0000-4000-8000-000000000000",
       "name": "Image order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4400,
+        5500,
         300
       ],
       "parameters": {
-        "jsCode": "// Enforced image order: 1 featured image, 2 artwork, 3 mockup, 4+ the shared images (in the Settings order), anything else after them\nconst folder = $('Loop over folders').first().json;\nconst built = $('Build product').first().json;\nconst response = $input.first().json;\nconst result = (response.data || {}).productSet || {};\nconst errors = [...(response.errors || []), ...(result.userErrors || [])].map((e) => (e.field ? e.field.join(\".\") + \": \" : \"\") + e.message);\nif (errors.length || !result.product) throw new Error(\"Folder \" + folder.folder + \", Shopify: \" + (errors.join(\"; \") || \"no product returned\"));\nconst product = result.product;\nconst media = product.media.nodes;\nconst used = new Set();\nconst pick = (match) => {\n    const found = media.find((m) => !used.has(m.id) && match(m));\n    if (found) used.add(found.id);\n    return found;\n};\nconst featured = pick((m) => m.alt === built.alts.featured);\nconst art = pick((m) => m.alt === built.alts.art);\nconst mockup = pick((m) => m.alt === built.alts.mockup);\nif (!featured || !art || !mockup) throw new Error(\"Folder \" + folder.folder + \": the featured image, the artwork or the mockup is missing from the product's images\");\nconst shared = built.shared.map((s) => pick((m) => (s.id ? m.id === s.id : m.alt === s.alt)));\n// a shared image Shopify attached under a new ID: the next image not picked yet\nfor (let i = 0; i < shared.length; i++) {\n    if (!shared[i]) shared[i] = pick(() => true);\n}\nif (shared.some((m) => !m)) throw new Error(\"Folder \" + folder.folder + \": \" + built.shared.length + \" shared images expected, some are missing from the product\");\nconst wanted = [featured, art, mockup, ...shared].map((m) => m.id);\nconst order = [...wanted, ...media.filter((m) => !used.has(m.id)).map((m) => m.id)];\nreturn [{ json: { productId: product.id, product, wanted, startedAt: Date.now(), moves: order.map((id, i) => ({ id, newPosition: String(i) })) } }];"
+        "jsCode": "// Enforced image order: 1 featured image, 2 mockup, 3+ the shared images (in the Settings order), anything else after them\nconst folder = $('Loop over folders').first().json;\nconst built = $('Build product').first().json;\nconst response = $input.first().json;\nconst result = (response.data || {}).productSet || {};\nconst errors = [...(response.errors || []), ...(result.userErrors || [])].map((e) => (e.field ? e.field.join(\".\") + \": \" : \"\") + e.message);\nif (errors.length || !result.product) throw new Error(\"Folder \" + folder.folder + \", Shopify: \" + (errors.join(\"; \") || \"no product returned\"));\nconst product = result.product;\nconst media = product.media.nodes;\nconst used = new Set();\nconst pick = (match) => {\n    const found = media.find((m) => !used.has(m.id) && match(m));\n    if (found) used.add(found.id);\n    return found;\n};\nconst featured = pick((m) => m.alt === built.alts.featured);\nconst mockup = pick((m) => m.alt === built.alts.mockup);\nif (!featured || !mockup) throw new Error(\"Folder \" + folder.folder + \": the featured image or the mockup is missing from the product's images\");\nconst shared = built.shared.map((s) => pick((m) => (s.id ? m.id === s.id : m.alt === s.alt)));\n// a shared image Shopify attached under a new ID: the next image not picked yet\nfor (let i = 0; i < shared.length; i++) {\n    if (!shared[i]) shared[i] = pick(() => true);\n}\nif (shared.some((m) => !m)) throw new Error(\"Folder \" + folder.folder + \": \" + built.shared.length + \" shared images expected, some are missing from the product\");\nconst wanted = [featured, mockup, ...shared].map((m) => m.id);\nconst order = [...wanted, ...media.filter((m) => !used.has(m.id)).map((m) => m.id)];\nreturn [{ json: { productId: product.id, product, wanted, startedAt: Date.now(), moves: order.map((id, i) => ({ id, newPosition: String(i) })) } }];"
       }
     },
     {
-      "id": "cc000031-0000-4000-8000-000000000000",
+      "id": "cc000033-0000-4000-8000-000000000000",
       "name": "Reorder images",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4620,
+        5720,
         300
       ],
       "parameters": {
@@ -729,12 +763,12 @@
       }
     },
     {
-      "id": "cc000032-0000-4000-8000-000000000000",
+      "id": "cc000034-0000-4000-8000-000000000000",
       "name": "Reorder sent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4840,
+        5940,
         300
       ],
       "parameters": {
@@ -742,12 +776,12 @@
       }
     },
     {
-      "id": "cc000033-0000-4000-8000-000000000000",
+      "id": "cc000035-0000-4000-8000-000000000000",
       "name": "Wait for reorder",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        5060,
+        6160,
         300
       ],
       "parameters": {
@@ -757,12 +791,12 @@
       }
     },
     {
-      "id": "cc000034-0000-4000-8000-000000000000",
+      "id": "cc000036-0000-4000-8000-000000000000",
       "name": "Read image order",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5280,
+        6380,
         300
       ],
       "parameters": {
@@ -779,25 +813,25 @@
       }
     },
     {
-      "id": "cc000035-0000-4000-8000-000000000000",
+      "id": "cc000037-0000-4000-8000-000000000000",
       "name": "Order confirmed?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5500,
+        6600,
         300
       ],
       "parameters": {
-        "jsCode": "// The first images must be exactly: featured image, artwork, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.\nconst MAX_SECONDS = 30;\nconst wanted = $('Image order').first().json.wanted;\nconst media = ((($input.first().json.data || {}).product || {}).media || {}).nodes || [];\nconst actual = media.slice(0, wanted.length).map((m) => m.id);\nconst ok = wanted.every((id, i) => actual[i] === id);\nconst seconds = Math.round((Date.now() - $('Image order').first().json.startedAt) / 1000);\nreturn [{ json: { ok, retry: !ok && seconds < MAX_SECONDS, seconds, wanted, actual } }];"
+        "jsCode": "// The first images must be exactly: featured image, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.\nconst MAX_SECONDS = 30;\nconst wanted = $('Image order').first().json.wanted;\nconst media = ((($input.first().json.data || {}).product || {}).media || {}).nodes || [];\nconst actual = media.slice(0, wanted.length).map((m) => m.id);\nconst ok = wanted.every((id, i) => actual[i] === id);\nconst seconds = Math.round((Date.now() - $('Image order').first().json.startedAt) / 1000);\nreturn [{ json: { ok, retry: !ok && seconds < MAX_SECONDS, seconds, wanted, actual } }];"
       }
     },
     {
-      "id": "cc000036-0000-4000-8000-000000000000",
+      "id": "cc000038-0000-4000-8000-000000000000",
       "name": "Images in order?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        5720,
+        6820,
         300
       ],
       "parameters": {
@@ -825,12 +859,12 @@
       }
     },
     {
-      "id": "cc000037-0000-4000-8000-000000000000",
+      "id": "cc000039-0000-4000-8000-000000000000",
       "name": "Check again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        5940,
+        7040,
         480
       ],
       "parameters": {
@@ -858,25 +892,25 @@
       }
     },
     {
-      "id": "cc000038-0000-4000-8000-000000000000",
+      "id": "cc000040-0000-4000-8000-000000000000",
       "name": "Images out of order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6160,
+        7260,
         560
       ],
       "parameters": {
-        "jsCode": "// Stops the run: the folder gets no marker, so the next run uploads it again (same draft, reordered again)\nconst folder = $('Loop over folders').first().json;\nthrow new Error(\"Folder \" + folder.folder + \": Shopify did not apply the image order (featured image, artwork, mockup, shared images) after \" + $json.seconds + \" seconds\");"
+        "jsCode": "// Stops the run: the folder gets no marker, so the next run uploads it again (same draft, reordered again)\nconst folder = $('Loop over folders').first().json;\nthrow new Error(\"Folder \" + folder.folder + \": Shopify did not apply the image order (featured image, mockup, shared images) after \" + $json.seconds + \" seconds\");"
       }
     },
     {
-      "id": "cc000039-0000-4000-8000-000000000000",
+      "id": "cc000041-0000-4000-8000-000000000000",
       "name": "Shopify marker",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5940,
+        7040,
         200
       ],
       "parameters": {
@@ -884,12 +918,12 @@
       }
     },
     {
-      "id": "cc000040-0000-4000-8000-000000000000",
+      "id": "cc000042-0000-4000-8000-000000000000",
       "name": "Save marker",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        6160,
+        7260,
         200
       ],
       "parameters": {
@@ -909,7 +943,7 @@
       }
     },
     {
-      "id": "cc000041-0000-4000-8000-000000000000",
+      "id": "cc000043-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1132,98 +1166,103 @@
       "main": [
         [
           {
-            "node": "Upload featured",
+            "node": "Featured PNG in Drive?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Source images",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upload featured": {
+    "Featured PNG in Drive?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Save featured PNG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source images": {
       "main": [
         [
           {
-            "node": "Featured in Drive?",
+            "node": "Download images",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Featured in Drive?": {
+    "Download images": {
       "main": [
         [
           {
-            "node": "Download artwork",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Featured for Drive",
+            "node": "Images to convert",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Featured for Drive": {
+    "Images to convert": {
       "main": [
         [
           {
-            "node": "Save featured image",
+            "node": "Convert to WebP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Save featured image": {
+    "Convert to WebP": {
       "main": [
         [
           {
-            "node": "Download artwork",
+            "node": "WebP files",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download artwork": {
+    "WebP files": {
       "main": [
         [
           {
-            "node": "Upload artwork",
+            "node": "WebP in Drive?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload WebP to Shopify",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upload artwork": {
+    "WebP in Drive?": {
       "main": [
+        [],
         [
           {
-            "node": "Download mockup",
+            "node": "Save WebP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Download mockup": {
-      "main": [
-        [
-          {
-            "node": "Upload mockup",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload mockup": {
+    "Upload WebP to Shopify": {
       "main": [
         [
           {

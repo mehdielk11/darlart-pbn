@@ -17,7 +17,7 @@ const { decodeImage } = require(path.join(dist, "server/src/image"));
 const { generate } = require(path.join(dist, "server/src/generate"));
 const { recolorToPalette } = require(path.join(dist, "server/src/recolor"));
 const { fitToCanvas } = require(path.join(dist, "server/src/reference"));
-const { buildFeatured } = require(path.join(dist, "server/src/mockup"));
+const { buildFeatured, toWebp } = require(path.join(dist, "server/src/mockup"));
 
 const paletteText = fs.readFileSync(path.join(root, "server/palettes/darlart-v2.json"), "utf8");
 const simpleImage = path.join(root, "src-cli/testinput.png");
@@ -164,7 +164,8 @@ test("buildFeatured puts the artwork on the canvas photo of its orientation", as
         const art = await sharp({ create: { width: w, height: h, channels: 3, background: "#cc2200" } }).png().toBuffer();
         const featured = await buildFeatured(art, 800);
         assert.equal(featured.template.name, name, `${w}x${h}`);
-        const { data, info } = await sharp(featured.jpeg).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        assert.equal((await sharp(featured.png).metadata()).format, "png");
+        const { data, info } = await sharp(featured.png).removeAlpha().raw().toBuffer({ resolveWithObject: true });
         assert.equal(info.width, 800);
         assert.equal(info.height, 800);
         const face = featured.template.face;
@@ -174,6 +175,20 @@ test("buildFeatured puts the artwork on the canvas photo of its orientation", as
         const corner = at(5, 5);
         assert.ok(corner[0] > 180 && Math.abs(corner[0] - corner[2]) < 12, "the wall stays grey");
     }
+});
+
+test("toWebp makes a lighter WebP copy of the same size", async () => {
+    const sharp = require("sharp");
+    const png = await sharp({ create: { width: 1024, height: 1280, channels: 3, background: "#cc2200" } })
+        .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1280"><circle cx="512" cy="640" r="400" fill="#2266aa"/></svg>') }])
+        .png().toBuffer();
+    const result = await toWebp(png);
+    const meta = await sharp(result.webp).metadata();
+    assert.equal(meta.format, "webp");
+    assert.equal(meta.width, 1024);
+    assert.equal(meta.height, 1280);
+    assert.ok(result.webp.length < png.length, "smaller than the PNG");
+    assert.equal((await toWebp(png, 80, 512)).width, 410, "maxSide shrinks it, keeping the ratio");
 });
 
 test("fadeColors mixes each color toward white", () => {

@@ -73,7 +73,7 @@ export const FEATURED_SIZE = 1600;
  * when wider than tall, portrait otherwise). The artwork fills the canvas face without distortion (cover): a 4:5
  * artwork fits it exactly. The photo is enlarged to `size` first, so the artwork keeps its own resolution.
  */
-export async function buildFeatured(artwork: Buffer, size: number = FEATURED_SIZE): Promise<{ jpeg: Buffer; template: FeaturedTemplate }> {
+export async function buildFeatured(artwork: Buffer, size: number = FEATURED_SIZE): Promise<{ png: Buffer; template: FeaturedTemplate }> {
     const art = sharp(artwork, { limitInputPixels: 100 * 1000 * 1000 }).rotate();
     const meta = await art.metadata();
     const swapped = (meta.orientation || 1) >= 5; // EXIF orientations 5-8 swap width and height
@@ -87,11 +87,24 @@ export async function buildFeatured(artwork: Buffer, size: number = FEATURED_SIZ
     const top = Math.round((face.top - 1) * scale);
     const box = { width: Math.round((face.left + face.width + 1) * scale) - left, height: Math.round((face.top + face.height + 1) * scale) - top };
     const artLayer = await art.resize(box.width, box.height, { fit: "cover", position: "centre" }).removeAlpha().png().toBuffer();
-    // a JPEG: a photo-like product image, about 10 times smaller than a PNG
-    const jpeg = await sharp(path.join(config.mockupsDir, template.blank))
+    // a PNG like every image the API makes: toWebp makes the light copy that goes to Shopify
+    const png = await sharp(path.join(config.mockupsDir, template.blank))
         .resize(size, size, { kernel: "lanczos3" })
         .composite([{ input: artLayer, left, top }])
-        .jpeg({ quality: 90, mozjpeg: true })
+        .png({ compressionLevel: 9 })
         .toBuffer();
-    return { jpeg, template };
+    return { png, template };
+}
+
+/** WebP quality for product images: much lighter than a PNG, with no visible loss on paintings and photos */
+export const WEBP_QUALITY = 88;
+
+/** A WebP copy of an image, for the web (e.g. Shopify product images). Optional maxSide shrinks it, never enlarges. */
+export async function toWebp(input: Buffer, quality: number = WEBP_QUALITY, maxSide?: number): Promise<{ webp: Buffer; width: number; height: number }> {
+    let image = sharp(input, { limitInputPixels: 100 * 1000 * 1000 }).rotate();
+    if (maxSide) {
+        image = image.resize(maxSide, maxSide, { fit: "inside", withoutEnlargement: true });
+    }
+    const { data, info } = await image.webp({ quality, effort: 5, smartSubsample: true }).toBuffer({ resolveWithObject: true });
+    return { webp: data, width: info.width, height: info.height };
 }

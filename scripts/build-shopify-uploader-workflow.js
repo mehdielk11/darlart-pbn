@@ -3,9 +3,10 @@
  *
  *   Print Agent finished / Run now / every day -> prices Google Sheet (Drive) + Drive "Artwork Agent" folders
  *   -> folders that have a product JSON, an artwork and a mockup but no <date+time>_shopify.json yet, one by one:
- *      featured image (pbn API: the artwork on a canvas photo, saved once as <date+time>_featured.jpg) -> upload the
- *      featured image, artwork and mockup to Shopify -> draft product (texts from the product JSON, variants and
- *      prices from the sheet, images: featured, artwork, mockup, then the shared images) -> <date+time>_shopify.json
+ *      featured image (pbn API: the artwork on a canvas photo, saved once as <date+time>_featured.png) -> WebP copies
+ *      of the featured image and the mockup (pbn API, saved once as <date+time>_<name>.webp) -> the WebP files go to
+ *      Shopify, never the PNGs nor the artwork itself -> draft product (texts from the product JSON, variants and
+ *      prices from the sheet, images: featured, mockup, then the shared images) -> <date+time>_shopify.json
  *
  * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
  * applies to every product uploaded after the change. Columns: canvas_type,size,colors,price[,compare_at_price].
@@ -27,10 +28,10 @@ const SETTINGS = {
     // the sizes sold: sheet rows of any other size (e.g. 60x75, the print size: it is not sold) are skipped
     sizes: "20x25,32x40,40x50",
     compareAtMultiplier: 2, // compare-at price = price x this, when the CSV has no compare_at_price
-    // the images shown on every product after the artwork and the mockup: Shopify Files URLs
+    // the images shown on every product after the featured image and the mockup: Shopify Files URLs
     // (Content > Files > copy link) or file IDs (gid://shopify/MediaImage/...), comma-separated
     // 3_package-kit, 4_rolled-stretched, 5_order-package
-    sharedImages: "gid://shopify/MediaImage/53174515335449,gid://shopify/MediaImage/53174515302681,gid://shopify/MediaImage/53174515368217",
+    sharedImages: "gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409",
     maxPerRun: 10, // folders handled per run, the rest wait for the next run
     pbnApiUrl: "http://127.0.0.1:3000", // makes the featured image (POST /v1/featured)
 };
@@ -86,18 +87,6 @@ const shopify = (name, position, body) => node(name, "n8n-nodes-base.httpRequest
     specifyBody: "json",
     jsonBody: body,
     options: { timeout: 120000 },
-});
-// the file goes to the staged upload URL, with the headers Shopify asked for
-const stagedPut = (name, position, target, binaryName) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
-    method: "PUT",
-    url: "={{ $('Upload targets').first().json." + target + ".url }}",
-    sendHeaders: true,
-    specifyHeaders: "json",
-    jsonHeaders: "={{ JSON.stringify($('Upload targets').first().json." + target + ".headers) }}",
-    sendBody: true,
-    contentType: "binaryData",
-    inputDataFieldName: binaryName,
-    options: { response: { response: { responseFormat: "text" } }, timeout: 120000 },
 });
 
 // ---- 1. triggers, settings --------------------------------------------------------------------
@@ -258,9 +247,11 @@ $input.all().forEach((item, i) => {
     const product = find("_product.json");
     const mockup = find("_mockup.png");
     const markerName = stamp + "_shopify.json";
-    const featuredName = stamp + "_featured.jpg";
+    // the PNG made by the pbn API, and the WebP copies that go to Shopify
+    const names = { featuredPng: stamp + "_featured.png", featured: stamp + "_featured.webp", mockup: stamp + "_mockup.webp" };
+    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));
     if (!product || !mockup || find("_shopify.json")) return;
-    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredName, hasFeatured: !!find("_featured.jpg"), markerName } });
+    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, names, inDrive, markerName } });
 });
 return pending.slice(0, Number(settings.maxPerRun) || 10);`);
 connect("List folder files", "Pending folders");
@@ -275,87 +266,147 @@ connect("Loop over folders", "Download product JSON", 1);
 shopify("Stage uploads", [2640, 300], `={{ JSON.stringify({
   query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',
   variables: { input: [
-    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-artwork.png', mimeType: 'image/png', httpMethod: 'PUT' },
-    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.png', mimeType: 'image/png', httpMethod: 'PUT' },
-    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-featured.jpg', mimeType: 'image/jpeg', httpMethod: 'PUT' }
+    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-mockup.webp', mimeType: 'image/webp', httpMethod: 'PUT' },
+    { resource: 'IMAGE', filename: $('Loop over folders').first().json.folder + '-featured.webp', mimeType: 'image/webp', httpMethod: 'PUT' }
   ] }
 }) }}`);
 connect("Download product JSON", "Stage uploads");
 
-code("Upload targets", [2860, 300], `// Where the artwork and the mockup go: a URL, the headers to send with the file, and the address Shopify reads it from
+code("Upload targets", [2860, 300], `// Where the WebP mockup and featured image go: a URL, the headers to send with the file, and the address Shopify reads it from
 const response = $input.first().json;
 const errors = [...(response.errors || []), ...(((response.data || {}).stagedUploadsCreate || {}).userErrors || [])].map((e) => e.message);
 if (errors.length) throw new Error("Shopify staged upload: " + errors.join("; "));
 const targets = response.data.stagedUploadsCreate.stagedTargets;
 const target = (t) => ({ url: t.url, resourceUrl: t.resourceUrl, headers: Object.fromEntries(t.parameters.map((p) => [p.name, p.value])) });
-return [{ json: { art: target(targets[0]), mockup: target(targets[1]), featured: target(targets[2]) } }];`);
+return [{ json: { mockup: target(targets[0]), featured: target(targets[1]) } }];`);
 connect("Stage uploads", "Upload targets");
 
-// the featured image: the artwork on the canvas photo of its orientation, made by the pbn API
+// the featured image: the artwork on the canvas photo of its orientation, made by the pbn API (a PNG)
 driveDownload("Artwork for featured", [3080, 520], "$('Loop over folders').first().json.artworkId", "art");
 connect("Upload targets", "Artwork for featured");
 
-node("Make featured image", "n8n-nodes-base.httpRequest", 4.2, [3300, 520], {
+const pbnApi = (name, position, path, parameters) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
     method: "POST",
-    url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/featured",
+    url: "={{ $('Settings').first().json.pbnApiUrl }}" + path,
     authentication: "genericCredentialType",
     genericAuthType: "httpHeaderAuth",
     sendBody: true,
     contentType: "multipart-form-data",
-    bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "art" }] },
+    bodyParameters: { parameters },
     options: { timeout: 120000 },
 });
+pbnApi("Make featured image", [3300, 520], "/v1/featured", [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "art" }]);
 connect("Artwork for featured", "Make featured image");
 
-code("Featured file", [3520, 520], `// The API's JPEG (base64) as the binary "featured", for Shopify and for Drive
+code("Featured file", [3520, 520], `// The API's PNG (base64) as the binary "image"
 const folder = $('Loop over folders').first().json;
 const result = $('Make featured image').first().json;
 if (!result.image) throw new Error("Folder " + folder.folder + ": the pbn API returned no featured image");
 return [{
-    json: { template: result.template, featuredName: folder.featuredName },
-    binary: { featured: { data: result.image, mimeType: "image/jpeg", fileName: folder.featuredName, fileExtension: "jpg" } },
+    json: { template: result.template, name: folder.names.featuredPng },
+    binary: { image: { data: result.image, mimeType: "image/png", fileName: folder.names.featuredPng, fileExtension: "png" } },
 }];`);
 connect("Make featured image", "Featured file");
 
-stagedPut("Upload featured", [3740, 520], "featured", "featured");
-connect("Featured file", "Upload featured");
-
-node("Featured in Drive?", "n8n-nodes-base.if", 2, [3960, 520], {
+// saved next to the artwork once: a later run makes the same image again and keeps this file
+node("Featured PNG in Drive?", "n8n-nodes-base.if", 2, [3740, 700], {
     conditions: {
         options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
-        conditions: [{ id: "featuredindrive", leftValue: "={{ $('Loop over folders').first().json.hasFeatured }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        conditions: [{ id: "featuredpngindrive", leftValue: "={{ $('Loop over folders').first().json.inDrive.featuredPng }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
         combinator: "and",
     },
     options: {},
 });
-connect("Upload featured", "Featured in Drive?");
-
-// saved next to the artwork once: a later run makes the same image again for Shopify and keeps this file
-code("Featured for Drive", [4180, 640], `const featured = $('Featured file').first();
-return [{ json: featured.json, binary: featured.binary }];`);
-connect("Featured in Drive?", "Featured for Drive", 1);
-
-node("Save featured image", "n8n-nodes-base.googleDrive", 3, [4400, 640], {
-    name: "={{ $('Loop over folders').first().json.featuredName }}",
+connect("Featured file", "Featured PNG in Drive?");
+node("Save featured PNG", "n8n-nodes-base.googleDrive", 3, [3960, 780], {
+    name: "={{ $('Loop over folders').first().json.names.featuredPng }}",
     driveId: drive,
     folderId: byId("={{ $('Loop over folders').first().json.folderId }}"),
-    inputDataFieldName: "featured",
+    inputDataFieldName: "image",
     options: {},
 });
-connect("Featured for Drive", "Save featured image");
+connect("Featured PNG in Drive?", "Save featured PNG", 1);
 
-driveDownload("Download artwork", [3080, 300], "$('Loop over folders').first().json.artworkId", "art");
-connect("Featured in Drive?", "Download artwork", 0);
-connect("Save featured image", "Download artwork");
-stagedPut("Upload artwork", [3300, 300], "art", "art");
-connect("Download artwork", "Upload artwork");
+// ---- WebP copies: the featured image and the mockup as items, converted by the pbn API, saved once and sent to Shopify
+// (the artwork itself only makes the featured image: it is not uploaded)
+code("Source images", [3740, 520], `// The mockup PNG to download (the featured PNG is already here)
+const folder = $('Loop over folders').first().json;
+return [
+    { json: { kind: "mockup", fileId: folder.mockupId } },
+];`);
+connect("Featured file", "Source images");
 
-driveDownload("Download mockup", [3520, 300], "$('Loop over folders').first().json.mockupId", "mockup");
-connect("Upload artwork", "Download mockup");
-stagedPut("Upload mockup", [3740, 300], "mockup", "mockup");
-connect("Download mockup", "Upload mockup");
+node("Download images", "n8n-nodes-base.httpRequest", 4.2, [3960, 520], {
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $json.fileId }}?alt=media&supportsAllDrives=true",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    options: { response: { response: { responseFormat: "file", outputPropertyName: "image" } }, timeout: 120000 },
+});
+connect("Source images", "Download images");
 
-code("Build product", [3960, 300], `// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input
+code("Images to convert", [4180, 520], `// Featured image and mockup, in this order, each with the name of its WebP copy
+const folder = $('Loop over folders').first().json;
+const downloads = $('Download images').all();
+const sources = $('Source images').all();
+const byKind = {};
+sources.forEach((source, i) => { byKind[source.json.kind] = downloads[i].binary.image; });
+byKind.featured = $('Featured file').first().binary.image;
+return ["featured", "mockup"].map((kind) => {
+    if (!byKind[kind]) throw new Error("Folder " + folder.folder + ": no " + kind + " image to convert");
+    return { json: { kind, name: folder.names[kind], inDrive: folder.inDrive[kind] }, binary: { image: byKind[kind] } };
+});`);
+connect("Download images", "Images to convert");
+
+pbnApi("Convert to WebP", [4400, 520], "/v1/webp", [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "image" }]);
+connect("Images to convert", "Convert to WebP");
+
+code("WebP files", [4620, 520], `// The API's WebP (base64) as the binary "webp", one item per image, in the same order
+const folder = $('Loop over folders').first().json;
+const images = $('Images to convert').all();
+return $input.all().map((item, i) => {
+    const source = images[i].json;
+    if (!item.json.image || item.json.contentType !== "image/webp") throw new Error("Folder " + folder.folder + ": the pbn API returned no WebP for the " + source.kind);
+    return {
+        json: { ...source, bytes: item.json.bytes, sourceBytes: item.json.sourceBytes },
+        binary: { webp: { data: item.json.image, mimeType: "image/webp", fileName: source.name, fileExtension: "webp" } },
+    };
+});`);
+connect("Convert to WebP", "WebP files");
+
+// each WebP copy is saved next to its PNG once
+node("WebP in Drive?", "n8n-nodes-base.if", 2, [4840, 700], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "webpindrive", leftValue: "={{ $json.inDrive }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("WebP files", "WebP in Drive?");
+node("Save WebP", "n8n-nodes-base.googleDrive", 3, [5060, 780], {
+    name: "={{ $json.name }}",
+    driveId: drive,
+    folderId: byId("={{ $('Loop over folders').first().json.folderId }}"),
+    inputDataFieldName: "webp",
+    options: {},
+});
+connect("WebP in Drive?", "Save WebP", 1);
+
+// only the WebP files go to Shopify: each to its staged upload URL, with the headers Shopify asked for
+node("Upload WebP to Shopify", "n8n-nodes-base.httpRequest", 4.2, [4840, 300], {
+    method: "PUT",
+    url: "={{ $('Upload targets').first().json[$json.kind].url }}",
+    sendHeaders: true,
+    specifyHeaders: "json",
+    jsonHeaders: "={{ JSON.stringify($('Upload targets').first().json[$json.kind].headers) }}",
+    sendBody: true,
+    contentType: "binaryData",
+    inputDataFieldName: "webp",
+    options: { response: { response: { responseFormat: "text" } }, timeout: 120000 },
+});
+connect("WebP files", "Upload WebP to Shopify");
+
+code("Build product", [5060, 300], `// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input
 const settings = $('Settings').first().json;
 const folder = $('Loop over folders').first().json;
 const product = $('Download product JSON').first().json;
@@ -372,12 +423,11 @@ const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/
 const descriptionHtml = String(product.description || "").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)
     .map((p) => "<p>" + escape(p).replace(/\\n/g, "<br>") + "</p>").join("\\n");
 
-// the image order is enforced after creation (Image order): 1 featured image, 2 artwork, 3 mockup, then the shared images.
+// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.
 // Each image gets its own alt text, so it can be recognized among the product's media.
-const alts = { featured: title + " - paint by numbers canvas", art: title, mockup: title + " - finished painting on the wall" };
+const alts = { featured: title, mockup: title + " - finished painting on the wall" };
 const files = [
     { originalSource: targets.featured.resourceUrl, contentType: "IMAGE", alt: alts.featured },
-    { originalSource: targets.art.resourceUrl, contentType: "IMAGE", alt: alts.art },
     { originalSource: targets.mockup.resourceUrl, contentType: "IMAGE", alt: alts.mockup },
 ];
 const shared = [];
@@ -417,15 +467,15 @@ const input = {
     files,
 };
 return [{ json: { handle, title, alts, shared, input } }];`);
-connect("Upload mockup", "Build product");
+connect("Upload WebP to Shopify", "Build product");
 
-shopify("Create draft product", [4180, 300], `={{ JSON.stringify({
+shopify("Create draft product", [5280, 300], `={{ JSON.stringify({
   query: 'mutation UpsertDraftProduct($identifier: ProductSetIdentifiers, $input: ProductSetInput!) { productSet(synchronous: true, identifier: $identifier, input: $input) { product { id handle title status variantsCount { count } media(first: 50) { nodes { id alt } } } userErrors { field message code } } }',
   variables: { identifier: { handle: $json.handle }, input: $json.input }
 }) }}`);
 connect("Build product", "Create draft product");
 
-code("Image order", [4400, 300], `// Enforced image order: 1 featured image, 2 artwork, 3 mockup, 4+ the shared images (in the Settings order), anything else after them
+code("Image order", [5500, 300], `// Enforced image order: 1 featured image, 2 mockup, 3+ the shared images (in the Settings order), anything else after them
 const folder = $('Loop over folders').first().json;
 const built = $('Build product').first().json;
 const response = $input.first().json;
@@ -441,27 +491,26 @@ const pick = (match) => {
     return found;
 };
 const featured = pick((m) => m.alt === built.alts.featured);
-const art = pick((m) => m.alt === built.alts.art);
 const mockup = pick((m) => m.alt === built.alts.mockup);
-if (!featured || !art || !mockup) throw new Error("Folder " + folder.folder + ": the featured image, the artwork or the mockup is missing from the product's images");
+if (!featured || !mockup) throw new Error("Folder " + folder.folder + ": the featured image or the mockup is missing from the product's images");
 const shared = built.shared.map((s) => pick((m) => (s.id ? m.id === s.id : m.alt === s.alt)));
 // a shared image Shopify attached under a new ID: the next image not picked yet
 for (let i = 0; i < shared.length; i++) {
     if (!shared[i]) shared[i] = pick(() => true);
 }
 if (shared.some((m) => !m)) throw new Error("Folder " + folder.folder + ": " + built.shared.length + " shared images expected, some are missing from the product");
-const wanted = [featured, art, mockup, ...shared].map((m) => m.id);
+const wanted = [featured, mockup, ...shared].map((m) => m.id);
 const order = [...wanted, ...media.filter((m) => !used.has(m.id)).map((m) => m.id)];
 return [{ json: { productId: product.id, product, wanted, startedAt: Date.now(), moves: order.map((id, i) => ({ id, newPosition: String(i) })) } }];`);
 connect("Create draft product", "Image order");
 
-shopify("Reorder images", [4620, 300], `={{ JSON.stringify({
+shopify("Reorder images", [5720, 300], `={{ JSON.stringify({
   query: 'mutation ReorderImages($id: ID!, $moves: [MoveInput!]!) { productReorderMedia(id: $id, moves: $moves) { job { id done } mediaUserErrors { field message } } }',
   variables: { id: $json.productId, moves: $json.moves }
 }) }}`);
 connect("Image order", "Reorder images");
 
-code("Reorder sent", [4840, 300], `const folder = $('Loop over folders').first().json;
+code("Reorder sent", [5940, 300], `const folder = $('Loop over folders').first().json;
 const response = $input.first().json;
 const result = (response.data || {}).productReorderMedia || {};
 const errors = [...(response.errors || []), ...(result.mediaUserErrors || [])].map((e) => e.message);
@@ -470,16 +519,16 @@ return [{ json: { productId: $('Image order').first().json.productId } }];`);
 connect("Reorder images", "Reorder sent");
 
 // the reorder is a background job on Shopify's side: read the order back until it is right
-node("Wait for reorder", "n8n-nodes-base.wait", 1.1, [5060, 300], { resume: "timeInterval", amount: 3, unit: "seconds" });
+node("Wait for reorder", "n8n-nodes-base.wait", 1.1, [6160, 300], { resume: "timeInterval", amount: 3, unit: "seconds" });
 connect("Reorder sent", "Wait for reorder");
 
-shopify("Read image order", [5280, 300], `={{ JSON.stringify({
+shopify("Read image order", [6380, 300], `={{ JSON.stringify({
   query: 'query ImageOrder($id: ID!) { product(id: $id) { media(first: 50) { nodes { id alt } } } }',
   variables: { id: $('Image order').first().json.productId }
 }) }}`);
 connect("Wait for reorder", "Read image order");
 
-code("Order confirmed?", [5500, 300], `// The first images must be exactly: featured image, artwork, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.
+code("Order confirmed?", [6600, 300], `// The first images must be exactly: featured image, mockup, shared images. Read again every 3 seconds, for up to MAX_SECONDS.
 const MAX_SECONDS = 30;
 const wanted = $('Image order').first().json.wanted;
 const media = ((($input.first().json.data || {}).product || {}).media || {}).nodes || [];
@@ -489,7 +538,7 @@ const seconds = Math.round((Date.now() - $('Image order').first().json.startedAt
 return [{ json: { ok, retry: !ok && seconds < MAX_SECONDS, seconds, wanted, actual } }];`);
 connect("Read image order", "Order confirmed?");
 
-node("Images in order?", "n8n-nodes-base.if", 2, [5720, 300], {
+node("Images in order?", "n8n-nodes-base.if", 2, [6820, 300], {
     conditions: {
         options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
         conditions: [{ id: "imagesinorder", leftValue: "={{ $json.ok }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
@@ -499,7 +548,7 @@ node("Images in order?", "n8n-nodes-base.if", 2, [5720, 300], {
 });
 connect("Order confirmed?", "Images in order?");
 
-node("Check again?", "n8n-nodes-base.if", 2, [5940, 480], {
+node("Check again?", "n8n-nodes-base.if", 2, [7040, 480], {
     conditions: {
         options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
         conditions: [{ id: "checkagain", leftValue: "={{ $json.retry }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
@@ -510,12 +559,12 @@ node("Check again?", "n8n-nodes-base.if", 2, [5940, 480], {
 connect("Images in order?", "Check again?", 1);
 connect("Check again?", "Wait for reorder", 0);
 
-code("Images out of order", [6160, 560], `// Stops the run: the folder gets no marker, so the next run uploads it again (same draft, reordered again)
+code("Images out of order", [7260, 560], `// Stops the run: the folder gets no marker, so the next run uploads it again (same draft, reordered again)
 const folder = $('Loop over folders').first().json;
-throw new Error("Folder " + folder.folder + ": Shopify did not apply the image order (featured image, artwork, mockup, shared images) after " + $json.seconds + " seconds");`);
+throw new Error("Folder " + folder.folder + ": Shopify did not apply the image order (featured image, mockup, shared images) after " + $json.seconds + " seconds");`);
 connect("Check again?", "Images out of order", 1);
 
-code("Shopify marker", [5940, 200], `// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)
+code("Shopify marker", [7040, 200], `// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)
 const settings = $('Settings').first().json;
 const folder = $('Loop over folders').first().json;
 const product = $('Image order').first().json.product;
@@ -537,7 +586,7 @@ return [{
 }];`);
 connect("Images in order?", "Shopify marker", 0);
 
-node("Save marker", "n8n-nodes-base.googleDrive", 3, [6160, 200], {
+node("Save marker", "n8n-nodes-base.googleDrive", 3, [7260, 200], {
     name: "={{ $('Loop over folders').first().json.markerName }}",
     driveId: drive,
     folderId: byId("={{ $('Loop over folders').first().json.folderId }}"),
