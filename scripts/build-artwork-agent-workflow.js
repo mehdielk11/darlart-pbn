@@ -38,11 +38,13 @@ const SETTINGS = {
     firstFolderNumber: 1001,
     imageModel: "gpt-image-2",
     imageQuality: "medium", // "high" costs ~4x more; the 48-color snap removes the fine texture it adds
-    // the artwork is always this canvas: the model paints at imageSize (same 4:5 ratio as 60x75) and the snap
-    // step crops (never stretches) to the exact ratio
+    // the artwork keeps the reference's shape: a landscape reference (wider than tall) gives a 5:4 landscape artwork
+    // (75x60), a portrait or square one a 4:5 portrait artwork (60x75). The model paints at imageSize (portrait,
+    // 1280x1024 for a landscape one) and the snap step crops (never stretches) to the exact ratio.
+    // "portrait" or "landscape" forces one shape for every artwork.
     canvasSize: "60x75",
-    orientation: "portrait",
-    imageSize: "1024x1280", // multiples of 16, exactly 4:5
+    orientation: "auto",
+    imageSize: "1024x1280", // portrait size, multiples of 16, exactly 4:5
     maxTries: 3, // runs a queued reference may crash before it is set aside as failed
     lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
     telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
@@ -500,10 +502,21 @@ return [{
 
     // No color instructions: the model paints the reference's own colors, and "Snap to palette" then picks the
     // 48 Darl'Art colors that fit the painting best. Palette lists in the prompt risk swatches painted into the image.
-    code("Build image prompt", [X + 220, -120], `// A fixed prompt: the model sees the reference itself, so no scene description is needed
+    code("Build image prompt", [X + 220, -120], `// A fixed prompt: the model sees the reference itself, so no scene description is needed. The artwork keeps the
+// reference's shape: landscape (5:4) for a reference wider than tall, portrait (4:5) otherwise (a square one too).
+const settings = $('Settings').first().json;
+const size = $('Measure reference').first().json;
+if (!size.width || !size.height) throw new Error("Could not read the reference's size: " + JSON.stringify(size).slice(0, 200));
+const setting = String(settings.orientation || "auto").toLowerCase();
+const orientation = setting === "portrait" || setting === "landscape" ? setting : size.width > size.height ? "landscape" : "portrait";
+const [a, b] = String(settings.imageSize).split("x").map(Number);
+const imageSize = orientation === "landscape" ? Math.max(a, b) + "x" + Math.min(a, b) : Math.min(a, b) + "x" + Math.max(a, b);
+const frame = orientation === "landscape"
+    ? "The output is a horizontal canvas painting in a 5:4 ratio (75 x 60 cm), wider than tall."
+    : "The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm), taller than wide.";
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
-    "The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
+    frame + " Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
     "Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.",
     "Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.",
     "Keep the original colors of the image.",
@@ -512,8 +525,20 @@ const imagePrompt = [
     "Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.",
     "The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.",
 ].join("\\n");
-return [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];`);
-    connect("Prepare", "Build image prompt");
+return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.width, referenceHeight: size.height }, binary: $('Prepare').first().binary }];`);
+    // the reference's real shape (the pbn API reads the phone's EXIF rotation too)
+    node("Measure reference", "n8n-nodes-base.httpRequest", 4.2, [X + 110, -300], {
+        method: "POST",
+        url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/analyze",
+        authentication: "genericCredentialType",
+        genericAuthType: "httpHeaderAuth",
+        sendBody: true,
+        contentType: "multipart-form-data",
+        bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "reference" }] },
+        options: { timeout: 120000 },
+    });
+    connect("Prepare", "Measure reference");
+    connect("Measure reference", "Build image prompt");
 
     node("Generate ART", "n8n-nodes-base.httpRequest", 4.2, [X + 440, -120], {
         method: "POST",
@@ -526,7 +551,7 @@ return [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];`);
             parameters: [
                 { name: "model", value: "={{ $('Settings').first().json.imageModel }}" },
                 { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt }}" },
-                { name: "size", value: "={{ $('Settings').first().json.imageSize }}" },
+                { name: "size", value: "={{ $('Build image prompt').first().json.imageSize }}" },
                 { name: "quality", value: "={{ $('Settings').first().json.imageQuality }}" },
                 { name: "output_format", value: "png" },
                 { name: "n", value: "1" },
@@ -605,7 +630,7 @@ return [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwo
                 { name: "smooth", value: "3" },
                 // the final artwork always has the exact canvas ratio (cropped, never stretched)
                 { name: "canvasSize", value: "={{ $('Settings').first().json.canvasSize }}" },
-                { name: "orientation", value: "={{ $('Settings').first().json.orientation }}" },
+                { name: "orientation", value: "={{ $('Build image prompt').first().json.orientation }}" },
                 { parameterType: "formBinaryData", name: "image", inputDataFieldName: "artwork" },
             ],
         },

@@ -10,6 +10,8 @@
  * 4. palette-constrained refinement: each chosen color moves to the palette color nearest to the mean of
  *    the pixels it covers; a color that covers nothing is replaced by the worst-represented pixels' color
  * 5. every pixel is painted with its nearest chosen color
+ * 6. a chosen color that no pixel is nearest to takes the pixels closest to it (from a color that keeps others),
+ *    so the artwork has exactly N colors whenever the image has N distinct RGB values
  */
 import sharp from "sharp";
 import { parseCustomColors } from "../../src/core/settings";
@@ -260,24 +262,51 @@ export async function recolorToPalette(input: Buffer, options: RecolorOptions): 
         if (!changed) { break; }
     }
 
-    // 5. paint every pixel with its nearest chosen color (cached per exact RGB)
+    // 5. every exact RGB takes its nearest chosen color
     const chosenLab = chosen.map((index) => palette[index].lab);
     const cache = new Map<number, number>();
+    const keysPerColor: number[][] = Array.from({ length: k }, () => []);
+    for (let p = 0, o = 0; p < pixelCount; p++, o += 3) {
+        const key = (data[o] << 16) | (data[o + 1] << 8) | data[o + 2];
+        if (cache.has(key)) { continue; }
+        const lab = rgb2lab([data[o], data[o + 1], data[o + 2]]);
+        let c = 0;
+        let bestDistance = Infinity;
+        for (let j = 0; j < k; j++) {
+            const d = dist2(lab, chosenLab[j]);
+            if (d < bestDistance) { bestDistance = d; c = j; }
+        }
+        cache.set(key, c);
+        keysPerColor[c].push(key);
+    }
+
+    // 6. a chosen color no pixel is nearest to (its cluster was measured on the coarse histogram, the pixels are exact)
+    //    takes the exact RGB nearest to it, from a color that keeps others: exactly N colors whenever the image has
+    //    at least N distinct RGB values
+    const keyLab = (key: number) => rgb2lab([(key >> 16) & 255, (key >> 8) & 255, key & 255]);
+    for (let c = 0; c < k; c++) {
+        if (keysPerColor[c].length > 0) { continue; }
+        let bestKey = -1;
+        let bestFrom = -1;
+        let bestDistance = Infinity;
+        for (let from = 0; from < k; from++) {
+            if (keysPerColor[from].length < 2) { continue; }
+            for (const key of keysPerColor[from]) {
+                const d = dist2(keyLab(key), chosenLab[c]);
+                if (d < bestDistance) { bestDistance = d; bestKey = key; bestFrom = from; }
+            }
+        }
+        if (bestKey < 0) { break; } // fewer distinct RGB values than colors
+        keysPerColor[bestFrom].splice(keysPerColor[bestFrom].indexOf(bestKey), 1);
+        keysPerColor[c].push(bestKey);
+        cache.set(bestKey, c);
+    }
+
+    // 7. paint every pixel with its color
     const pixelsPerColor = new Float64Array(k);
     const out = Buffer.alloc(pixelCount * 3);
     for (let p = 0, o = 0; p < pixelCount; p++, o += 3) {
-        const key = (data[o] << 16) | (data[o + 1] << 8) | data[o + 2];
-        let c = cache.get(key);
-        if (c === undefined) {
-            const lab = rgb2lab([data[o], data[o + 1], data[o + 2]]);
-            c = 0;
-            let bestDistance = Infinity;
-            for (let j = 0; j < k; j++) {
-                const d = dist2(lab, chosenLab[j]);
-                if (d < bestDistance) { bestDistance = d; c = j; }
-            }
-            cache.set(key, c);
-        }
+        const c = cache.get((data[o] << 16) | (data[o + 1] << 8) | data[o + 2]) as number;
         pixelsPerColor[c]++;
         const rgb = palette[chosen[c]].rgb;
         out[o] = rgb[0];

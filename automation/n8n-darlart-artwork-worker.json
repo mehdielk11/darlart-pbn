@@ -118,7 +118,7 @@
             {
               "id": "set13",
               "name": "orientation",
-              "value": "portrait",
+              "value": "auto",
               "type": "string"
             },
             {
@@ -755,11 +755,41 @@
         -120
       ],
       "parameters": {
-        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm). Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt }, binary: $('Prepare').first().binary }];"
+        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed. The artwork keeps the\n// reference's shape: landscape (5:4) for a reference wider than tall, portrait (4:5) otherwise (a square one too).\nconst settings = $('Settings').first().json;\nconst size = $('Measure reference').first().json;\nif (!size.width || !size.height) throw new Error(\"Could not read the reference's size: \" + JSON.stringify(size).slice(0, 200));\nconst setting = String(settings.orientation || \"auto\").toLowerCase();\nconst orientation = setting === \"portrait\" || setting === \"landscape\" ? setting : size.width > size.height ? \"landscape\" : \"portrait\";\nconst [a, b] = String(settings.imageSize).split(\"x\").map(Number);\nconst imageSize = orientation === \"landscape\" ? Math.max(a, b) + \"x\" + Math.min(a, b) : Math.min(a, b) + \"x\" + Math.max(a, b);\nconst frame = orientation === \"landscape\"\n    ? \"The output is a horizontal canvas painting in a 5:4 ratio (75 x 60 cm), wider than tall.\"\n    : \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm), taller than wide.\";\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    frame + \" Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.width, referenceHeight: size.height }, binary: $('Prepare').first().binary }];"
       }
     },
     {
       "id": "ab000029-0000-4000-8000-000000000000",
+      "name": "Measure reference",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4290,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "reference"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "ab000030-0000-4000-8000-000000000000",
       "name": "Generate ART",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -786,7 +816,7 @@
             },
             {
               "name": "size",
-              "value": "={{ $('Settings').first().json.imageSize }}"
+              "value": "={{ $('Build image prompt').first().json.imageSize }}"
             },
             {
               "name": "quality",
@@ -813,7 +843,7 @@
       }
     },
     {
-      "id": "ab000030-0000-4000-8000-000000000000",
+      "id": "ab000031-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -832,7 +862,7 @@
       }
     },
     {
-      "id": "ab000031-0000-4000-8000-000000000000",
+      "id": "ab000032-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -851,7 +881,7 @@
       }
     },
     {
-      "id": "ab000032-0000-4000-8000-000000000000",
+      "id": "ab000033-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -869,7 +899,7 @@
       }
     },
     {
-      "id": "ab000033-0000-4000-8000-000000000000",
+      "id": "ab000034-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -883,7 +913,7 @@
       }
     },
     {
-      "id": "ab000034-0000-4000-8000-000000000000",
+      "id": "ab000035-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -916,7 +946,7 @@
       }
     },
     {
-      "id": "ab000035-0000-4000-8000-000000000000",
+      "id": "ab000036-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -929,7 +959,7 @@
       }
     },
     {
-      "id": "ab000036-0000-4000-8000-000000000000",
+      "id": "ab000037-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -962,7 +992,7 @@
       }
     },
     {
-      "id": "ab000037-0000-4000-8000-000000000000",
+      "id": "ab000038-0000-4000-8000-000000000000",
       "name": "Result: not painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -975,7 +1005,7 @@
       }
     },
     {
-      "id": "ab000038-0000-4000-8000-000000000000",
+      "id": "ab000039-0000-4000-8000-000000000000",
       "name": "Approved artwork",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -988,7 +1018,7 @@
       }
     },
     {
-      "id": "ab000039-0000-4000-8000-000000000000",
+      "id": "ab000040-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1027,7 +1057,7 @@
             },
             {
               "name": "orientation",
-              "value": "={{ $('Settings').first().json.orientation }}"
+              "value": "={{ $('Build image prompt').first().json.orientation }}"
             },
             {
               "parameterType": "formBinaryData",
@@ -1042,7 +1072,7 @@
       }
     },
     {
-      "id": "ab000040-0000-4000-8000-000000000000",
+      "id": "ab000041-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1055,7 +1085,7 @@
       }
     },
     {
-      "id": "ab000041-0000-4000-8000-000000000000",
+      "id": "ab000042-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -1074,7 +1104,7 @@
       }
     },
     {
-      "id": "ab000042-0000-4000-8000-000000000000",
+      "id": "ab000043-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1117,7 +1147,7 @@
       }
     },
     {
-      "id": "ab000043-0000-4000-8000-000000000000",
+      "id": "ab000044-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1130,7 +1160,7 @@
       }
     },
     {
-      "id": "ab000044-0000-4000-8000-000000000000",
+      "id": "ab000045-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1155,7 +1185,7 @@
       }
     },
     {
-      "id": "ab000045-0000-4000-8000-000000000000",
+      "id": "ab000046-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1168,7 +1198,7 @@
       }
     },
     {
-      "id": "ab000046-0000-4000-8000-000000000000",
+      "id": "ab000047-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1193,7 +1223,7 @@
       }
     },
     {
-      "id": "ab000047-0000-4000-8000-000000000000",
+      "id": "ab000048-0000-4000-8000-000000000000",
       "name": "Run Titling Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1217,7 +1247,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000048-0000-4000-8000-000000000000",
+      "id": "ab000049-0000-4000-8000-000000000000",
       "name": "Run Print Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1241,7 +1271,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000049-0000-4000-8000-000000000000",
+      "id": "ab000050-0000-4000-8000-000000000000",
       "name": "Result: painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1255,7 +1285,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000050-0000-4000-8000-000000000000",
+      "id": "ab000051-0000-4000-8000-000000000000",
       "name": "Update entry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1268,7 +1298,7 @@
       }
     },
     {
-      "id": "ab000051-0000-4000-8000-000000000000",
+      "id": "ab000052-0000-4000-8000-000000000000",
       "name": "Telegram on?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1301,7 +1331,7 @@
       }
     },
     {
-      "id": "ab000052-0000-4000-8000-000000000000",
+      "id": "ab000053-0000-4000-8000-000000000000",
       "name": "Artwork message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1314,7 +1344,7 @@
       }
     },
     {
-      "id": "ab000053-0000-4000-8000-000000000000",
+      "id": "ab000054-0000-4000-8000-000000000000",
       "name": "Painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1347,7 +1377,7 @@
       }
     },
     {
-      "id": "ab000054-0000-4000-8000-000000000000",
+      "id": "ab000055-0000-4000-8000-000000000000",
       "name": "Telegram: artwork",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1367,7 +1397,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000055-0000-4000-8000-000000000000",
+      "id": "ab000056-0000-4000-8000-000000000000",
       "name": "Telegram: not painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1386,7 +1416,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000056-0000-4000-8000-000000000000",
+      "id": "ab000057-0000-4000-8000-000000000000",
       "name": "Record the result?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1419,7 +1449,7 @@
       }
     },
     {
-      "id": "ab000057-0000-4000-8000-000000000000",
+      "id": "ab000058-0000-4000-8000-000000000000",
       "name": "Save manifest (result)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1441,7 +1471,7 @@
       }
     },
     {
-      "id": "ab000058-0000-4000-8000-000000000000",
+      "id": "ab000059-0000-4000-8000-000000000000",
       "name": "Move reference out of the queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1463,7 +1493,7 @@
       }
     },
     {
-      "id": "ab000059-0000-4000-8000-000000000000",
+      "id": "ab000060-0000-4000-8000-000000000000",
       "name": "Batch painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1496,7 +1526,7 @@
       }
     },
     {
-      "id": "ab000060-0000-4000-8000-000000000000",
+      "id": "ab000061-0000-4000-8000-000000000000",
       "name": "Move manifest to Done",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1518,7 +1548,7 @@
       }
     },
     {
-      "id": "ab000061-0000-4000-8000-000000000000",
+      "id": "ab000062-0000-4000-8000-000000000000",
       "name": "Telegram on? (batch)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1551,7 +1581,7 @@
       }
     },
     {
-      "id": "ab000062-0000-4000-8000-000000000000",
+      "id": "ab000063-0000-4000-8000-000000000000",
       "name": "Batch message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1564,7 +1594,7 @@
       }
     },
     {
-      "id": "ab000063-0000-4000-8000-000000000000",
+      "id": "ab000064-0000-4000-8000-000000000000",
       "name": "Telegram: batch painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1583,7 +1613,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000064-0000-4000-8000-000000000000",
+      "id": "ab000065-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1596,7 +1626,7 @@
       }
     },
     {
-      "id": "ab000065-0000-4000-8000-000000000000",
+      "id": "ab000066-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1616,7 +1646,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000066-0000-4000-8000-000000000000",
+      "id": "ab000067-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1650,7 +1680,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000067-0000-4000-8000-000000000000",
+      "id": "ab000068-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1989,6 +2019,17 @@
       ]
     },
     "Prepare": {
+      "main": [
+        [
+          {
+            "node": "Measure reference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Measure reference": {
       "main": [
         [
           {

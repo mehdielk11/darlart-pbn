@@ -146,6 +146,33 @@ test("recolorToPalette paints a photo with exactly N palette colors, never an ex
     assert.equal(Math.round(result.colors.reduce((sum, c) => sum + c.percent, 0)), 100);
 });
 
+test("recolorToPalette keeps every chosen color, even one no pixel is nearest to", async () => {
+    const sharp = require("sharp");
+    // two near-identical pinks: both are chosen, but every pixel of the second is nearer to the first one's paint
+    const A = [255, 187, 228];
+    const B = [255, 187, 237];
+    const C = [20, 90, 200];
+    const W = 90;
+    const H = 30;
+    const raw = Buffer.alloc(W * H * 3);
+    for (let x = 0; x < W; x++) {
+        for (let y = 0; y < H; y++) {
+            const c = x < 30 ? A : x < 60 ? B : C;
+            raw.set(c, (y * W + x) * 3);
+        }
+    }
+    const image = await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+    const v3Text = fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8");
+    const result = await recolorToPalette(image, { colors: 3, palette: v3Text, exclude: [], maxSide: 2048, smooth: 0 });
+    assert.equal(result.colors.length, 3);
+    assert.ok(result.colors.every((c) => c.pixels > 0));
+    // the painted image really holds those 3 colors
+    const { data } = await sharp(result.png).raw().toBuffer({ resolveWithObject: true });
+    const seen = new Set();
+    for (let o = 0; o < data.length; o += 3) seen.add(data[o] + "," + data[o + 1] + "," + data[o + 2]);
+    assert.equal(seen.size, 3);
+});
+
 test("fitToCanvas crops to the exact canvas ratio without stretching", async () => {
     const sharp = require("sharp");
     for (const [w, h] of [[1024, 1536], [1536, 1024], [1024, 1280]]) {

@@ -37,9 +37,13 @@ An image model cannot be forced to use exact HEX values (and palette lists in th
 
 ## Canvas ratio
 
-Every artwork is a **60x75 cm portrait** (4:5), whatever the reference's shape: `canvasSize`, `orientation` and `imageSize` in **Settings**.
-- The reference is sent to the model as uploaded. The model paints at `imageSize` (1024x1280, exactly 4:5) and the prompt tells it to recompose the scene for the 60x75 frame, never stretch it, and paint only the artwork, ignoring any background, wall, shadow, frame or canvas edge around it in the reference.
-- **Snap to palette** then crops to the exact 60x75 ratio (keeping the most interesting area) if the model's image is off by any pixel. Nothing is ever stretched.
+Every artwork keeps its reference's shape (`orientation` "auto" in **Settings**):
+- **Landscape reference** (wider than tall): a **75x60 cm landscape** artwork (5:4). The model paints at 1280x1024 and the prompt asks for a horizontal 5:4 canvas painting.
+- **Portrait or square reference:** a **60x75 cm portrait** artwork (4:5), painted at 1024x1280.
+- The reference's real shape comes from the pbn API (`/v1/analyze`, "Measure reference"), which also reads a phone photo's EXIF rotation. Setting `orientation` to "portrait" or "landscape" forces one shape for every artwork.
+- The prompt tells the model to recompose the scene for that frame, never stretch it, and paint only the artwork, ignoring any background, wall, shadow, frame or canvas edge around it in the reference.
+- **Snap to palette** then crops to the exact ratio (keeping the most interesting area) if the model's image is off by any pixel. Nothing is ever stretched.
+- The rest follows the artwork's shape: the Print Agent's print files (75x60 or 60x75), the mockup and the featured image (landscape or portrait photo).
 
 ## Output
 
