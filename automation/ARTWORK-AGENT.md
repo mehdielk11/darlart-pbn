@@ -25,9 +25,11 @@ Artwork Worker (called by the form, or Run now), one reference per run:
 
 ## Batches and the queue
 
-- **One at a time:** the worker holds a Drive lock file in `Queue`, so two batches sent together are painted one after the other and folder numbers never repeat. A lock older than `lockStaleMinutes` (45) belongs to a crashed run and is removed.
+- **One at a time:** the worker holds a Drive lock file in `Queue`, so two batches sent together are painted one after the other and folder numbers never repeat. The lock is refreshed before each long step (download, each painting, snap, folder creation), so a run may take as long as it needs; a lock not refreshed for `lockStaleMinutes` (20) belongs to a crashed run and is removed.
 - **Failures:** 3 paintings with swatches, text or borders set the reference aside in `Artwork Ref/Failed`. A reference whose run stopped midway `maxTries` times (3) is set aside too. The manifest records the reason.
-- **Crashes:** a reference stays in `Queue` until it is painted or set aside: the next upload, or "Run now" in the worker, picks it up again.
+- **Crashes:** a reference stays in `Queue` until it is painted or set aside: the Error Handler, the Queue Watchdog (every 5 min), the next upload or "Run now" in the worker picks it up again.
+- **Never painted twice:** a reference whose result is already in the manifest (the run stopped after painting it) is only moved out of the queue. The artwork is uploaded last in its folder, so a run that stops midway leaves no half folder for Titling or Print.
+- **The manifest is saved before the images**, so a worker already running always finds it. A manifest left in `Queue` with no reference is finished by the worker and moved to `Queue/Done` (after an hour, references that never reached the queue are marked failed).
 - **The manifest** `<batchId>_batch.json` lists each reference (`queued`, `done` with its folder, `failed` with the reason) and the files refused at upload. Once nothing is queued, it moves to `Queue/Done`. The Shopify Uploader then sends **one Telegram message per batch** when all its drafts are in Shopify (see `SHOPIFY-UPLOADER.md`).
 - Form uploads are limited by n8n's `N8N_FORMDATA_FILE_SIZE_MAX` (200 MB by default): 20 files of 5 MB fit.
 

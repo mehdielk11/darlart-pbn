@@ -1,0 +1,375 @@
+{
+  "name": "Darl'Art Queue Watchdog",
+  "nodes": [
+    {
+      "id": "dd000001-0000-4000-8000-000000000000",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dd000002-0000-4000-8000-000000000000",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "dd000003-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "queueFolderId",
+              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "recentDays",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "set3",
+              "name": "backoffMinutes",
+              "value": 30,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "dd000004-0000-4000-8000-000000000000",
+      "name": "List queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "dd000005-0000-4000-8000-000000000000",
+      "name": "List Artwork Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "dd000006-0000-4000-8000-000000000000",
+      "name": "Recent folders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($input.first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "dd000007-0000-4000-8000-000000000000",
+      "name": "List folder files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "files(name)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "dd000008-0000-4000-8000-000000000000",
+      "name": "Stages to start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Which stages have waiting work, no fresh lock and no recent failure\nconst settings = $('Settings').first().json;\nconst STAGES = {\"worker\":{\"workflowId\":\"dO8EdyDM4ua2hRrA\",\"lock\":\"_artwork-worker.lock\",\"staleMinutes\":20},\"titling\":{\"workflowId\":\"tOSHbCt7hJ6ORh8a\",\"lock\":\"_titling-agent.lock\",\"staleMinutes\":15},\"print\":{\"workflowId\":\"ytxV3m341mDLCdt4\",\"lock\":\"_print-agent.lock\",\"staleMinutes\":20},\"uploader\":{\"workflowId\":\"XAwk67SiWmvVSu1d\",\"lock\":\"_shopify-uploader.lock\",\"staleMinutes\":20}};\nconst now = Date.now();\nconst queueFiles = $('List queue').first().json.files || [];\nconst rootFiles = $('List Artwork Agent').first().json.files || [];\nconst age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;\n// a lock's own stale time is in its description (\"staleMinutes=20\"); older locks use the stage's value\nconst staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || \"\"); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };\nconst locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + \"-\") && age(f) < staleOf(f, stage));\nconst failedRecently = (stage) => rootFiles.some((f) => f.name === \"_failed-\" + stage && age(f) < Number(settings.backoffMinutes));\n\nconst pending = { worker: [], titling: [], print: [], uploader: [] };\npending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_\\d{2}\\.(jpg|png|webp)$/.test(f.name)).map((f) => f.name);\n// no reference left but a batch manifest still there: the worker finishes the batch (moves it to Done)\nif (!pending.worker.length) pending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name) && age(f) > 10).map((f) => f.name);\nconst folders = $('Recent folders').all();\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const names = (item.json.files || []).map((f) => f.name);\n    const art = names.find((n) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(n));\n    if (!art) return;\n    const stamp = art.slice(0, 19);\n    const has = (suffix) => names.includes(stamp + suffix);\n    if (!has(\"_product.json\")) pending.titling.push(folder.name);\n    if (!has(\"_featured.png\") || !has(\"_mockup.png\")) pending.print.push(folder.name);\n    if (has(\"_product.json\") && has(\"_featured.png\") && has(\"_mockup.png\") && !has(\"_shopify.json\")) pending.uploader.push(folder.name);\n});\n\nconst start = [];\nfor (const stage of Object.keys(STAGES)) {\n    if (!pending[stage].length) continue;\n    if (locked(stage) || failedRecently(stage)) continue;\n    start.push({ json: { stage, workflowId: STAGES[stage].workflowId, waiting: pending[stage].slice(0, 20) } });\n}\nreturn start;"
+      }
+    },
+    {
+      "id": "dd000009-0000-4000-8000-000000000000",
+      "name": "Start stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.workflowId }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List queue": {
+      "main": [
+        [
+          {
+            "node": "List Artwork Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Artwork Agent": {
+      "main": [
+        [
+          {
+            "node": "Recent folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent folders": {
+      "main": [
+        [
+          {
+            "node": "List folder files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List folder files": {
+      "main": [
+        [
+          {
+            "node": "Stages to start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stages to start": {
+      "main": [
+        [
+          {
+            "node": "Start stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

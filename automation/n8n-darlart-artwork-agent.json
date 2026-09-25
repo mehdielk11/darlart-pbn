@@ -114,7 +114,7 @@
     },
     {
       "id": "aa000005-0000-4000-8000-000000000000",
-      "name": "Queue files",
+      "name": "Batch manifest",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -122,54 +122,16 @@
         -100
       ],
       "parameters": {
-        "jsCode": "// The accepted references, with their files, for the queue folder\nreturn $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));"
-      }
-    },
-    {
-      "id": "aa000006-0000-4000-8000-000000000000",
-      "name": "Save queued references",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        1100,
-        -100
-      ],
-      "parameters": {
-        "name": "={{ $json.queueName }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Settings').first().json.queueFolderId }}"
-        },
-        "inputDataFieldName": "reference",
-        "options": {}
-      }
-    },
-    {
-      "id": "aa000007-0000-4000-8000-000000000000",
-      "name": "Batch manifest",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1320,
-        -100
-      ],
-      "parameters": {
         "jsCode": "// <batchId>_batch.json: what the worker paints and what it made of each reference\nconst accepted = $('Check uploads').all().map((item) => item.json);\nconst manifest = {\n    batchId: accepted[0].batchId,\n    submittedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n    files: accepted.map((a) => ({ queueName: a.queueName, originalName: a.originalName, status: \"queued\", tries: 0 })),\n    refused: accepted[0].refused,\n};\nconst fileName = manifest.batchId + \"_batch.json\";\nreturn [{\n    json: { fileName },\n    binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName } },\n}];"
       }
     },
     {
-      "id": "aa000008-0000-4000-8000-000000000000",
+      "id": "aa000006-0000-4000-8000-000000000000",
       "name": "Save batch manifest",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        1540,
+        1100,
         -100
       ],
       "parameters": {
@@ -186,7 +148,51 @@
         },
         "inputDataFieldName": "data",
         "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "aa000007-0000-4000-8000-000000000000",
+      "name": "Queue files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "// The accepted references, with their files, for the queue folder\nreturn $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));"
       }
+    },
+    {
+      "id": "aa000008-0000-4000-8000-000000000000",
+      "name": "Save queued references",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1540,
+        -100
+      ],
+      "parameters": {
+        "name": "={{ $json.queueName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Settings').first().json.queueFolderId }}"
+        },
+        "inputDataFieldName": "reference",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "aa000009-0000-4000-8000-000000000000",
@@ -482,7 +488,7 @@
       "main": [
         [
           {
-            "node": "Queue files",
+            "node": "Batch manifest",
             "type": "main",
             "index": 0
           }
@@ -501,28 +507,6 @@
         ]
       ]
     },
-    "Queue files": {
-      "main": [
-        [
-          {
-            "node": "Save queued references",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Save queued references": {
-      "main": [
-        [
-          {
-            "node": "Batch manifest",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Batch manifest": {
       "main": [
         [
@@ -535,6 +519,28 @@
       ]
     },
     "Save batch manifest": {
+      "main": [
+        [
+          {
+            "node": "Queue files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue files": {
+      "main": [
+        [
+          {
+            "node": "Save queued references",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save queued references": {
       "main": [
         [
           {

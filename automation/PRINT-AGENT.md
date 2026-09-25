@@ -24,14 +24,17 @@ The job is sent with `orientation: auto`: the API compares the artwork's width a
 `canvasSizes` and `colorsList` in **Settings** decide what is made, e.g. `30x40,40x50` and `12,24,36,48`. The website's size buttons play no part. A folder is complete when every size × color exists, in either orientation. Adding a size later makes every folder pending again, for that size only.
 
 ## Queue
-- Only one run works at a time, so the pbn API gets one job at a time. A run first creates `Artwork Agent/_print-agent.lock-<execution>`.
-- If another fresh lock exists, it stops. The running worker starts itself again at the end and will pick up the new folder.
-- The lock is refreshed before every job, and a lock not refreshed for `lockStaleMinutes` (45) counts as crashed and is ignored and removed.
+- Only one run works at a time. A run first creates `Artwork Agent/_print-agent.lock-<execution>`.
+- If another fresh lock exists, it waits 30 s and tries again (3 times), then stops. The running one starts itself again at the end and will pick up the new folder.
+- **Jobs go to the pbn API `parallelJobs` at a time (1)**: the server has 1 GB of RAM, and a HARD 60x75 job takes a lot of it. As soon as a job is finished, its files are saved to Drive and the next job is sent. The API itself also runs one job at a time (`CONCURRENCY=1`) and one heavy image request at a time (`IMAGE_CONCURRENCY=1`), whatever n8n sends.
+- The run checks its jobs every `pollSeconds` (30) and refreshes its lock at every check, so it can take as long as its jobs need: there is no limit on the run itself. `lockStaleMinutes` (20) only has to cover the longest step between two refreshes.
+- A job with no result 2 × `jobTimeoutMinutes` + 5 (25 min) after it was sent, a failed job, or one the API no longer knows (restarted) is given up and retried by the next run.
+- A folder's mockup is saved once all its jobs are done, and only if none failed: the mockup marks the folder done for the Queue Watchdog.
+- Every request to the pbn API (featured images, jobs, files) is sent one item at a time.
 - When two runs create a lock at the same moment, the older lock wins.
-- A failed or timed-out job (30 min) is skipped and retried by the next run.
 
 ## Setup
-- **Credentials:** Google Drive account (Drive calls), `x-api-key` (pbn API), `pbn-callback` (the API's callback into "Wait for pbn job").
+- **Credentials:** Google Drive account (Drive calls), `x-api-key` (pbn API). No callback: the run asks the API for its jobs' state.
 - **Publish** the Print Agent: the published Artwork Agent can only call a published sub-workflow. Republish the Artwork Agent after it gained its "Run Print Agent" node.
 - **Cost:** no AI calls; about 20–60 s of VM time per variant.
 - Rebuild with `node scripts/build-print-agent-workflow.js`.

@@ -6,18 +6,21 @@
  *   "Artwork Ref/Queue" with a batch manifest -> start the worker -> the page answers right away (queued / refused)
  *
  * automation/n8n-darlart-artwork-worker.json, "Darl'Art Artwork Worker": one queued reference per run
- *   queue lock (one worker at a time) -> oldest queued reference
+ *   queue lock (one worker at a time, refreshed at every step, so a run may take as long as it needs) -> oldest queued reference
  *   -> gpt-image paints the artwork from the reference (fixed prompt, the reference's own colors) -> checker rejects swatches/text/borders (up to 3 tries)
  *   -> pbn API /v1/recolor: every pixel snapped to exactly 48 Darl'Art colors
  *   -> new folder "Artwork Agent/1xxx" with the reference, the artwork and the palette JSON
  *   -> the reference moves to "Artwork Ref" (or "Artwork Ref/Failed"), the batch manifest records the result
  *   -> Titling and Print agents start; the worker starts again while references are queued
+ *   A reference whose result is already in the manifest (a run that stopped after painting it) is only moved, never
+ *   painted twice; a batch manifest left in the queue once all its references are gone is finished and moved to Done.
  *
  * "Check palette" embeds the palette from server/palettes/darlart-v3.json: run `node scripts/build-artwork-agent-workflow.js`
  * again after changing it, then re-import the workflows.
  */
 const fs = require("fs");
 const path = require("path");
+const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -46,7 +49,9 @@ const SETTINGS = {
     orientation: "auto",
     imageSize: "1024x1280", // portrait size, multiples of 16, exactly 4:5
     maxTries: 3, // runs a queued reference may crash before it is set aside as failed
-    lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
+    // the lock is refreshed before every long step, so this only covers the longest single step (one painting with
+    // its retry, about 10 min at worst), not the whole run
+    lockStaleMinutes: 20,
     telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
     timezone: "Africa/Casablanca",
 };
@@ -184,20 +189,9 @@ return accepted.map((a) => ({ json: { ...a.json, refused }, binary: a.binary }))
     ifNode("Anything to queue?", [660, 0], "={{ !$('Check uploads').first().json.none }}");
     connect("Settings", "Anything to queue?");
 
-    code("Queue files", [880, -100], `// The accepted references, with their files, for the queue folder
-return $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));`);
-    connect("Anything to queue?", "Queue files", 0);
-
-    node("Save queued references", "n8n-nodes-base.googleDrive", 3, [1100, -100], {
-        name: "={{ $json.queueName }}",
-        driveId: drive,
-        folderId: byId("={{ $('Settings').first().json.queueFolderId }}"),
-        inputDataFieldName: "reference",
-        options: {},
-    });
-    connect("Queue files", "Save queued references");
-
-    code("Batch manifest", [1320, -100], `// <batchId>_batch.json: what the worker paints and what it made of each reference
+    // the manifest is saved before the images: a worker already running may pick an image the moment it lands in the
+    // queue, and must find the manifest to record its result
+    code("Batch manifest", [880, -100], `// <batchId>_batch.json: what the worker paints and what it made of each reference
 const accepted = $('Check uploads').all().map((item) => item.json);
 const manifest = {
     batchId: accepted[0].batchId,
@@ -210,20 +204,33 @@ return [{
     json: { fileName },
     binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName } },
 }];`);
-    connect("Save queued references", "Batch manifest");
+    connect("Anything to queue?", "Batch manifest", 0);
 
-    node("Save batch manifest", "n8n-nodes-base.googleDrive", 3, [1540, -100], {
+    node("Save batch manifest", "n8n-nodes-base.googleDrive", 3, [1100, -100], {
         name: "={{ $json.fileName }}",
         driveId: drive,
         folderId: byId("={{ $('Settings').first().json.queueFolderId }}"),
         inputDataFieldName: "data",
         options: {},
-    });
+    }, RETRY);
     connect("Batch manifest", "Save batch manifest");
+
+    code("Queue files", [1320, -100], `// The accepted references, with their files, for the queue folder
+return $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));`);
+    connect("Save batch manifest", "Queue files");
+
+    node("Save queued references", "n8n-nodes-base.googleDrive", 3, [1540, -100], {
+        name: "={{ $json.queueName }}",
+        driveId: drive,
+        folderId: byId("={{ $('Settings').first().json.queueFolderId }}"),
+        inputDataFieldName: "reference",
+        options: {},
+    }, RETRY);
+    connect("Queue files", "Save queued references");
 
     // the worker paints the queue one reference after another; the page does not wait for it
     runWorkflow("Start worker", [1760, -100], SETTINGS_WORKER_WORKFLOW_ID);
-    connect("Save batch manifest", "Start worker");
+    connect("Save queued references", "Start worker");
 
     const page = (body) => `// The page shown after sending: what was queued and what was refused
 const checked = $('Check uploads').all().map((item) => item.json);
@@ -307,6 +314,7 @@ return [{ json: { text: lines.join("\\n") } }];`);
 // =====================================================================================================
 {
     const { nodes, node, connect, code, ifNode, settingsNode, runWorkflow, save, telegramOn, telegramText, telegramPhoto } = workflowBuilder("ab");
+    // newest first: a listing holds 1000 files at most, and the newest are the ones that matter
     const driveList = (name, position, q, fields) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
         url: driveFiles,
         ...googleAuth,
@@ -315,13 +323,14 @@ return [{ json: { text: lines.join("\\n") } }];`);
             parameters: [
                 { name: "q", value: q },
                 { name: "fields", value: fields },
+                { name: "orderBy", value: "createdTime desc" },
                 { name: "pageSize", value: "1000" },
                 { name: "supportsAllDrives", value: "true" },
                 { name: "includeItemsFromAllDrives", value: "true" },
             ],
         },
         options: { timeout: 30000 },
-    });
+    }, RETRY);
     // moves (and renames) a Drive file: the body gives the new name, the query the old and new folders
     const moveFile = (name, position, idExpression, toExpression, fromExpression, bodyExpression) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
         method: "PATCH",
@@ -331,17 +340,17 @@ return [{ json: { text: lines.join("\\n") } }];`);
         specifyBody: "json",
         jsonBody: bodyExpression,
         options: { timeout: 30000 },
-    });
+    }, RETRY);
     // replaces a Drive file's content with the binary "manifest"
-    const saveManifest = (name, position) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
+    const saveManifest = (name, position, idExpression = "$('Next reference').first().json.manifestId") => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
         method: "PATCH",
-        url: `={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $('Next reference').first().json.manifestId + '?uploadType=media&supportsAllDrives=true' }}`,
+        url: `={{ 'https://www.googleapis.com/upload/drive/v3/files/' + ${idExpression} + '?uploadType=media&supportsAllDrives=true' }}`,
         ...googleAuth,
         sendBody: true,
         contentType: "binaryData",
         inputDataFieldName: "manifest",
         options: { timeout: 30000 },
-    });
+    }, RETRY);
 
     // ---- 1. triggers, settings ---------------------------------------------------------------------
     node("When called by Artwork Agent", "n8n-nodes-base.executeWorkflowTrigger", 1.1, [0, 0], { inputSource: "passthrough" });
@@ -351,68 +360,14 @@ return [{ json: { text: lines.join("\\n") } }];`);
     for (const trigger of ["When called by Artwork Agent", "Run now"]) { connect(trigger, "Settings"); }
 
     // ---- 2. queue lock: one worker at a time, so folder numbers never repeat -------------------------
-    const lockQuery = `='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '${LOCK_PREFIX}' and trashed = false`;
-    driveList("List locks", [440, 200], lockQuery, "files(id,name,createdTime,modifiedTime)");
-    connect("Settings", "List locks");
-
-    code("Lock state", [660, 200], `// Another worker holds a fresh lock (less than lockStaleMinutes old): it also paints the references just queued
-const settings = $('Settings').first().json;
-const limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;
-const locks = $input.first().json.files || [];
-const fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);
-const stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);
-return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
-    connect("List locks", "Lock state");
-
-    ifNode("Lock free?", [880, 200], "={{ $json.free }}");
-    connect("Lock state", "Lock free?");
-    node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1760, 360], {});
-
-    node("Create lock", "n8n-nodes-base.httpRequest", 4.2, [1100, 120], {
-        method: "POST",
-        url: `${driveFiles}?supportsAllDrives=true&fields=id,name,createdTime`,
-        ...googleAuth,
-        sendBody: true,
-        specifyBody: "json",
-        jsonBody: `={{ JSON.stringify({ name: '${LOCK_PREFIX}-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.queueFolderId] }) }}`,
-        options: { timeout: 30000 },
+    const lock = queueLock({ node, connect }, {
+        prefix: LOCK_PREFIX,
+        folderExpression: "$('Settings').first().json.queueFolderId",
+        staleMinutes: "Number($('Settings').first().json.lockStaleMinutes)",
+        x: 440,
+        y: 200,
     });
-    connect("Lock free?", "Create lock", 0);
-
-    driveList("List locks again", [1320, 120], lockQuery, "files(id,name,createdTime,modifiedTime)");
-    connect("Create lock", "List locks again");
-
-    code("Won the lock?", [1540, 120], `// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back
-const settings = $('Settings').first().json;
-const mine = $('Create lock').first().json;
-const limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;
-const fresh = ($input.first().json.files || [])
-    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)
-    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));
-return [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];`);
-    connect("List locks again", "Won the lock?");
-
-    ifNode("Lock won?", [1760, 120], "={{ $json.won }}");
-    connect("Won the lock?", "Lock won?");
-    node("Step back (drop my lock)", "n8n-nodes-base.httpRequest", 4.2, [1980, 280], {
-        method: "DELETE",
-        url: `=${driveFiles}/{{ $json.lockId }}?supportsAllDrives=true`,
-        ...googleAuth,
-        options: { timeout: 30000 },
-    }, { onError: "continueRegularOutput" });
-    connect("Lock won?", "Step back (drop my lock)", 1);
-
-    // busy, or lost a tie: try again a little later (a run about to finish with nothing done does not start itself again)
-    code("Busy: try again?", [1320, 440], `const attempt = $runIndex + 1;
-return [{ json: { retry: attempt <= 3, attempt } }];`);
-    connect("Lock free?", "Busy: try again?", 1);
-    connect("Step back (drop my lock)", "Busy: try again?");
-    ifNode("Retry?", [1540, 440], "={{ $json.retry }}");
-    connect("Busy: try again?", "Retry?");
-    node("Wait before retry", "n8n-nodes-base.wait", 1.1, [1760, 520], { resume: "timeInterval", amount: 30, unit: "seconds" });
-    connect("Retry?", "Wait before retry", 0);
-    connect("Wait before retry", "List locks");
-    connect("Retry?", "Busy: another run is working", 1);
+    connect("Settings", "List locks");
 
     // ---- 3. the oldest queued reference and its batch manifest ---------------------------------------
     driveList("List queue", [1980, 40], "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false", "files(id,name,mimeType)");
@@ -440,21 +395,29 @@ return [{ json: { none: false, fileId: image.id, queueName: image.name, extensio
     });
     connect("Has manifest?", "Download manifest", 0);
 
-    code("Start attempt", [3080, -40], `// One more try for this reference: after maxTries runs that stopped midway, it is set aside as failed
+    code("Start attempt", [3080, -40], `// One more try for this reference: after maxTries runs that stopped midway, it is set aside as failed.
+// A reference whose result is already recorded (the run stopped after painting it, before moving it) is not painted
+// again: this run only finishes its move.
 const settings = $('Settings').first().json;
 const next = $('Next reference').first().json;
 const manifest = next.manifestId && $('Download manifest').isExecuted ? $('Download manifest').first().json : null;
 let tries = 1;
 let originalName = next.queueName;
+let finished = null;
 if (manifest && Array.isArray(manifest.files)) {
     const entry = manifest.files.find((e) => e.queueName === next.queueName);
     if (entry) {
-        entry.tries = (Number(entry.tries) || 0) + 1;
-        tries = entry.tries;
         originalName = entry.originalName || originalName;
+        if (entry.status === "done" || entry.status === "failed") {
+            finished = { status: entry.status, folder: entry.folder || "", folderId: entry.folderId || "", referenceName: entry.referenceName || "", reason: entry.reason || "" };
+            tries = Number(entry.tries) || 1;
+        } else {
+            entry.tries = (Number(entry.tries) || 0) + 1;
+            tries = entry.tries;
+        }
     }
 }
-const out = { json: { tries, giveUp: tries > Number(settings.maxTries), originalName, manifest, hasManifest: !!manifest } };
+const out = { json: { tries, giveUp: !finished && tries > Number(settings.maxTries), originalName, manifest, hasManifest: !!manifest && !finished, finished } };
 if (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: next.batchId + "_batch.json" } };
 return [out];`);
     connect("Has manifest?", "Start attempt", 1);
@@ -473,8 +436,14 @@ return [out];`);
         url: "=https://www.googleapis.com/drive/v3/files/{{ $('Next reference').first().json.fileId }}?alt=media&supportsAllDrives=true",
         ...googleAuth,
         options: { response: { response: { responseFormat: "file", outputPropertyName: "reference" } }, timeout: 60000 },
-    });
-    connect("Tries left?", "Download reference", 0);
+    }, RETRY);
+    ifNode("Result recorded before?", [3850, -300], "={{ !!$('Start attempt').first().json.finished }}");
+    connect("Tries left?", "Result recorded before?", 0);
+    code("Result: recorded before", [3850, -480], `// the result from the manifest: the reference is only moved out of the queue
+const f = $('Start attempt').first().json.finished;
+return [{ json: { ...f, recovered: true } }];`);
+    connect("Result recorded before?", "Result: recorded before", 0);
+    connect("Result recorded before?", "Download reference", 1);
 
     code("Result: stopped too often", [3960, 120], `const settings = $('Settings').first().json;
 return [{ json: { status: "failed", reason: "the run stopped before the end " + settings.maxTries + " times" } }];`);
@@ -482,6 +451,10 @@ return [{ json: { status: "failed", reason: "the run stopped before the end " + 
 
     // ---- 4. the painting pipeline (one reference) ------------------------------------------------------
     const X = 4180; // pipeline start
+    // the lock is refreshed before each long step (download, each painting, snap, folder creation): a side branch
+    // placed above the main one, so it runs first
+    lock.heartbeat("Heartbeat (refresh lock)", [X + 220, -700]);
+    connect("Result recorded before?", "Heartbeat (refresh lock)", 1);
     code("Prepare", [X, -120], `// The queued image becomes the "reference" file, and the run gets its date+time stamp
 const settings = $('Settings').first().json;
 const next = $('Next reference').first().json;
@@ -535,8 +508,8 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
         sendBody: true,
         contentType: "multipart-form-data",
         bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "reference" }] },
-        options: { timeout: 120000 },
-    });
+        options: { timeout: 300000 },
+    }, RETRY);
     connect("Prepare", "Measure reference");
     connect("Measure reference", "Build image prompt");
 
@@ -559,8 +532,9 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
             ],
         },
         options: { timeout: 300000 },
-    });
+    }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000 });
     connect("Build image prompt", "Generate ART");
+    connect("Build image prompt", "Heartbeat (refresh lock)");
 
     node("Raw artwork file", "n8n-nodes-base.convertToFile", 1.1, [X + 660, -120], {
         operation: "toBinary",
@@ -604,6 +578,7 @@ return [{
     ifNode("Paint again?", [X + 1640, 80], "={{ $json.retry }}");
     connect("Count attempts", "Paint again?");
     connect("Paint again?", "Generate ART", 0);
+    connect("Paint again?", "Heartbeat (refresh lock)", 0);
 
     code("Result: not painted", [X + 1860, 180], `// 3 paintings, none clean: the reference is set aside in Artwork Ref/Failed
 const last = $('Count attempts').last().json;
@@ -634,9 +609,10 @@ return [{ json: {}, binary: { artwork: $('Raw artwork file').last().binary.artwo
                 { parameterType: "formBinaryData", name: "image", inputDataFieldName: "artwork" },
             ],
         },
-        options: { timeout: 180000 },
-    });
+        options: { timeout: 300000 },
+    }, RETRY);
     connect("Approved artwork", "Snap to palette (48 colors)");
+    connect("Approved artwork", "Heartbeat (refresh lock)");
 
     code("Check palette", [X + 1860, -320], `// Every pixel of the final artwork is a Darl'Art color: check the count and the codes before saving
 const PALETTE = ${JSON.stringify(codeToHex)};
@@ -670,6 +646,7 @@ return [{ json: { image: result.image, paletteJson } }];`);
     // ---- Drive folder Artwork Agent/1xxx ------------------------------------------------------------------
     driveList("List Artwork Agent folders", [X + 2300, -320], "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", "files(id,name)");
     connect("Artwork file", "List Artwork Agent folders");
+    connect("Artwork file", "Heartbeat (refresh lock)");
 
     code("Next folder number", [X + 2520, -320], `// The new folder is the next free number: 1001, 1002, ... (folders with other names are ignored)
 const first = Number($('Settings').first().json.firstFolderNumber) || 1001;
@@ -684,20 +661,21 @@ return [{ json: { folderName: String(next) } }];`);
         driveId: drive,
         folderId: byId("={{ $('Settings').first().json.agentFolderId }}"),
         options: {},
-    });
+    }, RETRY);
     connect("Next folder number", "Create folder (Artwork Agent/1xxx)");
 
-    code("Files for the folder", [X + 2960, -320], `// Artwork Ref + Artwork Gen (+ the palette JSON), one item per file
+    code("Files for the folder", [X + 2960, -320], `// Artwork Ref + the palette JSON + Artwork Gen, one item per file. The artwork goes last: a folder only counts
+// for Titling, Print and the Watchdog once it has its artwork, so a run that stops midway leaves no half folder behind.
 const folderId = $input.first().json.id;
 const prepared = $('Prepare').first();
 const paletteJson = $('Check palette').first().json.paletteJson;
 return [
     { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },
-    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },
     {
         json: { folderId, name: prepared.json.paletteName },
         binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString("base64"), mimeType: "application/json", fileName: prepared.json.paletteName } },
     },
+    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },
 ];`);
     connect("Create folder (Artwork Agent/1xxx)", "Files for the folder");
 
@@ -707,7 +685,7 @@ return [
         folderId: byId("={{ $json.folderId }}"),
         inputDataFieldName: "data",
         options: {},
-    });
+    }, RETRY);
     connect("Files for the folder", "Upload to folder");
 
     // product texts, then print files and mockup: started without waiting, an error there can't fail this run
@@ -731,18 +709,18 @@ const now = $now.setZone(settings.timezone).toISO();
 let painted = false;
 if (manifest && Array.isArray(manifest.files)) {
     const entry = manifest.files.find((e) => e.queueName === next.queueName);
-    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || "", folder: result.folder || "", folderId: result.folderId || "", finishedAt: now });
+    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || "", folder: result.folder || "", folderId: result.folderId || "", referenceName: result.referenceName || "", finishedAt: result.recovered && entry.finishedAt ? entry.finishedAt : now });
     painted = manifest.files.every((e) => e.status !== "queued");
     if (painted) Object.assign(manifest, { paintedAt: now, notified: false });
 }
 // a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is
 const move = result.status === "done"
-    ? { to: settings.refFolderId, name: result.referenceName }
+    ? { to: settings.refFolderId, name: result.referenceName || next.queueName }
     : { to: settings.failedFolderId, name: next.queueName };
-const out = { json: { status: result.status, folder: result.folder || "", painted, hasManifest: !!manifest, move, manifest } };
+const out = { json: { status: result.status, folder: result.folder || "", folderId: result.folderId || "", reason: result.reason || "", recovered: !!result.recovered, painted, hasManifest: !!manifest, move, manifest } };
 if (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: next.batchId + "_batch.json" } };
 return [out];`);
-    for (const result of ["Result: painted", "Result: not painted", "Result: stopped too often"]) { connect(result, "Update entry"); }
+    for (const result of ["Result: painted", "Result: not painted", "Result: stopped too often", "Result: recorded before"]) { connect(result, "Update entry"); }
 
     // ---- Telegram: the painted artwork with its product number, or why the reference was set aside ----------------
     ifNode("Telegram on?", [Y + 220, 360], telegramOn);
@@ -758,6 +736,13 @@ if (manifest && Array.isArray(manifest.files)) {
     if (i >= 0) position = ", " + (i + 1) + " of " + manifest.files.length;
 }
 const from = "From: " + originalName + " (batch " + next.batchId + position + ")";
+// finished by a later run (the first one stopped before this message): a text, the artwork image is not at hand
+if (entryResult.recovered) {
+    const lines = entryResult.status === "done"
+        ? ["Artwork " + entryResult.folder + " painted", from, "https://drive.google.com/drive/folders/" + entryResult.folderId]
+        : ["Not painted: " + originalName, from, "Reason: " + entryResult.reason, "The reference is in Artwork Ref/Failed."];
+    return [{ json: { painted: false, text: lines.join("\\n") } }];
+}
 if (entryResult.status === "done") {
     const folder = $('Create folder (Artwork Agent/1xxx)').first().json;
     const colors = $('Check palette').first().json.paletteJson.colorCount;
@@ -820,37 +805,63 @@ return [{ json: { text: lines.join("\\n") } }];`);
     telegramText("Telegram: batch painted", [Y + 1540, -240], "={{ $json.text }}");
     connect("Batch message", "Telegram: batch painted");
 
+    // ---- nothing queued: a manifest still in the queue belongs to a batch whose run stopped before moving it (or whose
+    // upload never finished). Once every reference is painted or failed, or the upload is over an hour old (the missing
+    // references are marked failed), it moves to Done, so the batch still gets its Shopify message. ----------------
+    code("Leftover manifests", [2640, 240], `// Batch manifests in the queue, now that no reference is left in it
+const files = $('List queue').first().json.files || [];
+const manifests = files.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name));
+return manifests.length ? manifests.map((f) => ({ json: { manifestId: f.id, name: f.name } })) : [{ json: { none: true } }];`);
+    connect("Anything queued?", "Leftover manifests", 1);
+    ifNode("Any leftover?", [2860, 240], "={{ !$json.none }}");
+    connect("Leftover manifests", "Any leftover?");
+    node("Download leftover", "n8n-nodes-base.httpRequest", 4.2, [3080, 160], {
+        url: "=https://www.googleapis.com/drive/v3/files/{{ $json.manifestId }}?alt=media&supportsAllDrives=true",
+        ...googleAuth,
+        options: { response: { response: { responseFormat: "json" } }, timeout: 30000 },
+    }, { ...RETRY, onError: "continueRegularOutput" });
+    connect("Any leftover?", "Download leftover", 0);
+    code("Finished batches", [3300, 160], `// A batch is finished when none of its references is still queued; after an hour, a queued reference that is not in
+// the queue never got there (the upload stopped): it is marked failed
+const settings = $('Settings').first().json;
+const leftovers = $('Leftover manifests').all().map((item) => item.json);
+const now = $now.setZone(settings.timezone).toISO();
+const out = [];
+$input.all().forEach((item, i) => {
+    const manifest = item.json;
+    if (!manifest || !Array.isArray(manifest.files) || !leftovers[i]) return;
+    const old = !manifest.submittedAt || Date.now() - new Date(manifest.submittedAt).getTime() > 3600000;
+    const queued = manifest.files.filter((e) => e.status === "queued");
+    if (queued.length && !old) return;
+    for (const e of queued) Object.assign(e, { status: "failed", reason: "the upload did not reach the queue", finishedAt: now });
+    if (!manifest.paintedAt) Object.assign(manifest, { paintedAt: now, notified: false });
+    out.push({
+        json: { manifestId: leftovers[i].manifestId },
+        binary: { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: leftovers[i].name } },
+    });
+});
+return out.length ? out : [{ json: { none: true } }];`);
+    connect("Download leftover", "Finished batches");
+    ifNode("Any finished?", [3520, 160], "={{ !$json.none }}");
+    connect("Finished batches", "Any finished?");
+    saveManifest("Save finished manifest", [3740, 80], "$json.manifestId");
+    connect("Any finished?", "Save finished manifest", 0);
+    moveFile("Move finished manifest", [3960, 80],
+        "$('Finished batches').item.json.manifestId",
+        "$('Settings').first().json.doneFolderId",
+        "$('Settings').first().json.queueFolderId",
+        "={{ JSON.stringify({}) }}");
+    connect("Save finished manifest", "Move finished manifest");
+
     // ---- 6. release the lock, start again while references are queued ---------------------------------------
-    code("Locks to delete", [Y + 1320, 160], `// My lock, plus locks left behind by crashed runs
-const processed = $('Next reference').isExecuted && !$('Next reference').first().json.none;
-const ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];
-return ids.map((id) => ({ json: { id, processed } }));`);
+    // references may have been queued while this run worked: a run that handled one starts the next
+    // (which finds an empty queue and stops, when all is done)
+    lock.release([Y + 1320, 160], "$('Next reference').isExecuted && !$('Next reference').first().json.none");
     connect("Move manifest to Done", "Locks to delete");
     connect("Batch painted?", "Locks to delete", 1);
-    connect("Anything queued?", "Locks to delete", 1);
-
-    node("Release lock", "n8n-nodes-base.httpRequest", 4.2, [Y + 1540, 160], {
-        method: "DELETE",
-        url: `=${driveFiles}/{{ $json.id }}?supportsAllDrives=true`,
-        ...googleAuth,
-        options: { timeout: 30000 },
-    }, { onError: "continueRegularOutput" });
-    connect("Locks to delete", "Release lock");
-
-    // references may have been queued while this run worked: a run that painted one starts the next
-    // (which finds an empty queue and stops, when all is done)
-    ifNode("Start again?", [Y + 1760, 160], "={{ $('Locks to delete').first().json.processed }}");
-    connect("Release lock", "Start again?");
-    node("Start next run", "n8n-nodes-base.executeWorkflow", 1.2, [Y + 1980, 80], {
-        source: "database",
-        workflowId: { __rl: true, mode: "id", value: "={{ $workflow.id }}" },
-        mode: "once",
-        options: { waitForSubWorkflow: false },
-    }, { executeOnce: true, onError: "continueRegularOutput" });
-    connect("Start again?", "Start next run", 0);
-
-    // "Start again?" runs once per released lock otherwise
-    nodes.find((n) => n.name === "Start again?").executeOnce = true;
+    connect("Any leftover?", "Locks to delete", 1);
+    connect("Any finished?", "Locks to delete", 1);
+    connect("Move finished manifest", "Locks to delete");
 
     save("automation/n8n-darlart-artwork-worker.json", "Darl'Art Artwork Worker");
 }

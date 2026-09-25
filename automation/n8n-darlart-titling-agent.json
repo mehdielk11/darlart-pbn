@@ -162,7 +162,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -181,7 +181,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "bb000007-0000-4000-8000-000000000000",
@@ -193,7 +196,7 @@
         -420
       ],
       "parameters": {
-        "jsCode": "// Another run holds a fresh lock (refreshed less than 15 min ago)\nconst limit = Date.now() - 15 * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+        "jsCode": "// Another run holds a fresh lock (refreshed within its stale time, kept in its description)\nconst OWN = 15;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter(isFresh);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
       }
     },
     {
@@ -245,7 +248,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_titling-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_titling-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (15) }) }}",
         "options": {
           "timeout": 30000
         }
@@ -273,7 +276,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -292,7 +295,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "bb000011-0000-4000-8000-000000000000",
@@ -304,7 +310,7 @@
         -500
       ],
       "parameters": {
-        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst limit = Date.now() - 15 * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst OWN = 15;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || isFresh(l))\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
       }
     },
     {
@@ -470,6 +476,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -486,7 +496,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "bb000020-0000-4000-8000-000000000000",
@@ -526,6 +539,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -542,7 +559,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "bb000022-0000-4000-8000-000000000000",

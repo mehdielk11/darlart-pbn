@@ -29,6 +29,30 @@
               "name": "telegramChatId",
               "value": "-5252292447",
               "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "alertEveryMinutes",
+              "value": "60",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "maxRestarts",
+              "value": "5",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "restartWindowMinutes",
+              "value": "30",
+              "type": "string"
             }
           ]
         },
@@ -67,11 +91,11 @@
           "parameters": [
             {
               "name": "q",
-              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock') and trashed = false"
+              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock' or name contains '_failed-') and trashed = false"
             },
             {
               "name": "fields",
-              "value": "files(id,name)"
+              "value": "files(id,name,parents)"
             },
             {
               "name": "pageSize",
@@ -91,7 +115,10 @@
           "timeout": 30000
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ee000005-0000-4000-8000-000000000000",
@@ -103,7 +130,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Only the failed run's own lock: its name ends with \"-<execution id>\"\nconst id = $('Error details').first().json.executionId;\nconst locks = id ? ($input.first().json.files || []).filter((f) => f.name.endsWith(\"-\" + id)) : [];\nreturn locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];"
+        "jsCode": "// Only the failed run's own lock: its name ends with \"-<execution id>\"\nconst id = $('Error details').first().json.executionId;\nconst locks = id ? ($input.first().json.files || []).filter((f) => f.name.includes(\".lock-\") && f.name.endsWith(\"-\" + id)) : [];\nreturn locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];"
       }
     },
     {
@@ -184,7 +211,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// What happens now, for the alert; the worker is started again only after a failure past its recorded try\nconst d = $('Error details').first().json;\nconst W = {\"worker\":\"dO8EdyDM4ua2hRrA\",\"form\":\"SLFvTtBEdGfSbgGu\",\"titling\":\"tOSHbCt7hJ6ORh8a\",\"print\":\"ytxV3m341mDLCdt4\",\"uploader\":\"XAwk67SiWmvVSu1d\"};\nconst beforeTry = [\"Settings\",\"List locks\",\"Lock state\",\"Lock free?\",\"Create lock\",\"List locks again\",\"Won the lock?\",\"Lock won?\",\"Step back (drop my lock)\",\"Busy: try again?\",\"Retry?\",\"Wait before retry\",\"List queue\",\"Next reference\",\"Anything queued?\",\"Has manifest?\",\"Download manifest\",\"Start attempt\",\"Record the try?\",\"Save manifest (try)\"];\nconst released = $('Locks to delete').isExecuted ? $('Locks to delete').all().length : 0;\nlet next = \"\";\nlet restartWorker = false;\nif (d.workflowId === W.worker) {\n    if (d.step && !beforeTry.includes(d.step)) {\n        restartWorker = true;\n        next = \"The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.\";\n    } else {\n        next = \"The worker stopped before painting: fix the cause, then click Run now in the Artwork Worker (the queue is kept).\";\n    }\n} else if (d.workflowId === W.print) next = \"The next run (after the next artwork, or daily at 04:00) retries the unfinished folders.\";\nelse if (d.workflowId === W.titling) next = \"The next run (after the next artwork, or daily at 03:00) retries the folders without product texts.\";\nelse if (d.workflowId === W.uploader) next = \"The next run (after the next Print Agent run, or daily at 05:00) retries this folder.\";\nelse if (d.workflowId === W.form) next = \"This upload may not be queued: check Artwork Ref/Queue, and send the images again if they are missing.\";\nconst lines = [\n    \"Workflow failed: \" + d.workflowName,\n    d.step ? \"Step: \" + d.step : \"\",\n    \"Error: \" + String(d.message).slice(0, 600),\n    released ? \"Its queue lock was released, so the next runs are not blocked.\" : \"\",\n    next,\n    d.url,\n].filter(Boolean);\nreturn [{ json: { restartWorker, text: lines.join(\"\\n\") } }];"
+        "jsCode": "// What happens now, for the alert; the worker is started again only after a failure past its recorded try\nconst d = $('Error details').first().json;\nconst W = {\"worker\":\"dO8EdyDM4ua2hRrA\",\"form\":\"SLFvTtBEdGfSbgGu\",\"titling\":\"tOSHbCt7hJ6ORh8a\",\"print\":\"ytxV3m341mDLCdt4\",\"uploader\":\"XAwk67SiWmvVSu1d\"};\nconst beforeTry = [\"Settings\",\"List locks\",\"Lock state\",\"Lock free?\",\"Create lock\",\"List locks again\",\"Won the lock?\",\"Lock won?\",\"Step back (drop my lock)\",\"Busy: try again?\",\"Retry?\",\"Wait before retry\",\"List queue\",\"Next reference\",\"Anything queued?\",\"Has manifest?\",\"Download manifest\",\"Start attempt\",\"Record the try?\",\"Save manifest (try)\",\"Leftover manifests\",\"Any leftover?\",\"Download leftover\",\"Finished batches\",\"Any finished?\",\"Save finished manifest\",\"Move finished manifest\"];\nconst released = $('Locks to delete').isExecuted ? $('Locks to delete').all().length : 0;\nconst settings = $('Settings').first().json;\nconst memory = $getWorkflowStaticData(\"global\");\nconst now = Date.now();\nlet next = \"\";\nlet restartWorker = false;\nif (d.workflowId === W.worker) {\n    // restarts of the last restartWindowMinutes: a failure that repeats whatever the reference stops being retried at once\n    memory.restarts = (memory.restarts || []).filter((t) => now - t < Number(settings.restartWindowMinutes) * 60000);\n    if (d.step && !beforeTry.includes(d.step) && memory.restarts.length < Number(settings.maxRestarts)) {\n        restartWorker = true;\n        memory.restarts.push(now);\n        next = \"The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.\";\n    } else if (d.step && !beforeTry.includes(d.step)) {\n        next = \"The worker failed \" + memory.restarts.length + \" times in \" + settings.restartWindowMinutes + \" minutes, so it is not restarted at once; the queue is kept.\";\n    } else {\n        next = \"The worker stopped before painting; the queue is kept.\";\n    }\n} else if (d.workflowId === W.print) next = \"The next run (after the next artwork, or daily at 04:00) retries the unfinished folders.\";\nelse if (d.workflowId === W.titling) next = \"The next run (after the next artwork, or daily at 03:00) retries the folders without product texts.\";\nelse if (d.workflowId === W.uploader) next = \"The next run (after the next Print Agent run, or daily at 05:00) retries this folder.\";\nelse if (d.workflowId === W.form) next = \"This upload may not be queued: check Artwork Ref/Queue, and send the images again if they are missing.\";\n// the stage, for the Queue Watchdog's backoff marker (the form has none: it holds no queue)\nconst stage = { [W.worker]: \"worker\", [W.titling]: \"titling\", [W.print]: \"print\", [W.uploader]: \"uploader\" }[d.workflowId] || \"\";\nconst marker = stage ? (($('Find locks').first().json.files || []).find((f) => f.name === \"_failed-\" + stage && (f.parents || []).includes(settings.agentFolderId)) || null) : null;\n// the same failure is announced at most once every alertEveryMinutes (kept in this workflow's static data)\nmemory.alerts = memory.alerts || {};\nconst key = d.workflowId + \"|\" + d.step + \"|\" + String(d.message).slice(0, 120);\nfor (const [k, t] of Object.entries(memory.alerts)) if (now - t > 24 * 3600000) delete memory.alerts[k];\nconst sendAlert = !memory.alerts[key] || now - memory.alerts[key] >= Number(settings.alertEveryMinutes) * 60000;\nif (sendAlert) memory.alerts[key] = now;\nif (stage && !restartWorker) next += \" The Queue Watchdog starts it again in 30 minutes if work is still waiting (click Run now to go sooner).\";\nconst lines = [\n    \"Workflow failed: \" + d.workflowName,\n    d.step ? \"Step: \" + d.step : \"\",\n    \"Error: \" + String(d.message).slice(0, 600),\n    released ? \"Its queue lock was released, so the next runs are not blocked.\" : \"\",\n    next,\n    d.url,\n].filter(Boolean);\n// a worker restarted at once needs no backoff marker: the Queue Watchdog must not hold its queue back\nreturn [{ json: { restartWorker, sendAlert, stage: restartWorker ? \"\" : stage, markerId: marker ? marker.id : \"\", text: lines.join(\"\\n\") } }];"
       },
       "executeOnce": true
     },
@@ -264,7 +291,7 @@
           "conditions": [
             {
               "id": "Telegramon",
-              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "leftValue": "={{ $json.sendAlert && String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -293,6 +320,62 @@
         "additionalFields": {
           "appendAttribution": false,
           "disable_web_page_preview": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ee000014-0000-4000-8000-000000000000",
+      "name": "A queue stage?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Aqueuestage",
+              "leftValue": "={{ !!$json.stage }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ee000015-0000-4000-8000-000000000000",
+      "name": "Mark the failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "method": "={{ $json.markerId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.markerId ? '/' + $json.markerId : '') + '?supportsAllDrives=true&fields=id,name,modifiedTime' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.markerId ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-' + $json.stage, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
         }
       },
       "onError": "continueRegularOutput"
@@ -406,6 +489,11 @@
             "node": "Telegram on?",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "A queue stage?",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -426,6 +514,17 @@
         [
           {
             "node": "Telegram: failure alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A queue stage?": {
+      "main": [
+        [
+          {
+            "node": "Mark the failure",
             "type": "main",
             "index": 0
           }

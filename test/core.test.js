@@ -351,3 +351,25 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         fs.rmSync(outputDir, { recursive: true, force: true });
     }
 });
+
+test("createGate runs one heavy task at a time, in order, and a failed task frees its turn", async () => {
+    const { createGate } = require(path.join(dist, "server/src/gate"));
+    const gate = createGate(1);
+    const order = [];
+    let running = 0;
+    let peak = 0;
+    const task = (name, fail) => gate.run(async () => {
+        running++;
+        peak = Math.max(peak, running);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        order.push(name);
+        running--;
+        if (fail) throw new Error("boom " + name);
+        return name;
+    });
+    const results = await Promise.allSettled([task("a"), task("b", true), task("c"), task("d")]);
+    assert.equal(peak, 1);
+    assert.deepEqual(order, ["a", "b", "c", "d"]);
+    assert.deepEqual(results.map((r) => r.status), ["fulfilled", "rejected", "fulfilled", "fulfilled"]);
+    assert.deepEqual(gate.stats(), { running: 0, waiting: 0, limit: 1 });
+});

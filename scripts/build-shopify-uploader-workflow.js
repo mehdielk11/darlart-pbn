@@ -22,7 +22,7 @@
  */
 const fs = require("fs");
 const path = require("path");
-const { queueLock } = require("./lib/n8n-queue-lock");
+const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -78,13 +78,15 @@ const driveList = (name, position, q) => node(name, "n8n-nodes-base.httpRequest"
         parameters: [
             { name: "q", value: q },
             { name: "fields", value: "files(id,name,mimeType,modifiedTime)" },
+            // newest first: a listing holds 1000 files at most, and the newest are the ones still to do
+            { name: "orderBy", value: "createdTime desc" },
             { name: "pageSize", value: "1000" },
             { name: "supportsAllDrives", value: "true" },
             { name: "includeItemsFromAllDrives", value: "true" },
         ],
     },
     options: { timeout: 30000 },
-});
+}, RETRY);
 // format: "json", "text" (into "data") or a binary property name
 const driveDownload = (name, position, fileId, format) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
     url: "=https://www.googleapis.com/drive/v3/files/{{ " + fileId + " }}?alt=media&supportsAllDrives=true",
@@ -94,7 +96,7 @@ const driveDownload = (name, position, fileId, format) => node(name, "n8n-nodes-
         response: { response: format === "json" ? { responseFormat: "json" } : format === "text" ? { responseFormat: "text", outputPropertyName: "data" } : { responseFormat: "file", outputPropertyName: format } },
         timeout: 120000,
     },
-});
+}, RETRY);
 const shopify = (name, position, body) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
     method: "POST",
     url: "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
@@ -104,7 +106,7 @@ const shopify = (name, position, body) => node(name, "n8n-nodes-base.httpRequest
     specifyBody: "json",
     jsonBody: body,
     options: { timeout: 120000 },
-});
+}, RETRY);
 
 // ---- 1. triggers, settings --------------------------------------------------------------------
 node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 0], {});
@@ -337,8 +339,10 @@ const pbnApi = (name, position, path, parameters) => node(name, "n8n-nodes-base.
     sendBody: true,
     contentType: "multipart-form-data",
     bodyParameters: { parameters },
-    options: { timeout: 120000 },
-});
+    // one item at a time (n8n sends them all at once otherwise): the API serves heavy requests one by one, a wait
+    // behind another one is included in the timeout
+    options: { timeout: 300000, batching: { batch: { batchSize: 1, batchInterval: 0 } } },
+}, RETRY);
 
 // ---- WebP copies: the featured image (made by the Print Agent) and the mockup, converted by the pbn API, saved
 // once and sent to Shopify (the artwork itself is shown on the featured image: it is not uploaded)

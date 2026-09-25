@@ -36,7 +36,8 @@ API_KEY=<openssl rand -hex 32>
 CALLBACK_SECRET=<openssl rand -hex 32>
 PUBLIC_BASE_URL=http://127.0.0.1:3000
 DATA_DIR=/var/lib/pbn-api
-CONCURRENCY=2
+CONCURRENCY=1
+IMAGE_CONCURRENCY=1
 ```
 
 Create `/etc/systemd/system/pbn-api.service`. Replace `ubuntu` with the Linux user, and `/usr/bin/node` with the output of `which node`:
@@ -90,7 +91,8 @@ n8n then reaches the API at `http://pbn-api:3000`. Set that address in **Normali
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Use `127.0.0.1` when n8n runs on the same machine. |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` | Base of the file links returned to n8n. |
 | `CALLBACK_SECRET` | (empty) | Sent as `x-callback-secret` to the callback URL. |
-| `CONCURRENCY` | CPU cores - 1 | Jobs processed at the same time. |
+| `CONCURRENCY` | 1 | Jobs processed at the same time. A HARD 60x75 job takes hundreds of MB: keep 1 on a small server (1 GB RAM), raise it only with RAM to spare. |
+| `IMAGE_CONCURRENCY` | 1 | Heavy image requests (`/v1/analyze`, `/v1/recolor`, `/v1/featured`, `/v1/webp`) processed at the same time; the others wait their turn instead of running side by side. |
 | `JOB_TIMEOUT_MS` | 600000 | A job taking longer is failed. |
 | `RETENTION_DAYS` | 14 | Finished jobs and their files are deleted after this. |
 | `MAX_IMAGE_BYTES` | 30 MB | Largest photo accepted. |

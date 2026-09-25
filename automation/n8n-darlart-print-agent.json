@@ -127,11 +127,29 @@
             {
               "id": "set11",
               "name": "lockStaleMinutes",
-              "value": 45,
+              "value": 20,
               "type": "number"
             },
             {
               "id": "set12",
+              "name": "parallelJobs",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "set13",
+              "name": "jobTimeoutMinutes",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "set14",
+              "name": "pollSeconds",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "set15",
               "name": "telegramChatId",
               "value": "-5252292447",
               "type": "string"
@@ -163,7 +181,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -182,7 +200,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000006-0000-4000-8000-000000000000",
@@ -194,7 +215,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// Another worker holds a fresh lock (refreshed less than lockStaleMinutes ago): it will also pick up new folders\nconst settings = $('Settings').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+        "jsCode": "// Another run holds a fresh lock (refreshed within its stale time, kept in its description)\nconst OWN = Number($('Settings').first().json.lockStaleMinutes);\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter(isFresh);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
       }
     },
     {
@@ -232,17 +253,6 @@
     },
     {
       "id": "cc000008-0000-4000-8000-000000000000",
-      "name": "Busy: another run is working",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1760,
-        360
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "cc000009-0000-4000-8000-000000000000",
       "name": "Create lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -257,14 +267,14 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_print-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_print-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes)) }) }}",
         "options": {
           "timeout": 30000
         }
       }
     },
     {
-      "id": "cc000010-0000-4000-8000-000000000000",
+      "id": "cc000009-0000-4000-8000-000000000000",
       "name": "List locks again",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -285,7 +295,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -304,10 +314,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "cc000011-0000-4000-8000-000000000000",
+      "id": "cc000010-0000-4000-8000-000000000000",
       "name": "Won the lock?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -316,11 +329,11 @@
         120
       ],
       "parameters": {
-        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst settings = $('Settings').first().json;\nconst mine = $('Create lock').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst OWN = Number($('Settings').first().json.lockStaleMinutes);\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || isFresh(l))\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
       }
     },
     {
-      "id": "cc000012-0000-4000-8000-000000000000",
+      "id": "cc000011-0000-4000-8000-000000000000",
       "name": "Lock won?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -353,13 +366,13 @@
       }
     },
     {
-      "id": "cc000013-0000-4000-8000-000000000000",
+      "id": "cc000012-0000-4000-8000-000000000000",
       "name": "Step back (drop my lock)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         1980,
-        280
+        260
       ],
       "parameters": {
         "method": "DELETE",
@@ -373,26 +386,26 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000014-0000-4000-8000-000000000000",
+      "id": "cc000013-0000-4000-8000-000000000000",
       "name": "Busy: try again?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
-        440
+        1100,
+        380
       ],
       "parameters": {
         "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
       }
     },
     {
-      "id": "cc000015-0000-4000-8000-000000000000",
+      "id": "cc000014-0000-4000-8000-000000000000",
       "name": "Retry?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1540,
-        440
+        1320,
+        380
       ],
       "parameters": {
         "conditions": {
@@ -419,19 +432,30 @@
       }
     },
     {
-      "id": "cc000016-0000-4000-8000-000000000000",
+      "id": "cc000015-0000-4000-8000-000000000000",
       "name": "Wait before retry",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        1760,
-        520
+        1540,
+        480
       ],
       "parameters": {
         "resume": "timeInterval",
         "amount": 30,
         "unit": "seconds"
       }
+    },
+    {
+      "id": "cc000016-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        320
+      ],
+      "parameters": {}
     },
     {
       "id": "cc000017-0000-4000-8000-000000000000",
@@ -458,6 +482,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -474,7 +502,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000018-0000-4000-8000-000000000000",
@@ -514,6 +545,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -530,7 +565,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000020-0000-4000-8000-000000000000",
@@ -570,6 +608,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -586,7 +628,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000022-0000-4000-8000-000000000000",
@@ -656,7 +701,10 @@
           },
           "timeout": 120000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000025-0000-4000-8000-000000000000",
@@ -684,7 +732,13 @@
           ]
         },
         "options": {
-          "timeout": 120000
+          "timeout": 600000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
         }
       },
       "onError": "continueRegularOutput"
@@ -858,51 +912,74 @@
     },
     {
       "id": "cc000034-0000-4000-8000-000000000000",
-      "name": "Loop over jobs",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
+      "name": "Job round",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         4180,
         -40
       ],
       "parameters": {
-        "options": {}
+        "jsCode": "// The jobs' state (built from the planned jobs the first time), and the jobs to send now: as many as there are free\n// places among parallelJobs\nconst settings = $('Settings').first().json;\nconst first = $input.first().json;\nconst state = Array.isArray(first.jobs) ? first : {\n    jobs: $input.all().map((item) => ({ ...item.json, jobId: \"\", status: \"pending\", error: \"\", sentAt: 0, result: null, saved: false })),\n    saved: [],\n    errors: [],\n};\nconst places = Math.max(1, Number(settings.parallelJobs) || 1) - state.jobs.filter((j) => j.status === \"sent\").length;\nconst send = [];\nstate.jobs.forEach((j, i) => { if (j.status === \"pending\" && send.length < places) send.push(i); });\nreturn [{ json: { ...state, send } }];"
       }
     },
     {
       "id": "cc000035-0000-4000-8000-000000000000",
-      "name": "Heartbeat (refresh lock)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Jobs to send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         4400,
-        60
+        -40
       ],
       "parameters": {
-        "method": "PATCH",
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleDriveOAuth2Api",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "onError": "continueRegularOutput"
+        "jsCode": "const state = $input.first().json;\nreturn state.send.length ? state.send.map((i) => ({ json: { ...state.jobs[i], index: i } })) : [{ json: { none: true } }];"
+      }
     },
     {
       "id": "cc000036-0000-4000-8000-000000000000",
+      "name": "Send now?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Sendnow",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000037-0000-4000-8000-000000000000",
       "name": "Download artwork",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4620,
-        60
+        4840,
+        -120
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Loop over jobs').first().json.artworkId }}?alt=media&supportsAllDrives=true",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.artworkId }}?alt=media&supportsAllDrives=true",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
@@ -912,18 +989,27 @@
               "outputPropertyName": "image"
             }
           },
-          "timeout": 120000
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "cc000037-0000-4000-8000-000000000000",
+      "id": "cc000038-0000-4000-8000-000000000000",
       "name": "Create pbn job",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4840,
-        60
+        5060,
+        -120
       ],
       "parameters": {
         "method": "POST",
@@ -936,7 +1022,7 @@
           "parameters": [
             {
               "name": "canvasSize",
-              "value": "={{ $('Loop over jobs').first().json.size }}"
+              "value": "={{ $('Jobs to send').item.json.size }}"
             },
             {
               "name": "orientation",
@@ -944,7 +1030,7 @@
             },
             {
               "name": "colors",
-              "value": "={{ $('Loop over jobs').first().json.colors }}"
+              "value": "={{ $('Jobs to send').item.json.colors }}"
             },
             {
               "name": "difficulty",
@@ -964,11 +1050,7 @@
             },
             {
               "name": "orderId",
-              "value": "={{ $('Loop over jobs').first().json.folder }}"
-            },
-            {
-              "name": "callbackUrl",
-              "value": "={{ $execution.resumeUrl }}"
+              "value": "={{ $('Jobs to send').item.json.folder }}"
             },
             {
               "parameterType": "formBinaryData",
@@ -978,86 +1060,177 @@
           ]
         },
         "options": {
-          "timeout": 120000
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000039-0000-4000-8000-000000000000",
+      "name": "Jobs sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "// The sent jobs get their pbn job id; a job the API did not accept has failed (the next run tries it again)\nconst state = JSON.parse(JSON.stringify($('Job round').first().json));\nconst answers = $input.first().json.none ? [] : $input.all().map((item) => item.json);\nstate.send.forEach((index, k) => {\n    const job = state.jobs[index];\n    const a = answers[k] || {};\n    if (a.jobId) Object.assign(job, { jobId: a.jobId, status: \"sent\", sentAt: Date.now() });\n    else Object.assign(job, { status: \"failed\", error: String((a.error && (a.error.message || a.error)) || a.message || \"pbn job not accepted\").slice(0, 300) });\n});\nstate.send = [];\nreturn [{ json: state }];"
+      }
+    },
+    {
+      "id": "cc000040-0000-4000-8000-000000000000",
+      "name": "Jobs running?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Jobsrunning",
+              "leftValue": "={{ $json.jobs.some((j) => j.status === 'sent') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000041-0000-4000-8000-000000000000",
+      "name": "Wait for jobs",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5720,
+        -120
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $('Settings').first().json.pollSeconds }}",
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "cc000042-0000-4000-8000-000000000000",
+      "name": "Heartbeat (refresh lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5940,
+        -300
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "id": "cc000043-0000-4000-8000-000000000000",
+      "name": "Jobs to check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5940,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "return $('Jobs sent').first().json.jobs.filter((j) => j.status === \"sent\").map((j) => ({ json: { jobId: j.jobId } }));"
+      }
+    },
+    {
+      "id": "cc000044-0000-4000-8000-000000000000",
+      "name": "Job status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6160,
+        -120
+      ],
+      "parameters": {
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/jobs/{{ $json.jobId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
         }
       },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000038-0000-4000-8000-000000000000",
-      "name": "Job accepted?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        5060,
-        60
-      ],
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "Jobaccepted",
-              "leftValue": "={{ !!$json.jobId }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "cc000039-0000-4000-8000-000000000000",
-      "name": "Wait for pbn job",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [
-        5280,
-        0
-      ],
-      "parameters": {
-        "resume": "webhook",
-        "httpMethod": "POST",
-        "incomingAuthentication": "headerAuth",
-        "limitWaitTime": true,
-        "limitType": "afterTimeInterval",
-        "resumeAmount": 30,
-        "resumeUnit": "minutes",
-        "options": {}
-      },
-      "webhookId": "9a91f456-a1de-4a78-9791-1af5a8aad073"
-    },
-    {
-      "id": "cc000040-0000-4000-8000-000000000000",
-      "name": "Files to save",
+      "id": "cc000045-0000-4000-8000-000000000000",
+      "name": "Jobs checked",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5500,
-        0
+        6380,
+        -40
       ],
       "parameters": {
-        "jsCode": "// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)\nconst task = $('Loop over jobs').first().json;\nconst result = ($json.body && $json.body.status === \"completed\" && $json.body.result) || null;\nif (!result) return [{ json: { skip: true, folder: task.folder, job: task.size + \" \" + task.colors + \" colors\", reason: ($json.body && ($json.body.error || $json.body.status)) || \"no answer from the pbn API within 30 minutes\" } }];\nconst url = (name) => (result.files.find((f) => f.name === name) || {}).url;\nconst label = (result.canvas && result.canvas.label) || task.size;\nconst files = [];\nif (task.needSvg) {\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    files.push({ url: url(\"blank.svg\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_blank.svg\", parent: task.printFolderId, mimeType: \"image/svg+xml\" });\n}\nif (task.needPdf) {\n    files.push({ url: url(\"painting.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_catalog.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needUser) {\n    files.push({ url: url(\"template.pdf\"), name: task.stamp + \"_\" + label + \"_\" + task.colors + \"_user.pdf\", parent: task.printFolderId, mimeType: \"application/pdf\" });\n}\nif (task.needMockup) {\n    files.push({ url: url(\"mockup.png\"), name: task.stamp + \"_mockup.png\", parent: task.folderId, mimeType: \"image/png\" });\n}\nconst ready = files.filter((f) => f.url);\nif (ready.length !== files.length) return [{ json: { skip: true, folder: task.folder, job: task.size + \" \" + task.colors + \" colors\", reason: \"the pbn API result is missing a file\" } }];\nreturn ready.map((f) => ({ json: f }));"
+        "jsCode": "// Each sent job's state. A job the API no longer knows (restarted) has failed; so has one with no result\n// 2 x jobTimeoutMinutes + 5 after it was sent (the API gives up on a job after jobTimeoutMinutes itself).\n// The files of the jobs finished now are saved this round; a folder's mockup (it marks the folder done for the\n// Watchdog) once all the folder's jobs are finished, and only if none failed.\nconst settings = $('Settings').first().json;\nconst checked = !Array.isArray($input.first().json.jobs);\nconst state = JSON.parse(JSON.stringify($('Jobs sent').first().json));\nif (checked) {\n    const asked = $('Jobs to check').all().map((item) => item.json.jobId);\n    const answers = $input.all().map((item) => item.json);\n    const limit = (2 * Number(settings.jobTimeoutMinutes || 10) + 5) * 60000;\n    asked.forEach((jobId, k) => {\n        const job = state.jobs.find((j) => j.jobId === jobId);\n        const a = answers[k] || {};\n        if (!job) return;\n        if (a.jobId === jobId && a.status === \"completed\" && a.result) {\n            job.status = \"completed\";\n            job.result = { label: (a.result.canvas && a.result.canvas.label) || job.size, files: (a.result.files || []).map((x) => ({ name: x.name, url: x.url })) };\n        } else if (a.jobId === jobId && a.status === \"failed\") Object.assign(job, { status: \"failed\", error: String(a.error || \"failed\").slice(0, 300) });\n        else if (JSON.stringify(a).includes(\"Job not found\")) Object.assign(job, { status: \"failed\", error: \"the pbn API no longer has this job (restarted?)\" });\n        else if (Date.now() - job.sentAt > limit) Object.assign(job, { status: \"failed\", error: \"no result \" + Math.round(limit / 60000) + \" min after it was sent\" });\n    });\n}\nconst files = [];\nfor (const job of state.jobs) {\n    if (job.status !== \"completed\" || job.saved) continue;\n    const url = (name) => (job.result.files.find((x) => x.name === name) || {}).url;\n    const want = [];\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    if (job.needSvg) want.push({ url: url(\"blank.svg\"), name: job.stamp + \"_\" + job.result.label + \"_\" + job.colors + \"_blank.svg\", parent: job.printFolderId });\n    if (job.needPdf) want.push({ url: url(\"painting.pdf\"), name: job.stamp + \"_\" + job.result.label + \"_\" + job.colors + \"_catalog.pdf\", parent: job.printFolderId });\n    if (job.needUser) want.push({ url: url(\"template.pdf\"), name: job.stamp + \"_\" + job.result.label + \"_\" + job.colors + \"_user.pdf\", parent: job.printFolderId });\n    if (job.needMockup && !url(\"mockup.png\")) want.push({ url: \"\" });\n    if (want.some((w) => !w.url)) {\n        Object.assign(job, { status: \"failed\", error: \"the pbn API result is missing a file\" });\n        continue;\n    }\n    files.push(...want);\n    job.saved = true;\n}\n// mockups: a folder whose jobs are all finished, none failed\nfor (const job of state.jobs) {\n    if (!job.needMockup || job.status !== \"completed\" || job.mockupSaved) continue;\n    const folderJobs = state.jobs.filter((j) => j.folder === job.folder);\n    if (folderJobs.some((j) => j.status === \"pending\" || j.status === \"sent\" || j.status === \"failed\")) continue;\n    files.push({ url: job.result.files.find((x) => x.name === \"mockup.png\").url, name: job.stamp + \"_mockup.png\", parent: job.folderId });\n    job.mockupSaved = true;\n}\nstate.finished = !state.jobs.some((j) => j.status === \"pending\" || j.status === \"sent\");\nstate.checks = (state.checks || 0) + (checked ? 1 : 0);\nreturn [{ json: { ...state, toSave: files } }];"
       }
     },
     {
-      "id": "cc000041-0000-4000-8000-000000000000",
-      "name": "Job done?",
+      "id": "cc000046-0000-4000-8000-000000000000",
+      "name": "Files to download",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6600,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "const files = $input.first().json.toSave;\nreturn files.length ? files.map((f) => ({ json: f })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "cc000047-0000-4000-8000-000000000000",
+      "name": "Any file?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        5720,
-        0
+        6820,
+        -40
       ],
       "parameters": {
         "conditions": {
@@ -1068,8 +1241,8 @@
           },
           "conditions": [
             {
-              "id": "Jobdone",
-              "leftValue": "={{ !$json.skip }}",
+              "id": "Anyfile",
+              "leftValue": "={{ !$json.none }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -1084,13 +1257,13 @@
       }
     },
     {
-      "id": "cc000042-0000-4000-8000-000000000000",
+      "id": "cc000048-0000-4000-8000-000000000000",
       "name": "Download file",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        5940,
-        -60
+        7040,
+        -120
       ],
       "parameters": {
         "url": "={{ $json.url }}",
@@ -1103,22 +1276,31 @@
               "outputPropertyName": "data"
             }
           },
-          "timeout": 120000
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
         }
       },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000043-0000-4000-8000-000000000000",
+      "id": "cc000049-0000-4000-8000-000000000000",
       "name": "Save to Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        6160,
-        -60
+        7260,
+        -120
       ],
       "parameters": {
-        "name": "={{ $('Files to save').item.json.name }}",
+        "name": "={{ $('Files to download').item.json.name }}",
         "driveId": {
           "__rl": true,
           "mode": "list",
@@ -1127,7 +1309,7 @@
         "folderId": {
           "__rl": true,
           "mode": "id",
-          "value": "={{ $('Files to save').item.json.parent }}"
+          "value": "={{ $('Files to download').item.json.parent }}"
         },
         "inputDataFieldName": "data",
         "options": {}
@@ -1135,7 +1317,53 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000044-0000-4000-8000-000000000000",
+      "id": "cc000050-0000-4000-8000-000000000000",
+      "name": "Round saved",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7480,
+        -40
+      ],
+      "parameters": {
+        "jsCode": "// The files saved this round (a file Drive or the API refused comes back as an error item: the next run retries it)\nconst state = JSON.parse(JSON.stringify($('Jobs checked').first().json));\nif (!$input.first().json.none) {\n    for (const item of $input.all()) {\n        const j = item.json;\n        if (j.id && j.name) state.saved.push(j.name);\n        else state.errors.push(String((j.error && (j.error.message || j.error)) || \"file not saved\").slice(0, 300));\n    }\n}\n// the jobs' results are no longer needed once saved: the state stays small\nfor (const job of state.jobs) if (job.saved && (!job.needMockup || job.mockupSaved)) job.result = null;\nstate.toSave = [];\nreturn [{ json: state }];"
+      }
+    },
+    {
+      "id": "cc000051-0000-4000-8000-000000000000",
+      "name": "All jobs done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7700,
+        -40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Alljobsdone",
+              "leftValue": "={{ $json.finished }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000052-0000-4000-8000-000000000000",
       "name": "Run summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1144,25 +1372,12 @@
         -220
       ],
       "parameters": {
-        "jsCode": "// Files saved in this run, and the jobs that failed (retried by the next run)\nconst items = $input.all().map((item) => item.json);\nconst saved = items.filter((j) => j.id && j.name).map((j) => j.name);\nconst failed = items.filter((j) => j.skip).map((j) => ({ folder: j.folder || \"\", job: j.job || \"\", reason: j.reason || \"\" }));\n// a job the pbn API did not accept, or a file Drive refused, comes back as an error item\nconst errors = items.filter((j) => !j.skip && !(j.id && j.name)).map((j) => (j.error && (j.error.message || j.error)) || \"pbn job not accepted\");\nreturn [{ json: { saved: saved.length, files: saved, failed, errors } }];"
-      }
-    },
-    {
-      "id": "cc000045-0000-4000-8000-000000000000",
-      "name": "Locks to delete",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4620,
-        -220
-      ],
-      "parameters": {
-        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst featured = $('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0;\nconst saved = ($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + featured;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, saved } }));"
+        "jsCode": "// Files saved in this run, and the jobs that failed (retried by the next run)\nconst state = $('Round saved').first().json;\nconst failed = state.jobs.filter((j) => j.status === \"failed\").map((j) => ({ folder: j.folder, job: j.size + \" \" + j.colors + \" colors\", reason: j.error }));\nreturn [{ json: { saved: state.saved.length, files: state.saved, failed, errors: state.errors } }];"
       },
       "executeOnce": true
     },
     {
-      "id": "cc000046-0000-4000-8000-000000000000",
+      "id": "cc000053-0000-4000-8000-000000000000",
       "name": "Find print report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1186,6 +1401,10 @@
               "value": "files(id,name,description)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -1202,10 +1421,119 @@
         "options": {
           "timeout": 30000
         }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "cc000054-0000-4000-8000-000000000000",
+      "name": "No progress?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        -640
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Noprogress",
+              "leftValue": "={{ $('Run summary').first().json.saved === 0 && (($('Run summary').first().json.failed || []).length + ($('Run summary').first().json.errors || []).length) > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       }
     },
     {
-      "id": "cc000047-0000-4000-8000-000000000000",
+      "id": "cc000055-0000-4000-8000-000000000000",
+      "name": "Find failure marker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4840,
+        -640
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_failed-print' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "cc000056-0000-4000-8000-000000000000",
+      "name": "Mark the failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5060,
+        -640
+      ],
+      "parameters": {
+        "method": "={{ ($json.files || []).length ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + (($json.files || []).length ? '/' + $json.files[0].id : '') + '?supportsAllDrives=true&fields=id' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(($json.files || []).length ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-print', mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000057-0000-4000-8000-000000000000",
       "name": "Print report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1219,7 +1547,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000048-0000-4000-8000-000000000000",
+      "id": "cc000058-0000-4000-8000-000000000000",
       "name": "Save the tally?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1252,7 +1580,7 @@
       }
     },
     {
-      "id": "cc000049-0000-4000-8000-000000000000",
+      "id": "cc000059-0000-4000-8000-000000000000",
       "name": "Store print report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1275,7 +1603,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000050-0000-4000-8000-000000000000",
+      "id": "cc000060-0000-4000-8000-000000000000",
       "name": "Send the report?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1308,7 +1636,7 @@
       }
     },
     {
-      "id": "cc000051-0000-4000-8000-000000000000",
+      "id": "cc000061-0000-4000-8000-000000000000",
       "name": "Telegram: print report",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1327,7 +1655,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000052-0000-4000-8000-000000000000",
+      "id": "cc000062-0000-4000-8000-000000000000",
       "name": "Drop the tally?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1360,7 +1688,7 @@
       }
     },
     {
-      "id": "cc000053-0000-4000-8000-000000000000",
+      "id": "cc000063-0000-4000-8000-000000000000",
       "name": "Drop print report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1380,12 +1708,26 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000054-0000-4000-8000-000000000000",
+      "id": "cc000064-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = (($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + ($('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0)) > 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000065-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4840,
+        5060,
         -220
       ],
       "parameters": {
@@ -1400,21 +1742,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000055-0000-4000-8000-000000000000",
-      "name": "More to do?",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        5060,
-        -220
-      ],
-      "parameters": {
-        "jsCode": "// Folders may have arrived while this run worked: start a new run (which finds nothing and stops if all is done)\nconst saved = $('Locks to delete').first().json.saved;\nreturn [{ json: { again: saved > 0, saved } }];"
-      },
-      "executeOnce": true
-    },
-    {
-      "id": "cc000056-0000-4000-8000-000000000000",
+      "id": "cc000066-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1432,7 +1760,7 @@
           "conditions": [
             {
               "id": "Startagain",
-              "leftValue": "={{ $json.again }}",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -1444,10 +1772,11 @@
           "combinator": "and"
         },
         "options": {}
-      }
+      },
+      "executeOnce": true
     },
     {
-      "id": "cc000057-0000-4000-8000-000000000000",
+      "id": "cc000067-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1471,7 +1800,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000058-0000-4000-8000-000000000000",
+      "id": "cc000068-0000-4000-8000-000000000000",
       "name": "Run Shopify Uploader",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1523,17 +1852,6 @@
         [
           {
             "node": "Settings",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Settings": {
-      "main": [
-        [
-          {
-            "node": "List locks",
             "type": "main",
             "index": 0
           }
@@ -1672,6 +1990,17 @@
       ]
     },
     "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
       "main": [
         [
           {
@@ -1883,36 +2212,47 @@
       "main": [
         [
           {
-            "node": "Loop over jobs",
+            "node": "Job round",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Loop over jobs": {
+    "Job round": {
       "main": [
         [
           {
-            "node": "Run summary",
+            "node": "Jobs to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs to send": {
+      "main": [
+        [
+          {
+            "node": "Send now?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send now?": {
+      "main": [
+        [
+          {
+            "node": "Download artwork",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Heartbeat (refresh lock)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Heartbeat (refresh lock)": {
-      "main": [
-        [
-          {
-            "node": "Download artwork",
+            "node": "Jobs sent",
             "type": "main",
             "index": 0
           }
@@ -1934,54 +2274,103 @@
       "main": [
         [
           {
-            "node": "Job accepted?",
+            "node": "Jobs sent",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Job accepted?": {
+    "Jobs sent": {
       "main": [
         [
           {
-            "node": "Wait for pbn job",
+            "node": "Jobs running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs running?": {
+      "main": [
+        [
+          {
+            "node": "Wait for jobs",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Loop over jobs",
+            "node": "Jobs checked",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Wait for pbn job": {
+    "Wait for jobs": {
       "main": [
         [
           {
-            "node": "Files to save",
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Jobs to check",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Files to save": {
+    "Jobs to check": {
       "main": [
         [
           {
-            "node": "Job done?",
+            "node": "Job status",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Job done?": {
+    "Job status": {
+      "main": [
+        [
+          {
+            "node": "Jobs checked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs checked": {
+      "main": [
+        [
+          {
+            "node": "Files to download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Files to download": {
+      "main": [
+        [
+          {
+            "node": "Any file?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any file?": {
       "main": [
         [
           {
@@ -1992,7 +2381,7 @@
         ],
         [
           {
-            "node": "Loop over jobs",
+            "node": "Round saved",
             "type": "main",
             "index": 0
           }
@@ -2014,7 +2403,36 @@
       "main": [
         [
           {
-            "node": "Loop over jobs",
+            "node": "Round saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Round saved": {
+      "main": [
+        [
+          {
+            "node": "All jobs done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All jobs done?": {
+      "main": [
+        [
+          {
+            "node": "Run summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Job round",
             "type": "main",
             "index": 0
           }
@@ -2026,6 +2444,33 @@
         [
           {
             "node": "Find print report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "No progress?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No progress?": {
+      "main": [
+        [
+          {
+            "node": "Find failure marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find failure marker": {
+      "main": [
+        [
+          {
+            "node": "Mark the failure",
             "type": "main",
             "index": 0
           }
@@ -2153,17 +2598,6 @@
       ]
     },
     "Release lock": {
-      "main": [
-        [
-          {
-            "node": "More to do?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "More to do?": {
       "main": [
         [
           {

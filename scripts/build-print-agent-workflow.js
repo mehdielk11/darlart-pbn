@@ -2,9 +2,12 @@
  * Builds automation/n8n-darlart-print-agent.json, the "Print Agent" n8n workflow:
  *
  *   Artwork Agent finished / Run now / every day
- *   -> queue lock (one worker at a time, a Drive lock file with a heartbeat)
+ *   -> queue lock (one worker at a time, a Drive lock file refreshed every 30 s while jobs run)
  *   -> folders "Artwork Agent/1xxx" still missing print files
- *   -> one pbn API job at a time: 12/24/36/48 colors, HARD, 60x75 (portrait or landscape from the artwork itself)
+ *   -> the pbn API jobs, parallelJobs at a time (1: the server has little memory), checked every pollSeconds:
+ *      12/24/36/48 colors, HARD, 60x75 (portrait or landscape from the artwork itself). A finished job's files are
+ *      saved at once and the next job is sent. No fixed time limit for the run: it takes as long as its jobs need,
+ *      only a job with no result 2 x jobTimeoutMinutes + 5 after it was sent is given up (retried by the next run)
  *   -> 1xxx/<stamp>_featured.png (pbn API /v1/featured: the artwork on a canvas photo, the product's first image)
  *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
@@ -13,6 +16,7 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -31,7 +35,14 @@ const SETTINGS = {
     paperSize: "a4", // page size of the PDFs (Agency / User)
     mockupColors: 48, // the single mockup comes from the first canvas size at this color count
     maxPerRun: 5, // folders per run; the next run starts by itself when work remains
-    lockStaleMinutes: 45, // a lock not refreshed for this long belongs to a crashed run
+    // the lock is refreshed every 30 s while jobs run, so this only covers the longest step between two refreshes
+    // (the featured images, a few minutes), not the whole run
+    lockStaleMinutes: 20,
+    // jobs in the pbn API at the same time. Keep 1 on a small server (1 GB RAM): a HARD 60x75 job takes a lot of
+    // memory, and the API itself runs CONCURRENCY jobs at a time (set CONCURRENCY=1 in its env file too)
+    parallelJobs: 1,
+    jobTimeoutMinutes: 10, // the pbn API stops a job after this long (JOB_TIMEOUT_MS on the VM)
+    pollSeconds: 30, // how often the run checks its jobs
     telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
 };
 // the "Darl'Art Shopify Uploader" workflow, started when a run saved new files
@@ -63,13 +74,15 @@ const driveList = (name, position, q, fields = "files(id,name,mimeType)") => nod
         parameters: [
             { name: "q", value: q },
             { name: "fields", value: fields },
+            // newest first: a listing holds 1000 files at most, and the newest are the ones still to do
+            { name: "orderBy", value: "createdTime desc" },
             { name: "pageSize", value: "1000" },
             { name: "supportsAllDrives", value: "true" },
             { name: "includeItemsFromAllDrives", value: "true" },
         ],
     },
     options: { timeout: 30000 },
-});
+}, RETRY);
 const ifNode = (name, position, left) => node(name, "n8n-nodes-base.if", 2, position, {
     conditions: {
         options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
@@ -85,6 +98,8 @@ const deleteFile = (name, position, idExpression) => node(name, "n8n-nodes-base.
     options: { timeout: 30000 },
 }, { onError: "continueRegularOutput" });
 const NONE_Q = "name = '__none__' and trashed = false";
+// n8n sends the requests of all a node's items at once unless told otherwise: the pbn API gets them one by one
+const ONE_BY_ONE = { batching: { batch: { batchSize: 1, batchInterval: 0 } } };
 
 // ---- 1. triggers, settings -----------------------------------------------------------------------
 node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 0], {});
@@ -101,63 +116,14 @@ node("Settings", "n8n-nodes-base.set", 3.4, [220, 200], {
 for (const trigger of ["Run now", "Every day", "When called by another workflow"]) { connect(trigger, "Settings"); }
 
 // ---- 2. queue lock ------------------------------------------------------------------------------------
-const lockQuery = `='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '${LOCK_PREFIX}' and trashed = false`;
-driveList("List locks", [440, 200], lockQuery, "files(id,name,createdTime,modifiedTime)");
-connect("Settings", "List locks");
-
-code("Lock state", [660, 200], `// Another worker holds a fresh lock (refreshed less than lockStaleMinutes ago): it will also pick up new folders
-const settings = $('Settings').first().json;
-const limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;
-const locks = $input.first().json.files || [];
-const fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);
-const stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);
-return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
-connect("List locks", "Lock state");
-
-ifNode("Lock free?", [880, 200], "={{ $json.free }}");
-connect("Lock state", "Lock free?");
-node("Busy: another run is working", "n8n-nodes-base.noOp", 1, [1760, 360], {});
-
-node("Create lock", "n8n-nodes-base.httpRequest", 4.2, [1100, 120], {
-    method: "POST",
-    url: `${driveFiles}?supportsAllDrives=true&fields=id,name,createdTime`,
-    ...googleAuth,
-    sendBody: true,
-    specifyBody: "json",
-    jsonBody: `={{ JSON.stringify({ name: '${LOCK_PREFIX}-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}`,
-    options: { timeout: 30000 },
+const lock = queueLock({ node, connect }, {
+    prefix: LOCK_PREFIX,
+    folderExpression: "$('Settings').first().json.agentFolderId",
+    staleMinutes: "Number($('Settings').first().json.lockStaleMinutes)",
+    x: 440,
+    y: 200,
 });
-connect("Lock free?", "Create lock", 0);
-
-driveList("List locks again", [1320, 120], lockQuery, "files(id,name,createdTime,modifiedTime)");
-connect("Create lock", "List locks again");
-
-code("Won the lock?", [1540, 120], `// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back
-const settings = $('Settings').first().json;
-const mine = $('Create lock').first().json;
-const limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;
-const fresh = ($input.first().json.files || [])
-    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)
-    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));
-return [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];`);
-connect("List locks again", "Won the lock?");
-
-ifNode("Lock won?", [1760, 120], "={{ $json.won }}");
-connect("Won the lock?", "Lock won?");
-deleteFile("Step back (drop my lock)", [1980, 280], "$json.lockId");
-connect("Lock won?", "Step back (drop my lock)", 1);
-
-// busy, or lost a tie: try again a little later (a run about to finish with nothing done does not start itself again)
-code("Busy: try again?", [1320, 440], `const attempt = $runIndex + 1;
-return [{ json: { retry: attempt <= 3, attempt } }];`);
-connect("Lock free?", "Busy: try again?", 1);
-connect("Step back (drop my lock)", "Busy: try again?");
-ifNode("Retry?", [1540, 440], "={{ $json.retry }}");
-connect("Busy: try again?", "Retry?");
-node("Wait before retry", "n8n-nodes-base.wait", 1.1, [1760, 520], { resume: "timeInterval", amount: 30, unit: "seconds" });
-connect("Retry?", "Wait before retry", 0);
-connect("Wait before retry", "List locks");
-connect("Retry?", "Busy: another run is working", 1);
+connect("Settings", "List locks");
 
 // ---- 3. what is left to do ------------------------------------------------------------------------------
 driveList("List Artwork Agent folders", [1980, 40], "='{{ $('Settings').first().json.agentFolderId }}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
@@ -208,7 +174,7 @@ node("Artwork for featured", "n8n-nodes-base.httpRequest", 4.2, [3300, -420], {
     url: `=${driveFiles}/{{ $json.artworkId }}?alt=media&supportsAllDrives=true`,
     ...googleAuth,
     options: { response: { response: { responseFormat: "file", outputPropertyName: "image" } }, timeout: 120000 },
-});
+}, RETRY);
 connect("Featured to make?", "Artwork for featured", 0);
 
 node("Make featured image", "n8n-nodes-base.httpRequest", 4.2, [3520, -420], {
@@ -219,7 +185,8 @@ node("Make featured image", "n8n-nodes-base.httpRequest", 4.2, [3520, -420], {
     sendBody: true,
     contentType: "multipart-form-data",
     bodyParameters: { parameters: [{ parameterType: "formBinaryData", name: "image", inputDataFieldName: "image" }] },
-    options: { timeout: 120000 },
+    // the API serves heavy requests one at a time: a wait behind another one is included
+    options: { timeout: 600000, ...ONE_BY_ONE },
 }, { onError: "continueRegularOutput" });
 connect("Artwork for featured", "Make featured image");
 
@@ -322,31 +289,40 @@ $input.all().forEach((item, i) => {
 return $('Plan jobs').all().map((item) => ({ json: { ...item.json, printFolderId: printIds[item.json.folderId] } }));`);
 connect("Ensure Print folder", "Jobs ready");
 
-// ---- 4. one pbn job at a time --------------------------------------------------------------------------
-node("Loop over jobs", "n8n-nodes-base.splitInBatches", 3, [4180, -40], { options: {} });
-connect("Jobs ready", "Loop over jobs");
+// ---- 4. the jobs, parallelJobs at a time: a loop of rounds. Each round sends jobs into the free places, waits
+// pollSeconds, checks the jobs sent, saves the files of those finished, and goes again until none is left. The state of
+// all jobs travels through the loop as one item. -----------------------------------------------------------------
+code("Job round", [4180, -40], `// The jobs' state (built from the planned jobs the first time), and the jobs to send now: as many as there are free
+// places among parallelJobs
+const settings = $('Settings').first().json;
+const first = $input.first().json;
+const state = Array.isArray(first.jobs) ? first : {
+    jobs: $input.all().map((item) => ({ ...item.json, jobId: "", status: "pending", error: "", sentAt: 0, result: null, saved: false })),
+    saved: [],
+    errors: [],
+};
+const places = Math.max(1, Number(settings.parallelJobs) || 1) - state.jobs.filter((j) => j.status === "sent").length;
+const send = [];
+state.jobs.forEach((j, i) => { if (j.status === "pending" && send.length < places) send.push(i); });
+return [{ json: { ...state, send } }];`);
+connect("Jobs ready", "Job round");
 
-node("Heartbeat (refresh lock)", "n8n-nodes-base.httpRequest", 4.2, [4400, 60], {
-    method: "PATCH",
-    url: `=${driveFiles}/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime`,
+code("Jobs to send", [4400, -40], `const state = $input.first().json;
+return state.send.length ? state.send.map((i) => ({ json: { ...state.jobs[i], index: i } })) : [{ json: { none: true } }];`);
+connect("Job round", "Jobs to send");
+ifNode("Send now?", [4620, -40], "={{ !$json.none }}");
+connect("Jobs to send", "Send now?");
+
+node("Download artwork", "n8n-nodes-base.httpRequest", 4.2, [4840, -120], {
+    url: `=${driveFiles}/{{ $json.artworkId }}?alt=media&supportsAllDrives=true`,
     ...googleAuth,
-    sendBody: true,
-    specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
-    options: { timeout: 30000 },
-}, { onError: "continueRegularOutput" });
-connect("Loop over jobs", "Heartbeat (refresh lock)", 1);
+    options: { response: { response: { responseFormat: "file", outputPropertyName: "image" } }, timeout: 120000, ...ONE_BY_ONE },
+}, RETRY);
+connect("Send now?", "Download artwork", 0);
 
-node("Download artwork", "n8n-nodes-base.httpRequest", 4.2, [4620, 60], {
-    url: `=${driveFiles}/{{ $('Loop over jobs').first().json.artworkId }}?alt=media&supportsAllDrives=true`,
-    ...googleAuth,
-    options: { response: { response: { responseFormat: "file", outputPropertyName: "image" } }, timeout: 120000 },
-});
-connect("Heartbeat (refresh lock)", "Download artwork");
-
-const job = (field) => `={{ $('Loop over jobs').first().json.${field} }}`;
 const setting = (field) => `={{ $('Settings').first().json.${field} }}`;
-node("Create pbn job", "n8n-nodes-base.httpRequest", 4.2, [4840, 60], {
+const sending = (field) => `={{ $('Jobs to send').item.json.${field} }}`;
+node("Create pbn job", "n8n-nodes-base.httpRequest", 4.2, [5060, -120], {
     method: "POST",
     url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/jobs",
     authentication: "genericCredentialType",
@@ -355,105 +331,177 @@ node("Create pbn job", "n8n-nodes-base.httpRequest", 4.2, [4840, 60], {
     contentType: "multipart-form-data",
     bodyParameters: {
         parameters: [
-            { name: "canvasSize", value: job("size") },
+            { name: "canvasSize", value: sending("size") },
             { name: "orientation", value: setting("orientation") },
-            { name: "colors", value: job("colors") },
+            { name: "colors", value: sending("colors") },
             { name: "difficulty", value: setting("difficulty") },
             { name: "palette", value: setting("palette") },
             { name: "cropMode", value: setting("cropMode") },
             { name: "paperSize", value: setting("paperSize") },
-            { name: "orderId", value: job("folder") },
-            { name: "callbackUrl", value: "={{ $execution.resumeUrl }}" },
+            { name: "orderId", value: sending("folder") },
             { parameterType: "formBinaryData", name: "image", inputDataFieldName: "image" },
         ],
     },
-    options: { timeout: 120000 },
-}, { onError: "continueRegularOutput" });
+    options: { timeout: 120000, ...ONE_BY_ONE },
+}, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000, onError: "continueRegularOutput" });
 connect("Download artwork", "Create pbn job");
 
-ifNode("Job accepted?", [5060, 60], "={{ !!$json.jobId }}");
-connect("Create pbn job", "Job accepted?");
+code("Jobs sent", [5280, -40], `// The sent jobs get their pbn job id; a job the API did not accept has failed (the next run tries it again)
+const state = JSON.parse(JSON.stringify($('Job round').first().json));
+const answers = $input.first().json.none ? [] : $input.all().map((item) => item.json);
+state.send.forEach((index, k) => {
+    const job = state.jobs[index];
+    const a = answers[k] || {};
+    if (a.jobId) Object.assign(job, { jobId: a.jobId, status: "sent", sentAt: Date.now() });
+    else Object.assign(job, { status: "failed", error: String((a.error && (a.error.message || a.error)) || a.message || "pbn job not accepted").slice(0, 300) });
+});
+state.send = [];
+return [{ json: state }];`);
+connect("Create pbn job", "Jobs sent");
+connect("Send now?", "Jobs sent", 1);
 
-node("Wait for pbn job", "n8n-nodes-base.wait", 1.1, [5280, 0], {
-    resume: "webhook",
-    httpMethod: "POST",
-    incomingAuthentication: "headerAuth",
-    limitWaitTime: true,
-    limitType: "afterTimeInterval",
-    resumeAmount: 30,
-    resumeUnit: "minutes",
-    options: {},
-}, { webhookId: "9a91f456-a1de-4a78-9791-1af5a8aad073" });
-connect("Job accepted?", "Wait for pbn job", 0);
+ifNode("Jobs running?", [5500, -40], "={{ $json.jobs.some((j) => j.status === 'sent') }}");
+connect("Jobs sent", "Jobs running?");
+node("Wait for jobs", "n8n-nodes-base.wait", 1.1, [5720, -120], { resume: "timeInterval", amount: "={{ $('Settings').first().json.pollSeconds }}", unit: "seconds" });
+connect("Jobs running?", "Wait for jobs", 0);
+// the lock is refreshed at every check: the run keeps it for as long as its jobs need
+lock.heartbeat("Heartbeat (refresh lock)", [5940, -300]);
+connect("Wait for jobs", "Heartbeat (refresh lock)");
+code("Jobs to check", [5940, -120], `return $('Jobs sent').first().json.jobs.filter((j) => j.status === "sent").map((j) => ({ json: { jobId: j.jobId } }));`);
+connect("Wait for jobs", "Jobs to check");
+node("Job status", "n8n-nodes-base.httpRequest", 4.2, [6160, -120], {
+    url: "={{ $('Settings').first().json.pbnApiUrl }}/v1/jobs/{{ $json.jobId }}",
+    authentication: "genericCredentialType",
+    genericAuthType: "httpHeaderAuth",
+    options: { timeout: 30000, ...ONE_BY_ONE },
+}, { onError: "continueRegularOutput" });
+connect("Jobs to check", "Job status");
 
-code("Files to save", [5500, 0], `// The finished job's files, named with the size the API chose (40x50 portrait or 50x40 landscape)
-const task = $('Loop over jobs').first().json;
-const result = ($json.body && $json.body.status === "completed" && $json.body.result) || null;
-if (!result) return [{ json: { skip: true, folder: task.folder, job: task.size + " " + task.colors + " colors", reason: ($json.body && ($json.body.error || $json.body.status)) || "no answer from the pbn API within 30 minutes" } }];
-const url = (name) => (result.files.find((f) => f.name === name) || {}).url;
-const label = (result.canvas && result.canvas.label) || task.size;
+code("Jobs checked", [6380, -40], `// Each sent job's state. A job the API no longer knows (restarted) has failed; so has one with no result
+// 2 x jobTimeoutMinutes + 5 after it was sent (the API gives up on a job after jobTimeoutMinutes itself).
+// The files of the jobs finished now are saved this round; a folder's mockup (it marks the folder done for the
+// Watchdog) once all the folder's jobs are finished, and only if none failed.
+const settings = $('Settings').first().json;
+const checked = !Array.isArray($input.first().json.jobs);
+const state = JSON.parse(JSON.stringify($('Jobs sent').first().json));
+if (checked) {
+    const asked = $('Jobs to check').all().map((item) => item.json.jobId);
+    const answers = $input.all().map((item) => item.json);
+    const limit = (2 * Number(settings.jobTimeoutMinutes || 10) + 5) * 60000;
+    asked.forEach((jobId, k) => {
+        const job = state.jobs.find((j) => j.jobId === jobId);
+        const a = answers[k] || {};
+        if (!job) return;
+        if (a.jobId === jobId && a.status === "completed" && a.result) {
+            job.status = "completed";
+            job.result = { label: (a.result.canvas && a.result.canvas.label) || job.size, files: (a.result.files || []).map((x) => ({ name: x.name, url: x.url })) };
+        } else if (a.jobId === jobId && a.status === "failed") Object.assign(job, { status: "failed", error: String(a.error || "failed").slice(0, 300) });
+        else if (JSON.stringify(a).includes("Job not found")) Object.assign(job, { status: "failed", error: "the pbn API no longer has this job (restarted?)" });
+        else if (Date.now() - job.sentAt > limit) Object.assign(job, { status: "failed", error: "no result " + Math.round(limit / 60000) + " min after it was sent" });
+    });
+}
 const files = [];
-if (task.needSvg) {
+for (const job of state.jobs) {
+    if (job.status !== "completed" || job.saved) continue;
+    const url = (name) => (job.result.files.find((x) => x.name === name) || {}).url;
+    const want = [];
     // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas
-    files.push({ url: url("blank.svg"), name: task.stamp + "_" + label + "_" + task.colors + "_blank.svg", parent: task.printFolderId, mimeType: "image/svg+xml" });
+    if (job.needSvg) want.push({ url: url("blank.svg"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_blank.svg", parent: job.printFolderId });
+    if (job.needPdf) want.push({ url: url("painting.pdf"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_catalog.pdf", parent: job.printFolderId });
+    if (job.needUser) want.push({ url: url("template.pdf"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_user.pdf", parent: job.printFolderId });
+    if (job.needMockup && !url("mockup.png")) want.push({ url: "" });
+    if (want.some((w) => !w.url)) {
+        Object.assign(job, { status: "failed", error: "the pbn API result is missing a file" });
+        continue;
+    }
+    files.push(...want);
+    job.saved = true;
 }
-if (task.needPdf) {
-    files.push({ url: url("painting.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_catalog.pdf", parent: task.printFolderId, mimeType: "application/pdf" });
+// mockups: a folder whose jobs are all finished, none failed
+for (const job of state.jobs) {
+    if (!job.needMockup || job.status !== "completed" || job.mockupSaved) continue;
+    const folderJobs = state.jobs.filter((j) => j.folder === job.folder);
+    if (folderJobs.some((j) => j.status === "pending" || j.status === "sent" || j.status === "failed")) continue;
+    files.push({ url: job.result.files.find((x) => x.name === "mockup.png").url, name: job.stamp + "_mockup.png", parent: job.folderId });
+    job.mockupSaved = true;
 }
-if (task.needUser) {
-    files.push({ url: url("template.pdf"), name: task.stamp + "_" + label + "_" + task.colors + "_user.pdf", parent: task.printFolderId, mimeType: "application/pdf" });
-}
-if (task.needMockup) {
-    files.push({ url: url("mockup.png"), name: task.stamp + "_mockup.png", parent: task.folderId, mimeType: "image/png" });
-}
-const ready = files.filter((f) => f.url);
-if (ready.length !== files.length) return [{ json: { skip: true, folder: task.folder, job: task.size + " " + task.colors + " colors", reason: "the pbn API result is missing a file" } }];
-return ready.map((f) => ({ json: f }));`);
-connect("Wait for pbn job", "Files to save");
+state.finished = !state.jobs.some((j) => j.status === "pending" || j.status === "sent");
+state.checks = (state.checks || 0) + (checked ? 1 : 0);
+return [{ json: { ...state, toSave: files } }];`);
+connect("Job status", "Jobs checked");
+connect("Jobs running?", "Jobs checked", 1);
 
-ifNode("Job done?", [5720, 0], "={{ !$json.skip }}");
-connect("Files to save", "Job done?");
+code("Files to download", [6600, -40], `const files = $input.first().json.toSave;
+return files.length ? files.map((f) => ({ json: f })) : [{ json: { none: true } }];`);
+connect("Jobs checked", "Files to download");
+ifNode("Any file?", [6820, -40], "={{ !$json.none }}");
+connect("Files to download", "Any file?");
 
-node("Download file", "n8n-nodes-base.httpRequest", 4.2, [5940, -60], {
+node("Download file", "n8n-nodes-base.httpRequest", 4.2, [7040, -120], {
     url: "={{ $json.url }}",
     authentication: "genericCredentialType",
     genericAuthType: "httpHeaderAuth",
-    options: { response: { response: { responseFormat: "file", outputPropertyName: "data" } }, timeout: 120000 },
-}, { onError: "continueRegularOutput" });
-connect("Job done?", "Download file", 0);
+    options: { response: { response: { responseFormat: "file", outputPropertyName: "data" } }, timeout: 120000, ...ONE_BY_ONE },
+}, { ...RETRY, onError: "continueRegularOutput" });
+connect("Any file?", "Download file", 0);
 
-node("Save to Drive", "n8n-nodes-base.googleDrive", 3, [6160, -60], {
-    name: "={{ $('Files to save').item.json.name }}",
+node("Save to Drive", "n8n-nodes-base.googleDrive", 3, [7260, -120], {
+    name: "={{ $('Files to download').item.json.name }}",
     driveId: { __rl: true, mode: "list", value: "My Drive" },
-    folderId: { __rl: true, mode: "id", value: "={{ $('Files to save').item.json.parent }}" },
+    folderId: { __rl: true, mode: "id", value: "={{ $('Files to download').item.json.parent }}" },
     inputDataFieldName: "data",
     options: {},
 }, { onError: "continueRegularOutput" });
 connect("Download file", "Save to Drive");
-connect("Save to Drive", "Loop over jobs");
-// a failed or timed-out job is skipped: the next run retries it
-connect("Job done?", "Loop over jobs", 1);
-connect("Job accepted?", "Loop over jobs", 1);
+
+code("Round saved", [7480, -40], `// The files saved this round (a file Drive or the API refused comes back as an error item: the next run retries it)
+const state = JSON.parse(JSON.stringify($('Jobs checked').first().json));
+if (!$input.first().json.none) {
+    for (const item of $input.all()) {
+        const j = item.json;
+        if (j.id && j.name) state.saved.push(j.name);
+        else state.errors.push(String((j.error && (j.error.message || j.error)) || "file not saved").slice(0, 300));
+    }
+}
+// the jobs' results are no longer needed once saved: the state stays small
+for (const job of state.jobs) if (job.saved && (!job.needMockup || job.mockupSaved)) job.result = null;
+state.toSave = [];
+return [{ json: state }];`);
+connect("Save to Drive", "Round saved");
+connect("Any file?", "Round saved", 1);
+
+ifNode("All jobs done?", [7700, -40], "={{ $json.finished }}");
+connect("Round saved", "All jobs done?");
+connect("All jobs done?", "Job round", 1);
 
 // ---- 5. release the lock, start again if work was done -------------------------------------------------
 code("Run summary", [4400, -220], `// Files saved in this run, and the jobs that failed (retried by the next run)
-const items = $input.all().map((item) => item.json);
-const saved = items.filter((j) => j.id && j.name).map((j) => j.name);
-const failed = items.filter((j) => j.skip).map((j) => ({ folder: j.folder || "", job: j.job || "", reason: j.reason || "" }));
-// a job the pbn API did not accept, or a file Drive refused, comes back as an error item
-const errors = items.filter((j) => !j.skip && !(j.id && j.name)).map((j) => (j.error && (j.error.message || j.error)) || "pbn job not accepted");
-return [{ json: { saved: saved.length, files: saved, failed, errors } }];`);
-connect("Loop over jobs", "Run summary", 0);
+const state = $('Round saved').first().json;
+const failed = state.jobs.filter((j) => j.status === "failed").map((j) => ({ folder: j.folder, job: j.size + " " + j.colors + " colors", reason: j.error }));
+return [{ json: { saved: state.saved.length, files: state.saved, failed, errors: state.errors } }];`, { executeOnce: true });
+connect("All jobs done?", "Run summary", 0);
 
-code("Locks to delete", [4620, -220], `// My lock, plus locks left behind by crashed runs
-const featured = $('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0;
-const saved = ($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + featured;
-const ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];
-return ids.map((id) => ({ json: { id, saved } }));`, { executeOnce: true });
 // ---- one Telegram message for the whole chain: each run that made something adds it to a tally (the description
 // of the Drive file "_print-report.json" in Artwork Agent), and the run that finds nothing left sends it once ----
 driveList("Find print report", [4620, -420], "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_print-report.json' and trashed = false", "files(id,name,description)");
 connect("Run summary", "Find print report");
+
+// a run whose jobs all failed (nothing saved) leaves the backoff marker "_failed-print": the Queue Watchdog then waits
+// 30 minutes before starting the Print Agent again, instead of retrying the same failing jobs every 5 minutes
+ifNode("No progress?", [4620, -640], "={{ $('Run summary').first().json.saved === 0 && (($('Run summary').first().json.failed || []).length + ($('Run summary').first().json.errors || []).length) > 0 }}");
+connect("Run summary", "No progress?");
+driveList("Find failure marker", [4840, -640], "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_failed-print' and trashed = false", "files(id)");
+connect("No progress?", "Find failure marker", 0);
+node("Mark the failure", "n8n-nodes-base.httpRequest", 4.2, [5060, -640], {
+    method: "={{ ($json.files || []).length ? 'PATCH' : 'POST' }}",
+    url: `={{ '${driveFiles}' + (($json.files || []).length ? '/' + $json.files[0].id : '') + '?supportsAllDrives=true&fields=id' }}`,
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify(($json.files || []).length ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-print', mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Find failure marker", "Mark the failure");
 connect("Anything to do?", "Find print report", 1);
 
 code("Print report", [4840, -420], `// This run's successful generations, added to the tally; sent once when a run finds nothing left to do
@@ -532,26 +580,8 @@ connect("Drop the tally?", "Drop print report", 0);
 connect("Drop print report", "Locks to delete");
 connect("Drop the tally?", "Locks to delete", 1);
 
-deleteFile("Release lock", [4840, -220], "$json.id");
-connect("Locks to delete", "Release lock");
-
-code("More to do?", [5060, -220], `// Folders may have arrived while this run worked: start a new run (which finds nothing and stops if all is done)
-const saved = $('Locks to delete').first().json.saved;
-return [{ json: { again: saved > 0, saved } }];`, { executeOnce: true });
-connect("Release lock", "More to do?");
-
-
-
-ifNode("Start again?", [5280, -220], "={{ $json.again }}");
-connect("More to do?", "Start again?");
-
-node("Start next run", "n8n-nodes-base.executeWorkflow", 1.2, [5500, -300], {
-    source: "database",
-    workflowId: { __rl: true, mode: "id", value: "={{ $workflow.id }}" },
-    mode: "once",
-    options: { waitForSubWorkflow: false },
-}, { executeOnce: true, onError: "continueRegularOutput" });
-connect("Start again?", "Start next run", 0);
+// featured images count as work done too: the run starts again and the Shopify Uploader goes
+lock.release([4840, -220], "(($('Run summary').isExecuted ? $('Run summary').first().json.saved : 0) + ($('Save featured image').isExecuted ? $('Save featured image').all().filter((item) => item.json.id).length : 0)) > 0");
 
 // New mockups were saved: the Shopify Uploader turns the finished folders into draft products, without waiting
 node("Run Shopify Uploader", "n8n-nodes-base.executeWorkflow", 1.2, [5500, -120], {

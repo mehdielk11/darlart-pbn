@@ -13,7 +13,7 @@
  */
 const fs = require("fs");
 const path = require("path");
-const { queueLock } = require("./lib/n8n-queue-lock");
+const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -57,13 +57,15 @@ const driveList = (name, position, q) => node(name, "n8n-nodes-base.httpRequest"
         parameters: [
             { name: "q", value: q },
             { name: "fields", value: "files(id,name,mimeType)" },
+            // newest first: a listing holds 1000 files at most, and the newest are the ones still to do
+            { name: "orderBy", value: "createdTime desc" },
             { name: "pageSize", value: "1000" },
             { name: "supportsAllDrives", value: "true" },
             { name: "includeItemsFromAllDrives", value: "true" },
         ],
     },
     options: { timeout: 30000 },
-});
+}, RETRY);
 
 // ---- 1. triggers, settings --------------------------------------------------------------------
 node("Run now", "n8n-nodes-base.manualTrigger", 1, [0, 0], {});

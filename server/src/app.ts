@@ -10,6 +10,10 @@
  * POST /v1/webp                    a WebP copy of an image, for Shopify (WebP as base64)
  * GET  /v1/palettes                available palettes
  * GET  /health                     liveness check (no API key)
+ *
+ * The heavy image requests (analyze, recolor, featured, webp) go through one gate: at most IMAGE_CONCURRENCY (1) run
+ * at a time, the others wait their turn, so a burst of calls cannot exhaust the memory of a small server. Generation
+ * jobs are limited separately by CONCURRENCY (1).
  */
 import { timingSafeEqual } from "crypto";
 import fs from "fs";
@@ -21,6 +25,7 @@ import { parseCanvasSize, RelativeBox, resolveCanvasSize } from "../../src/core/
 import { PAPER_SIZES, PaperSize } from "../../src/core/pdf";
 import { Difficulty, DIFFICULTIES } from "../../src/core/settings";
 import { config } from "./config";
+import { createGate } from "./gate";
 import { OUTPUT_FILES } from "./generate";
 import { assertReadableImage, attentionCrop, CROP_MODES, CropMode, loadForAnalysis } from "./image";
 import { JobManager, JobOptions, publicJob } from "./jobs";
@@ -248,7 +253,8 @@ export async function buildApp(jobs: JobManager) {
         reply.code(statusCode).send({ error: statusCode >= 500 ? "Internal error" : error.message, details: error.details });
     });
 
-    app.get("/health", async () => ({ ok: true, ...jobs.stats() }));
+    const imageGate = createGate(config.imageConcurrency);
+    app.get("/health", async () => ({ ok: true, ...jobs.stats(), images: imageGate.stats() }));
 
     app.get("/v1/palettes", async () => ({ default: config.defaultPalette, palettes: [NO_PALETTE, ...listPalettes()] }));
 
@@ -295,137 +301,145 @@ export async function buildApp(jobs: JobManager) {
 
     app.post("/v1/analyze", async (request) => {
         const { fields, image } = await readInput(request);
-        const resolved = await resolveImage(fields, image);
-        const analysis = await loadForAnalysis(resolved.image);
-        const suggestion = suggestDifficulty(analysis.image);
+        return imageGate.run(async () => {
+            const resolved = await resolveImage(fields, image);
+            const analysis = await loadForAnalysis(resolved.image);
+            const suggestion = suggestDifficulty(analysis.image);
 
-        let cropSuggestion: object | undefined;
-        const canvasSize = asString(fields.canvasSize);
-        if (canvasSize) {
-            if (!parseCanvasSize(canvasSize)) {
-                throw new HttpError(400, "Invalid request", ["canvasSize must look like \"40x50\""]);
+            let cropSuggestion: object | undefined;
+            const canvasSize = asString(fields.canvasSize);
+            if (canvasSize) {
+                if (!parseCanvasSize(canvasSize)) {
+                    throw new HttpError(400, "Invalid request", ["canvasSize must look like \"40x50\""]);
+                }
+                const orientation = (asString(fields.orientation) || "auto").toLowerCase() as "auto" | "portrait" | "landscape";
+                const canvas = resolveCanvasSize(canvasSize, ["portrait", "landscape"].includes(orientation) ? orientation : "auto", analysis.image.width, analysis.image.height);
+                const box = await attentionCrop(analysis.raw, analysis.image.width, analysis.image.height, canvas.aspect);
+                cropSuggestion = {
+                    canvas,
+                    method: "attention",
+                    crop: {
+                        x: box.left / analysis.image.width,
+                        y: box.top / analysis.image.height,
+                        w: box.width / analysis.image.width,
+                        h: box.height / analysis.image.height,
+                    },
+                };
             }
-            const orientation = (asString(fields.orientation) || "auto").toLowerCase() as "auto" | "portrait" | "landscape";
-            const canvas = resolveCanvasSize(canvasSize, ["portrait", "landscape"].includes(orientation) ? orientation : "auto", analysis.image.width, analysis.image.height);
-            const box = await attentionCrop(analysis.raw, analysis.image.width, analysis.image.height, canvas.aspect);
-            cropSuggestion = {
-                canvas,
-                method: "attention",
-                crop: {
-                    x: box.left / analysis.image.width,
-                    y: box.top / analysis.image.height,
-                    w: box.width / analysis.image.width,
-                    h: box.height / analysis.image.height,
-                },
-            };
-        }
 
-        return {
-            width: resolved.width,
-            height: resolved.height,
-            suggestedDifficulty: suggestion.difficulty,
-            complexity: suggestion.metrics,
-            cropSuggestion,
-        };
+            return {
+                width: resolved.width,
+                height: resolved.height,
+                suggestedDifficulty: suggestion.difficulty,
+                complexity: suggestion.metrics,
+                cropSuggestion,
+            };
+        });
     });
 
     app.post("/v1/recolor", async (request) => {
         const { fields, image } = await readInput(request);
-        const errors: string[] = [];
-        const colors = Number(asString(fields.colors) || "48");
-        if (!Number.isInteger(colors) || colors < 2 || colors > 64) {
-            errors.push("colors must be an integer between 2 and 64");
-        }
-        const maxSide = Number(asString(fields.maxSide) || "2048");
-        if (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096) {
-            errors.push("maxSide must be an integer between 64 and 4096");
-        }
-        const smooth = Number(asString(fields.smooth) || "3");
-        if (![0, 1, 3, 5].includes(smooth)) {
-            errors.push("smooth must be 0, 1, 3 or 5");
-        }
-        const paletteId = asString(fields.palette) || config.defaultPalette;
-        if (paletteId === NO_PALETTE || !isValidPaletteId(paletteId)) {
-            errors.push("palette must name a palette from /v1/palettes");
-        }
-        if (errors.length) {
-            throw new HttpError(400, "Invalid request", errors);
-        }
-        let palette: string;
-        try {
-            palette = loadPalette(paletteId);
-        } catch (e) {
-            throw new HttpError(400, e instanceof Error ? e.message : String(e));
-        }
-        const exclude = (asString(fields.exclude) || "").split(/[\s,;]+/).filter((code) => code);
-        const canvasSize = asString(fields.canvasSize);
-        if (canvasSize && !parseCanvasSize(canvasSize)) {
-            throw new HttpError(400, "Invalid request", ["canvasSize must look like \"60x75\""]);
-        }
-        const orientation = (asString(fields.orientation) || "auto").toLowerCase() as "auto" | "portrait" | "landscape";
-        if (!["auto", "portrait", "landscape"].includes(orientation)) {
-            throw new HttpError(400, "Invalid request", ["orientation must be auto, portrait or landscape"]);
-        }
-        const resolved = await resolveImage(fields, image);
-        let result;
-        try {
-            result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth, canvasSize, orientation });
-        } catch (e) {
-            throw new HttpError(422, e instanceof Error ? e.message : String(e));
-        }
-        return {
-            palette: paletteId,
-            requestedColors: colors,
-            colorCount: result.colors.length,
-            width: result.width,
-            height: result.height,
-            colors: result.colors,
-            image: result.png.toString("base64"),
-        };
+        return imageGate.run(async () => {
+            const errors: string[] = [];
+            const colors = Number(asString(fields.colors) || "48");
+            if (!Number.isInteger(colors) || colors < 2 || colors > 64) {
+                errors.push("colors must be an integer between 2 and 64");
+            }
+            const maxSide = Number(asString(fields.maxSide) || "2048");
+            if (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096) {
+                errors.push("maxSide must be an integer between 64 and 4096");
+            }
+            const smooth = Number(asString(fields.smooth) || "3");
+            if (![0, 1, 3, 5].includes(smooth)) {
+                errors.push("smooth must be 0, 1, 3 or 5");
+            }
+            const paletteId = asString(fields.palette) || config.defaultPalette;
+            if (paletteId === NO_PALETTE || !isValidPaletteId(paletteId)) {
+                errors.push("palette must name a palette from /v1/palettes");
+            }
+            if (errors.length) {
+                throw new HttpError(400, "Invalid request", errors);
+            }
+            let palette: string;
+            try {
+                palette = loadPalette(paletteId);
+            } catch (e) {
+                throw new HttpError(400, e instanceof Error ? e.message : String(e));
+            }
+            const exclude = (asString(fields.exclude) || "").split(/[\s,;]+/).filter((code) => code);
+            const canvasSize = asString(fields.canvasSize);
+            if (canvasSize && !parseCanvasSize(canvasSize)) {
+                throw new HttpError(400, "Invalid request", ["canvasSize must look like \"60x75\""]);
+            }
+            const orientation = (asString(fields.orientation) || "auto").toLowerCase() as "auto" | "portrait" | "landscape";
+            if (!["auto", "portrait", "landscape"].includes(orientation)) {
+                throw new HttpError(400, "Invalid request", ["orientation must be auto, portrait or landscape"]);
+            }
+            const resolved = await resolveImage(fields, image);
+            let result;
+            try {
+                result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth, canvasSize, orientation });
+            } catch (e) {
+                throw new HttpError(422, e instanceof Error ? e.message : String(e));
+            }
+            return {
+                palette: paletteId,
+                requestedColors: colors,
+                colorCount: result.colors.length,
+                width: result.width,
+                height: result.height,
+                colors: result.colors,
+                image: result.png.toString("base64"),
+            };
+        });
     });
 
     // The artwork (multipart "image" or "imageUrl") placed on the portrait or landscape canvas photo, whichever
     // matches its shape (a square artwork is portrait). Optional "size": the square image's side, 800 to 3000.
     app.post("/v1/featured", async (request) => {
         const { fields, image } = await readInput(request);
-        const size = Number(asString(fields.size) || "1600");
-        if (!Number.isInteger(size) || size < 800 || size > 3000) {
-            throw new HttpError(400, "Invalid request", ["size must be an integer between 800 and 3000"]);
-        }
-        const resolved = await resolveImage(fields, image);
-        let result;
-        try {
-            result = await buildFeatured(resolved.image, size);
-        } catch (e) {
-            throw new HttpError(422, e instanceof Error ? e.message : String(e));
-        }
-        return { template: result.template.name, width: size, height: size, contentType: "image/png", image: result.png.toString("base64") };
+        return imageGate.run(async () => {
+            const size = Number(asString(fields.size) || "1600");
+            if (!Number.isInteger(size) || size < 800 || size > 3000) {
+                throw new HttpError(400, "Invalid request", ["size must be an integer between 800 and 3000"]);
+            }
+            const resolved = await resolveImage(fields, image);
+            let result;
+            try {
+                result = await buildFeatured(resolved.image, size);
+            } catch (e) {
+                throw new HttpError(422, e instanceof Error ? e.message : String(e));
+            }
+            return { template: result.template.name, width: size, height: size, contentType: "image/png", image: result.png.toString("base64") };
+        });
     });
 
     // A WebP copy of an image (multipart "image" or "imageUrl"). Optional "quality" (50-100) and "maxSide" (64-4096).
     app.post("/v1/webp", async (request) => {
         const { fields, image } = await readInput(request);
-        const errors: string[] = [];
-        const quality = Number(asString(fields.quality) || String(WEBP_QUALITY));
-        if (!Number.isInteger(quality) || quality < 50 || quality > 100) {
-            errors.push("quality must be an integer between 50 and 100");
-        }
-        const maxSideText = asString(fields.maxSide);
-        const maxSide = maxSideText ? Number(maxSideText) : undefined;
-        if (maxSide !== undefined && (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096)) {
-            errors.push("maxSide must be an integer between 64 and 4096");
-        }
-        if (errors.length) {
-            throw new HttpError(400, "Invalid request", errors);
-        }
-        const resolved = await resolveImage(fields, image);
-        let result;
-        try {
-            result = await toWebp(resolved.image, quality, maxSide);
-        } catch (e) {
-            throw new HttpError(422, e instanceof Error ? e.message : String(e));
-        }
-        return { width: result.width, height: result.height, bytes: result.webp.length, sourceBytes: resolved.image.length, contentType: "image/webp", image: result.webp.toString("base64") };
+        return imageGate.run(async () => {
+            const errors: string[] = [];
+            const quality = Number(asString(fields.quality) || String(WEBP_QUALITY));
+            if (!Number.isInteger(quality) || quality < 50 || quality > 100) {
+                errors.push("quality must be an integer between 50 and 100");
+            }
+            const maxSideText = asString(fields.maxSide);
+            const maxSide = maxSideText ? Number(maxSideText) : undefined;
+            if (maxSide !== undefined && (!Number.isInteger(maxSide) || maxSide < 64 || maxSide > 4096)) {
+                errors.push("maxSide must be an integer between 64 and 4096");
+            }
+            if (errors.length) {
+                throw new HttpError(400, "Invalid request", errors);
+            }
+            const resolved = await resolveImage(fields, image);
+            let result;
+            try {
+                result = await toWebp(resolved.image, quality, maxSide);
+            } catch (e) {
+                throw new HttpError(422, e instanceof Error ? e.message : String(e));
+            }
+            return { width: result.width, height: result.height, bytes: result.webp.length, sourceBytes: resolved.image.length, contentType: "image/webp", image: result.webp.toString("base64") };
+        });
     });
 
     return app;

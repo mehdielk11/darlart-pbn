@@ -1,4 +1,3 @@
-import os from "os";
 import path from "path";
 
 const int = (value: string | undefined, fallback: number) => {
@@ -19,7 +18,10 @@ export const config = {
     palettesDir: process.env.PALETTES_DIR || path.join(__dirname, "../../../palettes"),
     mockupsDir: process.env.MOCKUPS_DIR || path.join(__dirname, "../../../../mockups"),
     defaultPalette: process.env.DEFAULT_PALETTE || "darlart-v3",
-    concurrency: Math.max(1, int(process.env.CONCURRENCY, Math.max(1, os.cpus().length - 1))),
+    /** Generation jobs run side by side; each one can take hundreds of MB, so 1 unless the server has RAM to spare */
+    concurrency: Math.max(1, int(process.env.CONCURRENCY, 1)),
+    /** Heavy image requests (analyze, recolor, featured, webp) run side by side; the others wait their turn */
+    imageConcurrency: Math.max(1, int(process.env.IMAGE_CONCURRENCY, 1)),
     jobTimeoutMs: int(process.env.JOB_TIMEOUT_MS, 10 * 60 * 1000),
     retentionDays: int(process.env.RETENTION_DAYS, 14),
     maxImageBytes: int(process.env.MAX_IMAGE_BYTES, 30 * 1024 * 1024),

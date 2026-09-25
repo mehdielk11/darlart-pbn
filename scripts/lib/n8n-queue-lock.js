@@ -8,13 +8,24 @@
  *       did real work if it is still busy after that, and it starts itself again when it is done)
  *   release(): my lock + stale locks deleted, then the workflow starts itself again when the run did something
  *
- * A lock not refreshed for staleMinutes belongs to a crashed run and is removed; heartbeat() refreshes it. The
- * "Darl'Art Error Handler" workflow deletes the lock of a failed run at once (the lock name ends with its execution id).
+ * A lock not refreshed for staleMinutes belongs to a crashed run and is removed; heartbeat() refreshes it, so a run
+ * may last as long as it needs: staleMinutes only has to cover the longest step between two heartbeats. Each lock
+ * carries its own stale time in its Drive description ("staleMinutes=20"), read by every run and by the Queue Watchdog.
+ * The "Darl'Art Error Handler" workflow deletes the lock of a failed run at once (the lock name ends with its execution id).
+ *
+ * staleMinutes is a number, or a JavaScript expression (e.g. "Number($('Settings').first().json.lockStaleMinutes)").
  */
 const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 const googleAuth = { authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api" };
+// a read that failed on a network blip or a Drive 5xx is tried again before the run fails
+const RETRY = { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000 };
+// fresh = refreshed within the lock's own stale time (its description), or within `own` for an older lock without one
+const FRESH_CODE = (own) => `const OWN = ${own};
+const staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || ""); return (m ? Number(m[1]) : OWN) * 60000; };
+const isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);`;
 
 function queueLock({ node, connect }, { prefix, folderExpression, staleMinutes, retries = 3, retrySeconds = 30, x = 0, y = 0 }) {
+    const stale = String(staleMinutes);
     const lockQuery = `='{{ ${folderExpression} }}' in parents and name contains '${prefix}' and trashed = false`;
     const list = (name, position) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
         url: DRIVE_FILES,
@@ -23,14 +34,14 @@ function queueLock({ node, connect }, { prefix, folderExpression, staleMinutes, 
         queryParameters: {
             parameters: [
                 { name: "q", value: lockQuery },
-                { name: "fields", value: "files(id,name,createdTime,modifiedTime)" },
+                { name: "fields", value: "files(id,name,description,createdTime,modifiedTime)" },
                 { name: "pageSize", value: "1000" },
                 { name: "supportsAllDrives", value: "true" },
                 { name: "includeItemsFromAllDrives", value: "true" },
             ],
         },
         options: { timeout: 30000 },
-    });
+    }, RETRY);
     const ifTrue = (name, position, left, extra) => node(name, "n8n-nodes-base.if", 2, position, {
         conditions: {
             options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
@@ -48,10 +59,10 @@ function queueLock({ node, connect }, { prefix, folderExpression, staleMinutes, 
     }, { onError: "continueRegularOutput" });
 
     list("List locks", [x, y]);
-    code("Lock state", [x + 220, y], `// Another run holds a fresh lock (refreshed less than ${staleMinutes} min ago)
-const limit = Date.now() - ${staleMinutes} * 60000;
+    code("Lock state", [x + 220, y], `// Another run holds a fresh lock (refreshed within its stale time, kept in its description)
+${FRESH_CODE(stale)}
 const locks = $input.first().json.files || [];
-const fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);
+const fresh = locks.filter(isFresh);
 const stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);
 return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
     connect("List locks", "Lock state");
@@ -64,7 +75,7 @@ return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
         ...googleAuth,
         sendBody: true,
         specifyBody: "json",
-        jsonBody: `={{ JSON.stringify({ name: '${prefix}-' + $execution.id, mimeType: 'text/plain', parents: [${folderExpression}] }) }}`,
+        jsonBody: `={{ JSON.stringify({ name: '${prefix}-' + $execution.id, mimeType: 'text/plain', parents: [${folderExpression}], description: 'staleMinutes=' + (${stale}) }) }}`,
         options: { timeout: 30000 },
     });
     connect("Lock free?", "Create lock", 0);
@@ -72,9 +83,9 @@ return [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];`);
     connect("Create lock", "List locks again");
     code("Won the lock?", [x + 1100, y - 80], `// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back
 const mine = $('Create lock').last().json;
-const limit = Date.now() - ${staleMinutes} * 60000;
+${FRESH_CODE(stale)}
 const fresh = ($input.first().json.files || [])
-    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)
+    .filter((l) => l.id === mine.id || isFresh(l))
     .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));
 return [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];`);
     connect("List locks again", "Won the lock?");
@@ -132,4 +143,4 @@ return ids.map((id) => ({ json: { id, processed: !!processed } }));`, { executeO
     };
 }
 
-module.exports = { queueLock };
+module.exports = { queueLock, RETRY };

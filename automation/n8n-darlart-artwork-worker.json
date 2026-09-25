@@ -136,7 +136,7 @@
             {
               "id": "set16",
               "name": "lockStaleMinutes",
-              "value": 45,
+              "value": 20,
               "type": "number"
             },
             {
@@ -179,7 +179,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -198,7 +198,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000005-0000-4000-8000-000000000000",
@@ -210,7 +213,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// Another worker holds a fresh lock (less than lockStaleMinutes old): it also paints the references just queued\nconst settings = $('Settings').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter((l) => new Date(l.modifiedTime || l.createdTime).getTime() > limit);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+        "jsCode": "// Another run holds a fresh lock (refreshed within its stale time, kept in its description)\nconst OWN = Number($('Settings').first().json.lockStaleMinutes);\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter(isFresh);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
       }
     },
     {
@@ -248,17 +251,6 @@
     },
     {
       "id": "ab000007-0000-4000-8000-000000000000",
-      "name": "Busy: another run is working",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1760,
-        360
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "ab000008-0000-4000-8000-000000000000",
       "name": "Create lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -273,14 +265,14 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_artwork-worker.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.queueFolderId] }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_artwork-worker.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.queueFolderId], description: 'staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes)) }) }}",
         "options": {
           "timeout": 30000
         }
       }
     },
     {
-      "id": "ab000009-0000-4000-8000-000000000000",
+      "id": "ab000008-0000-4000-8000-000000000000",
       "name": "List locks again",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -301,7 +293,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,createdTime,modifiedTime)"
+              "value": "files(id,name,description,createdTime,modifiedTime)"
             },
             {
               "name": "pageSize",
@@ -320,10 +312,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000010-0000-4000-8000-000000000000",
+      "id": "ab000009-0000-4000-8000-000000000000",
       "name": "Won the lock?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -332,11 +327,11 @@
         120
       ],
       "parameters": {
-        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst settings = $('Settings').first().json;\nconst mine = $('Create lock').first().json;\nconst limit = Date.now() - Number(settings.lockStaleMinutes) * 60000;\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || new Date(l.modifiedTime || l.createdTime).getTime() > limit)\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst OWN = Number($('Settings').first().json.lockStaleMinutes);\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || isFresh(l))\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
       }
     },
     {
-      "id": "ab000011-0000-4000-8000-000000000000",
+      "id": "ab000010-0000-4000-8000-000000000000",
       "name": "Lock won?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -369,13 +364,13 @@
       }
     },
     {
-      "id": "ab000012-0000-4000-8000-000000000000",
+      "id": "ab000011-0000-4000-8000-000000000000",
       "name": "Step back (drop my lock)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         1980,
-        280
+        260
       ],
       "parameters": {
         "method": "DELETE",
@@ -389,26 +384,26 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000013-0000-4000-8000-000000000000",
+      "id": "ab000012-0000-4000-8000-000000000000",
       "name": "Busy: try again?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1320,
-        440
+        1100,
+        380
       ],
       "parameters": {
         "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
       }
     },
     {
-      "id": "ab000014-0000-4000-8000-000000000000",
+      "id": "ab000013-0000-4000-8000-000000000000",
       "name": "Retry?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1540,
-        440
+        1320,
+        380
       ],
       "parameters": {
         "conditions": {
@@ -435,19 +430,30 @@
       }
     },
     {
-      "id": "ab000015-0000-4000-8000-000000000000",
+      "id": "ab000014-0000-4000-8000-000000000000",
       "name": "Wait before retry",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        1760,
-        520
+        1540,
+        480
       ],
       "parameters": {
         "resume": "timeInterval",
         "amount": 30,
         "unit": "seconds"
       }
+    },
+    {
+      "id": "ab000015-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        320
+      ],
+      "parameters": {}
     },
     {
       "id": "ab000016-0000-4000-8000-000000000000",
@@ -474,6 +480,10 @@
               "value": "files(id,name,mimeType)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -490,7 +500,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000017-0000-4000-8000-000000000000",
@@ -604,7 +617,7 @@
         -40
       ],
       "parameters": {
-        "jsCode": "// One more try for this reference: after maxTries runs that stopped midway, it is set aside as failed\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst manifest = next.manifestId && $('Download manifest').isExecuted ? $('Download manifest').first().json : null;\nlet tries = 1;\nlet originalName = next.queueName;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) {\n        entry.tries = (Number(entry.tries) || 0) + 1;\n        tries = entry.tries;\n        originalName = entry.originalName || originalName;\n    }\n}\nconst out = { json: { tries, giveUp: tries > Number(settings.maxTries), originalName, manifest, hasManifest: !!manifest } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
+        "jsCode": "// One more try for this reference: after maxTries runs that stopped midway, it is set aside as failed.\n// A reference whose result is already recorded (the run stopped after painting it, before moving it) is not painted\n// again: this run only finishes its move.\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst manifest = next.manifestId && $('Download manifest').isExecuted ? $('Download manifest').first().json : null;\nlet tries = 1;\nlet originalName = next.queueName;\nlet finished = null;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) {\n        originalName = entry.originalName || originalName;\n        if (entry.status === \"done\" || entry.status === \"failed\") {\n            finished = { status: entry.status, folder: entry.folder || \"\", folderId: entry.folderId || \"\", referenceName: entry.referenceName || \"\", reason: entry.reason || \"\" };\n            tries = Number(entry.tries) || 1;\n        } else {\n            entry.tries = (Number(entry.tries) || 0) + 1;\n            tries = entry.tries;\n        }\n    }\n}\nconst out = { json: { tries, giveUp: !finished && tries > Number(settings.maxTries), originalName, manifest, hasManifest: !!manifest && !finished, finished } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
       }
     },
     {
@@ -660,7 +673,10 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000024-0000-4000-8000-000000000000",
@@ -717,10 +733,59 @@
           },
           "timeout": 60000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000026-0000-4000-8000-000000000000",
+      "name": "Result recorded before?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3850,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Resultrecordedbefore",
+              "leftValue": "={{ !!$('Start attempt').first().json.finished }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000027-0000-4000-8000-000000000000",
+      "name": "Result: recorded before",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3850,
+        -480
+      ],
+      "parameters": {
+        "jsCode": "// the result from the manifest: the reference is only moved out of the queue\nconst f = $('Start attempt').first().json.finished;\nreturn [{ json: { ...f, recovered: true } }];"
+      }
+    },
+    {
+      "id": "ab000028-0000-4000-8000-000000000000",
       "name": "Result: stopped too often",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -733,7 +798,31 @@
       }
     },
     {
-      "id": "ab000027-0000-4000-8000-000000000000",
+      "id": "ab000029-0000-4000-8000-000000000000",
+      "name": "Heartbeat (refresh lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        -700
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Won the lock?').first().json.lockId }}?supportsAllDrives=true&fields=id,modifiedTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ modifiedTime: $now.toUTC().toISO() }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "id": "ab000030-0000-4000-8000-000000000000",
       "name": "Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -746,7 +835,7 @@
       }
     },
     {
-      "id": "ab000028-0000-4000-8000-000000000000",
+      "id": "ab000031-0000-4000-8000-000000000000",
       "name": "Build image prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -759,7 +848,7 @@
       }
     },
     {
-      "id": "ab000029-0000-4000-8000-000000000000",
+      "id": "ab000032-0000-4000-8000-000000000000",
       "name": "Measure reference",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -784,12 +873,15 @@
           ]
         },
         "options": {
-          "timeout": 120000
+          "timeout": 300000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000030-0000-4000-8000-000000000000",
+      "id": "ab000033-0000-4000-8000-000000000000",
       "name": "Generate ART",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -840,10 +932,13 @@
         "options": {
           "timeout": 300000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000031-0000-4000-8000-000000000000",
+      "id": "ab000034-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -862,7 +957,7 @@
       }
     },
     {
-      "id": "ab000032-0000-4000-8000-000000000000",
+      "id": "ab000035-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -881,7 +976,7 @@
       }
     },
     {
-      "id": "ab000033-0000-4000-8000-000000000000",
+      "id": "ab000036-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -899,7 +994,7 @@
       }
     },
     {
-      "id": "ab000034-0000-4000-8000-000000000000",
+      "id": "ab000037-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -913,7 +1008,7 @@
       }
     },
     {
-      "id": "ab000035-0000-4000-8000-000000000000",
+      "id": "ab000038-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -946,7 +1041,7 @@
       }
     },
     {
-      "id": "ab000036-0000-4000-8000-000000000000",
+      "id": "ab000039-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -959,7 +1054,7 @@
       }
     },
     {
-      "id": "ab000037-0000-4000-8000-000000000000",
+      "id": "ab000040-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -992,7 +1087,7 @@
       }
     },
     {
-      "id": "ab000038-0000-4000-8000-000000000000",
+      "id": "ab000041-0000-4000-8000-000000000000",
       "name": "Result: not painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1005,7 +1100,7 @@
       }
     },
     {
-      "id": "ab000039-0000-4000-8000-000000000000",
+      "id": "ab000042-0000-4000-8000-000000000000",
       "name": "Approved artwork",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1018,7 +1113,7 @@
       }
     },
     {
-      "id": "ab000040-0000-4000-8000-000000000000",
+      "id": "ab000043-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1067,12 +1162,15 @@
           ]
         },
         "options": {
-          "timeout": 180000
+          "timeout": 300000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000041-0000-4000-8000-000000000000",
+      "id": "ab000044-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1085,7 +1183,7 @@
       }
     },
     {
-      "id": "ab000042-0000-4000-8000-000000000000",
+      "id": "ab000045-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -1104,7 +1202,7 @@
       }
     },
     {
-      "id": "ab000043-0000-4000-8000-000000000000",
+      "id": "ab000046-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1128,6 +1226,10 @@
               "value": "files(id,name)"
             },
             {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
               "name": "pageSize",
               "value": "1000"
             },
@@ -1144,10 +1246,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000044-0000-4000-8000-000000000000",
+      "id": "ab000047-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1160,7 +1265,7 @@
       }
     },
     {
-      "id": "ab000045-0000-4000-8000-000000000000",
+      "id": "ab000048-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1182,10 +1287,13 @@
           "value": "={{ $('Settings').first().json.agentFolderId }}"
         },
         "options": {}
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000046-0000-4000-8000-000000000000",
+      "id": "ab000049-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1194,11 +1302,11 @@
         -320
       ],
       "parameters": {
-        "jsCode": "// Artwork Ref + Artwork Gen (+ the palette JSON), one item per file\nconst folderId = $input.first().json.id;\nconst prepared = $('Prepare').first();\nconst paletteJson = $('Check palette').first().json.paletteJson;\nreturn [\n    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },\n    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },\n    {\n        json: { folderId, name: prepared.json.paletteName },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: prepared.json.paletteName } },\n    },\n];"
+        "jsCode": "// Artwork Ref + the palette JSON + Artwork Gen, one item per file. The artwork goes last: a folder only counts\n// for Titling, Print and the Watchdog once it has its artwork, so a run that stops midway leaves no half folder behind.\nconst folderId = $input.first().json.id;\nconst prepared = $('Prepare').first();\nconst paletteJson = $('Check palette').first().json.paletteJson;\nreturn [\n    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },\n    {\n        json: { folderId, name: prepared.json.paletteName },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: prepared.json.paletteName } },\n    },\n    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },\n];"
       }
     },
     {
-      "id": "ab000047-0000-4000-8000-000000000000",
+      "id": "ab000050-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1220,10 +1328,13 @@
         },
         "inputDataFieldName": "data",
         "options": {}
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000048-0000-4000-8000-000000000000",
+      "id": "ab000051-0000-4000-8000-000000000000",
       "name": "Run Titling Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1247,7 +1358,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000049-0000-4000-8000-000000000000",
+      "id": "ab000052-0000-4000-8000-000000000000",
       "name": "Run Print Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1271,7 +1382,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000050-0000-4000-8000-000000000000",
+      "id": "ab000053-0000-4000-8000-000000000000",
       "name": "Result: painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1285,7 +1396,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000051-0000-4000-8000-000000000000",
+      "id": "ab000054-0000-4000-8000-000000000000",
       "name": "Update entry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1294,11 +1405,11 @@
         0
       ],
       "parameters": {
-        "jsCode": "// The manifest records what became of the reference; the batch is painted once nothing of it is queued\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst result = $input.first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst now = $now.setZone(settings.timezone).toISO();\nlet painted = false;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || \"\", folder: result.folder || \"\", folderId: result.folderId || \"\", finishedAt: now });\n    painted = manifest.files.every((e) => e.status !== \"queued\");\n    if (painted) Object.assign(manifest, { paintedAt: now, notified: false });\n}\n// a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is\nconst move = result.status === \"done\"\n    ? { to: settings.refFolderId, name: result.referenceName }\n    : { to: settings.failedFolderId, name: next.queueName };\nconst out = { json: { status: result.status, folder: result.folder || \"\", painted, hasManifest: !!manifest, move, manifest } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
+        "jsCode": "// The manifest records what became of the reference; the batch is painted once nothing of it is queued\nconst settings = $('Settings').first().json;\nconst next = $('Next reference').first().json;\nconst result = $input.first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst now = $now.setZone(settings.timezone).toISO();\nlet painted = false;\nif (manifest && Array.isArray(manifest.files)) {\n    const entry = manifest.files.find((e) => e.queueName === next.queueName);\n    if (entry) Object.assign(entry, { status: result.status, reason: result.reason || \"\", folder: result.folder || \"\", folderId: result.folderId || \"\", referenceName: result.referenceName || \"\", finishedAt: result.recovered && entry.finishedAt ? entry.finishedAt : now });\n    painted = manifest.files.every((e) => e.status !== \"queued\");\n    if (painted) Object.assign(manifest, { paintedAt: now, notified: false });\n}\n// a painted reference goes to Artwork Ref under its new name, a failed one to Artwork Ref/Failed as it is\nconst move = result.status === \"done\"\n    ? { to: settings.refFolderId, name: result.referenceName || next.queueName }\n    : { to: settings.failedFolderId, name: next.queueName };\nconst out = { json: { status: result.status, folder: result.folder || \"\", folderId: result.folderId || \"\", reason: result.reason || \"\", recovered: !!result.recovered, painted, hasManifest: !!manifest, move, manifest } };\nif (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } };\nreturn [out];"
       }
     },
     {
-      "id": "ab000052-0000-4000-8000-000000000000",
+      "id": "ab000055-0000-4000-8000-000000000000",
       "name": "Telegram on?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1331,7 +1442,7 @@
       }
     },
     {
-      "id": "ab000053-0000-4000-8000-000000000000",
+      "id": "ab000056-0000-4000-8000-000000000000",
       "name": "Artwork message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1340,11 +1451,11 @@
         360
       ],
       "parameters": {
-        "jsCode": "// The artwork (a photo with its product number) or, when it could not be painted, the reason\nconst next = $('Next reference').first().json;\nconst entryResult = $('Update entry').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst originalName = $('Start attempt').first().json.originalName;\nlet position = \"\";\nif (manifest && Array.isArray(manifest.files)) {\n    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);\n    if (i >= 0) position = \", \" + (i + 1) + \" of \" + manifest.files.length;\n}\nconst from = \"From: \" + originalName + \" (batch \" + next.batchId + position + \")\";\nif (entryResult.status === \"done\") {\n    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n    const colors = $('Check palette').first().json.paletteJson.colorCount;\n    const caption = [\n        \"Artwork \" + folder.name + \" painted, \" + colors + \" Darl'Art colors\",\n        from,\n        \"Next: product texts, print files and mockup, then the Shopify draft.\",\n        \"https://drive.google.com/drive/folders/\" + folder.id,\n    ].join(\"\\n\");\n    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];\n}\nconst reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : \"\";\nreturn [{ json: { painted: false, text: [\"Not painted: \" + originalName, from, \"Reason: \" + reason, \"The reference is in Artwork Ref/Failed.\"].join(\"\\n\") } }];"
+        "jsCode": "// The artwork (a photo with its product number) or, when it could not be painted, the reason\nconst next = $('Next reference').first().json;\nconst entryResult = $('Update entry').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst originalName = $('Start attempt').first().json.originalName;\nlet position = \"\";\nif (manifest && Array.isArray(manifest.files)) {\n    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);\n    if (i >= 0) position = \", \" + (i + 1) + \" of \" + manifest.files.length;\n}\nconst from = \"From: \" + originalName + \" (batch \" + next.batchId + position + \")\";\n// finished by a later run (the first one stopped before this message): a text, the artwork image is not at hand\nif (entryResult.recovered) {\n    const lines = entryResult.status === \"done\"\n        ? [\"Artwork \" + entryResult.folder + \" painted\", from, \"https://drive.google.com/drive/folders/\" + entryResult.folderId]\n        : [\"Not painted: \" + originalName, from, \"Reason: \" + entryResult.reason, \"The reference is in Artwork Ref/Failed.\"];\n    return [{ json: { painted: false, text: lines.join(\"\\n\") } }];\n}\nif (entryResult.status === \"done\") {\n    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n    const colors = $('Check palette').first().json.paletteJson.colorCount;\n    const caption = [\n        \"Artwork \" + folder.name + \" painted, \" + colors + \" Darl'Art colors\",\n        from,\n        \"Next: product texts, print files and mockup, then the Shopify draft.\",\n        \"https://drive.google.com/drive/folders/\" + folder.id,\n    ].join(\"\\n\");\n    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];\n}\nconst reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : \"\";\nreturn [{ json: { painted: false, text: [\"Not painted: \" + originalName, from, \"Reason: \" + reason, \"The reference is in Artwork Ref/Failed.\"].join(\"\\n\") } }];"
       }
     },
     {
-      "id": "ab000054-0000-4000-8000-000000000000",
+      "id": "ab000057-0000-4000-8000-000000000000",
       "name": "Painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1377,7 +1488,7 @@
       }
     },
     {
-      "id": "ab000055-0000-4000-8000-000000000000",
+      "id": "ab000058-0000-4000-8000-000000000000",
       "name": "Telegram: artwork",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1397,7 +1508,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000056-0000-4000-8000-000000000000",
+      "id": "ab000059-0000-4000-8000-000000000000",
       "name": "Telegram: not painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1416,7 +1527,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000057-0000-4000-8000-000000000000",
+      "id": "ab000060-0000-4000-8000-000000000000",
       "name": "Record the result?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1449,7 +1560,7 @@
       }
     },
     {
-      "id": "ab000058-0000-4000-8000-000000000000",
+      "id": "ab000061-0000-4000-8000-000000000000",
       "name": "Save manifest (result)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1468,10 +1579,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000059-0000-4000-8000-000000000000",
+      "id": "ab000062-0000-4000-8000-000000000000",
       "name": "Move reference out of the queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1490,10 +1604,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000060-0000-4000-8000-000000000000",
+      "id": "ab000063-0000-4000-8000-000000000000",
       "name": "Batch painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1526,7 +1643,7 @@
       }
     },
     {
-      "id": "ab000061-0000-4000-8000-000000000000",
+      "id": "ab000064-0000-4000-8000-000000000000",
       "name": "Move manifest to Done",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1545,10 +1662,13 @@
         "options": {
           "timeout": 30000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000062-0000-4000-8000-000000000000",
+      "id": "ab000065-0000-4000-8000-000000000000",
       "name": "Telegram on? (batch)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1581,7 +1701,7 @@
       }
     },
     {
-      "id": "ab000063-0000-4000-8000-000000000000",
+      "id": "ab000066-0000-4000-8000-000000000000",
       "name": "Batch message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1594,7 +1714,7 @@
       }
     },
     {
-      "id": "ab000064-0000-4000-8000-000000000000",
+      "id": "ab000067-0000-4000-8000-000000000000",
       "name": "Telegram: batch painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1613,7 +1733,176 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000065-0000-4000-8000-000000000000",
+      "id": "ab000068-0000-4000-8000-000000000000",
+      "name": "Leftover manifests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        240
+      ],
+      "parameters": {
+        "jsCode": "// Batch manifests in the queue, now that no reference is left in it\nconst files = $('List queue').first().json.files || [];\nconst manifests = files.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name));\nreturn manifests.length ? manifests.map((f) => ({ json: { manifestId: f.id, name: f.name } })) : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "ab000069-0000-4000-8000-000000000000",
+      "name": "Any leftover?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anyleftover",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000070-0000-4000-8000-000000000000",
+      "name": "Download leftover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        160
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.manifestId }}?alt=media&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ab000071-0000-4000-8000-000000000000",
+      "name": "Finished batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// A batch is finished when none of its references is still queued; after an hour, a queued reference that is not in\n// the queue never got there (the upload stopped): it is marked failed\nconst settings = $('Settings').first().json;\nconst leftovers = $('Leftover manifests').all().map((item) => item.json);\nconst now = $now.setZone(settings.timezone).toISO();\nconst out = [];\n$input.all().forEach((item, i) => {\n    const manifest = item.json;\n    if (!manifest || !Array.isArray(manifest.files) || !leftovers[i]) return;\n    const old = !manifest.submittedAt || Date.now() - new Date(manifest.submittedAt).getTime() > 3600000;\n    const queued = manifest.files.filter((e) => e.status === \"queued\");\n    if (queued.length && !old) return;\n    for (const e of queued) Object.assign(e, { status: \"failed\", reason: \"the upload did not reach the queue\", finishedAt: now });\n    if (!manifest.paintedAt) Object.assign(manifest, { paintedAt: now, notified: false });\n    out.push({\n        json: { manifestId: leftovers[i].manifestId },\n        binary: { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: leftovers[i].name } },\n    });\n});\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "ab000072-0000-4000-8000-000000000000",
+      "name": "Any finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anyfinished",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000073-0000-4000-8000-000000000000",
+      "name": "Save finished manifest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3740,
+        80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.manifestId + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "manifest",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ab000074-0000-4000-8000-000000000000",
+      "name": "Move finished manifest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Finished batches').item.json.manifestId + '?supportsAllDrives=true&fields=id,name,parents&addParents=' + $('Settings').first().json.doneFolderId + '&removeParents=' + $('Settings').first().json.queueFolderId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ab000075-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1622,11 +1911,12 @@
         160
       ],
       "parameters": {
-        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Next reference').isExecuted && !$('Next reference').first().json.none;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed } }));"
-      }
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Next reference').isExecuted && !$('Next reference').first().json.none;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "executeOnce": true
     },
     {
-      "id": "ab000066-0000-4000-8000-000000000000",
+      "id": "ab000076-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1646,7 +1936,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000067-0000-4000-8000-000000000000",
+      "id": "ab000077-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1680,7 +1970,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000068-0000-4000-8000-000000000000",
+      "id": "ab000078-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1721,17 +2011,6 @@
         [
           {
             "node": "Settings",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Settings": {
-      "main": [
-        [
-          {
-            "node": "List locks",
             "type": "main",
             "index": 0
           }
@@ -1880,6 +2159,17 @@
         ]
       ]
     },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "List queue": {
       "main": [
         [
@@ -1913,7 +2203,7 @@
         ],
         [
           {
-            "node": "Locks to delete",
+            "node": "Leftover manifests",
             "type": "main",
             "index": 0
           }
@@ -1993,7 +2283,7 @@
       "main": [
         [
           {
-            "node": "Download reference",
+            "node": "Result recorded before?",
             "type": "main",
             "index": 0
           }
@@ -2001,6 +2291,29 @@
         [
           {
             "node": "Result: stopped too often",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result recorded before?": {
+      "main": [
+        [
+          {
+            "node": "Result: recorded before",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download reference",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Heartbeat (refresh lock)",
             "type": "main",
             "index": 0
           }
@@ -2045,6 +2358,11 @@
         [
           {
             "node": "Generate ART",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Heartbeat (refresh lock)",
             "type": "main",
             "index": 0
           }
@@ -2142,6 +2460,11 @@
             "node": "Generate ART",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
           }
         ],
         [
@@ -2158,6 +2481,11 @@
         [
           {
             "node": "Snap to palette (48 colors)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Heartbeat (refresh lock)",
             "type": "main",
             "index": 0
           }
@@ -2191,6 +2519,11 @@
         [
           {
             "node": "List Artwork Agent folders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Heartbeat (refresh lock)",
             "type": "main",
             "index": 0
           }
@@ -2285,6 +2618,17 @@
       ]
     },
     "Result: stopped too often": {
+      "main": [
+        [
+          {
+            "node": "Update entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: recorded before": {
       "main": [
         [
           {
@@ -2436,11 +2780,80 @@
         ]
       ]
     },
-    "Move manifest to Done": {
+    "Leftover manifests": {
       "main": [
         [
           {
+            "node": "Any leftover?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any leftover?": {
+      "main": [
+        [
+          {
+            "node": "Download leftover",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download leftover": {
+      "main": [
+        [
+          {
+            "node": "Finished batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished batches": {
+      "main": [
+        [
+          {
+            "node": "Any finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any finished?": {
+      "main": [
+        [
+          {
+            "node": "Save finished manifest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save finished manifest": {
+      "main": [
+        [
+          {
+            "node": "Move finished manifest",
             "type": "main",
             "index": 0
           }
@@ -2474,6 +2887,28 @@
         [
           {
             "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move manifest to Done": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move finished manifest": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
             "type": "main",
             "index": 0
           }

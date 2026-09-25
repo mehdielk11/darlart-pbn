@@ -7,7 +7,12 @@
  *   blocking the next runs until it goes stale -> Telegram alert (workflow, step, error, what happens next)
  *   -> a failed Artwork Worker run starts the worker again when the failure came after the reference's try was
  *      recorded (a reference that keeps failing is set aside after 3 tries, so this never loops); an earlier failure
- *      (e.g. Drive unreachable) is only reported, so a lasting outage cannot restart the worker over and over
+ *      (e.g. Drive unreachable) is only reported, so a lasting outage cannot restart the worker over and over; and
+ *      the worker is restarted at most maxRestarts times in restartWindowMinutes, whatever the step
+ *   -> a stage that is not restarted at once gets a marker "_failed-<stage>" in Artwork Agent (created, or its date
+ *      refreshed): the Queue Watchdog does not start it again for 30 minutes, so a lasting problem is not retried
+ *      every 5 minutes
+ *   -> the same failure (workflow, step, error) is announced at most once an hour
  */
 const fs = require("fs");
 const path = require("path");
@@ -16,6 +21,10 @@ const root = path.join(__dirname, "..");
 
 const SETTINGS = {
     telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no alert)
+    agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent": where the "_failed-<stage>" markers live
+    alertEveryMinutes: "60", // the same failure is announced at most once in this time
+    maxRestarts: "5", // the worker is restarted at most this many times...
+    restartWindowMinutes: "30", // ...in this time; after that the Queue Watchdog takes over (30 min later)
 };
 const WORKFLOWS = {
     worker: "dO8EdyDM4ua2hRrA", // Darl'Art Artwork Worker
@@ -24,10 +33,12 @@ const WORKFLOWS = {
     print: "ytxV3m341mDLCdt4", // Darl'Art Print Agent
     uploader: "XAwk67SiWmvVSu1d", // Darl'Art Shopify Uploader
 };
-// the worker's steps before the reference's try is saved: a failure there is not retried automatically
+// the worker's steps before the reference's try is saved, and its queue clean-up: a failure there is not retried at
+// once (it would fail the same way), the Queue Watchdog tries again later
 const WORKER_STEPS_BEFORE_TRY = ["Settings", "List locks", "Lock state", "Lock free?", "Create lock", "List locks again", "Won the lock?", "Lock won?",
     "Step back (drop my lock)", "Busy: try again?", "Retry?", "Wait before retry", "List queue", "Next reference", "Anything queued?", "Has manifest?",
-    "Download manifest", "Start attempt", "Record the try?", "Save manifest (try)"];
+    "Download manifest", "Start attempt", "Record the try?", "Save manifest (try)",
+    "Leftover manifests", "Any leftover?", "Download leftover", "Finished batches", "Any finished?", "Save finished manifest", "Move finished manifest"];
 const LOCK_PREFIXES = ["_artwork-worker.lock", "_titling-agent.lock", "_print-agent.lock", "_shopify-uploader.lock"];
 
 let nextId = 1;
@@ -81,20 +92,20 @@ node("Find locks", "n8n-nodes-base.httpRequest", 4.2, [660, 0], {
     sendQuery: true,
     queryParameters: {
         parameters: [
-            { name: "q", value: "(" + LOCK_PREFIXES.map((p) => `name contains '${p}'`).join(" or ") + ") and trashed = false" },
-            { name: "fields", value: "files(id,name)" },
+            { name: "q", value: "(" + LOCK_PREFIXES.map((p) => `name contains '${p}'`).join(" or ") + " or name contains '_failed-') and trashed = false" },
+            { name: "fields", value: "files(id,name,parents)" },
             { name: "pageSize", value: "1000" },
             { name: "supportsAllDrives", value: "true" },
             { name: "includeItemsFromAllDrives", value: "true" },
         ],
     },
     options: { timeout: 30000 },
-}, { onError: "continueRegularOutput" });
+}, { onError: "continueRegularOutput", retryOnFail: true, maxTries: 3, waitBetweenTries: 5000 });
 connect("Error details", "Find locks");
 
 code("Locks of the run", [880, 0], `// Only the failed run's own lock: its name ends with "-<execution id>"
 const id = $('Error details').first().json.executionId;
-const locks = id ? ($input.first().json.files || []).filter((f) => f.name.endsWith("-" + id)) : [];
+const locks = id ? ($input.first().json.files || []).filter((f) => f.name.includes(".lock-") && f.name.endsWith("-" + id)) : [];
 return locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];`);
 connect("Find locks", "Locks of the run");
 
@@ -116,19 +127,37 @@ const d = $('Error details').first().json;
 const W = ${JSON.stringify(WORKFLOWS)};
 const beforeTry = ${JSON.stringify(WORKER_STEPS_BEFORE_TRY)};
 const released = $('Locks to delete').isExecuted ? $('Locks to delete').all().length : 0;
+const settings = $('Settings').first().json;
+const memory = $getWorkflowStaticData("global");
+const now = Date.now();
 let next = "";
 let restartWorker = false;
 if (d.workflowId === W.worker) {
-    if (d.step && !beforeTry.includes(d.step)) {
+    // restarts of the last restartWindowMinutes: a failure that repeats whatever the reference stops being retried at once
+    memory.restarts = (memory.restarts || []).filter((t) => now - t < Number(settings.restartWindowMinutes) * 60000);
+    if (d.step && !beforeTry.includes(d.step) && memory.restarts.length < Number(settings.maxRestarts)) {
         restartWorker = true;
+        memory.restarts.push(now);
         next = "The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.";
+    } else if (d.step && !beforeTry.includes(d.step)) {
+        next = "The worker failed " + memory.restarts.length + " times in " + settings.restartWindowMinutes + " minutes, so it is not restarted at once; the queue is kept.";
     } else {
-        next = "The worker stopped before painting: fix the cause, then click Run now in the Artwork Worker (the queue is kept).";
+        next = "The worker stopped before painting; the queue is kept.";
     }
 } else if (d.workflowId === W.print) next = "The next run (after the next artwork, or daily at 04:00) retries the unfinished folders.";
 else if (d.workflowId === W.titling) next = "The next run (after the next artwork, or daily at 03:00) retries the folders without product texts.";
 else if (d.workflowId === W.uploader) next = "The next run (after the next Print Agent run, or daily at 05:00) retries this folder.";
 else if (d.workflowId === W.form) next = "This upload may not be queued: check Artwork Ref/Queue, and send the images again if they are missing.";
+// the stage, for the Queue Watchdog's backoff marker (the form has none: it holds no queue)
+const stage = { [W.worker]: "worker", [W.titling]: "titling", [W.print]: "print", [W.uploader]: "uploader" }[d.workflowId] || "";
+const marker = stage ? (($('Find locks').first().json.files || []).find((f) => f.name === "_failed-" + stage && (f.parents || []).includes(settings.agentFolderId)) || null) : null;
+// the same failure is announced at most once every alertEveryMinutes (kept in this workflow's static data)
+memory.alerts = memory.alerts || {};
+const key = d.workflowId + "|" + d.step + "|" + String(d.message).slice(0, 120);
+for (const [k, t] of Object.entries(memory.alerts)) if (now - t > 24 * 3600000) delete memory.alerts[k];
+const sendAlert = !memory.alerts[key] || now - memory.alerts[key] >= Number(settings.alertEveryMinutes) * 60000;
+if (sendAlert) memory.alerts[key] = now;
+if (stage && !restartWorker) next += " The Queue Watchdog starts it again in 30 minutes if work is still waiting (click Run now to go sooner).";
 const lines = [
     "Workflow failed: " + d.workflowName,
     d.step ? "Step: " + d.step : "",
@@ -137,7 +166,8 @@ const lines = [
     next,
     d.url,
 ].filter(Boolean);
-return [{ json: { restartWorker, text: lines.join("\\n") } }];`, { executeOnce: true });
+// a worker restarted at once needs no backoff marker: the Queue Watchdog must not hold its queue back
+return [{ json: { restartWorker, sendAlert, stage: restartWorker ? "" : stage, markerId: marker ? marker.id : "", text: lines.join("\\n") } }];`, { executeOnce: true });
 connect("Delete the run's lock", "Next steps");
 connect("Any lock?", "Next steps", 1);
 
@@ -151,7 +181,7 @@ node("Start the worker", "n8n-nodes-base.executeWorkflow", 1.2, [1980, -80], {
 }, { executeOnce: true, onError: "continueRegularOutput" });
 connect("Restart the worker?", "Start the worker", 0);
 
-ifNode("Telegram on?", [1760, 120], "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}");
+ifNode("Telegram on?", [1760, 120], "={{ $json.sendAlert && String($('Settings').first().json.telegramChatId || '').trim() !== '' }}");
 connect("Next steps", "Telegram on?");
 node("Telegram: failure alert", "n8n-nodes-base.telegram", 1.2, [1980, 120], {
     chatId: "={{ $('Settings').first().json.telegramChatId }}",
@@ -159,6 +189,20 @@ node("Telegram: failure alert", "n8n-nodes-base.telegram", 1.2, [1980, 120], {
     additionalFields: { appendAttribution: false, disable_web_page_preview: true },
 }, { onError: "continueRegularOutput" });
 connect("Telegram on?", "Telegram: failure alert", 0);
+
+// the backoff marker: created, or its date refreshed (a metadata-only Drive file)
+ifNode("A queue stage?", [1760, 300], "={{ !!$json.stage }}");
+connect("Next steps", "A queue stage?");
+node("Mark the failure", "n8n-nodes-base.httpRequest", 4.2, [1980, 300], {
+    method: "={{ $json.markerId ? 'PATCH' : 'POST' }}",
+    url: "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.markerId ? '/' + $json.markerId : '') + '?supportsAllDrives=true&fields=id,name,modifiedTime' }}",
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify($json.markerId ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-' + $json.stage, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("A queue stage?", "Mark the failure", 0);
 
 const workflow = { name: "Darl'Art Error Handler", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca" }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-error-handler.json");
