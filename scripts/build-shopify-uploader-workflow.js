@@ -671,7 +671,9 @@ node("Check batches", "n8n-nodes-base.executeWorkflow", 1.2, [2860, -600], {
     workflowId: { __rl: true, mode: "id", value: "={{ $workflow.id }}" },
     mode: "once",
     options: { waitForSubWorkflow: true },
-}, { executeOnce: true, onError: "continueRegularOutput" });
+// the batch check usually ends with no item (nothing to announce): alwaysOutputData still hands one on, so the lock
+// is always released and the run can start itself again
+}, { executeOnce: true, onError: "continueRegularOutput", alwaysOutputData: true });
 connect("Batch messages mode", "Check batches");
 
 // ---- release the lock; a run that created drafts starts again (it stops at once when no folder is ready) ----

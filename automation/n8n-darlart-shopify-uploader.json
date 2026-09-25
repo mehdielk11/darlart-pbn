@@ -1380,7 +1380,8 @@
         }
       },
       "executeOnce": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "id": "cc000061-0000-4000-8000-000000000000",
