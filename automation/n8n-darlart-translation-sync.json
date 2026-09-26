@@ -1,0 +1,1456 @@
+{
+  "name": "Darl'Art Translation Sync",
+  "nodes": [
+    {
+      "id": "fe000001-0000-4000-8000-000000000000",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 40
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fe000002-0000-4000-8000-000000000000",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fe000003-0000-4000-8000-000000000000",
+      "name": "When called by itself",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "fe000004-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "shopDomain",
+              "value": "smgi0i-0a.myshopify.com",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "apiVersion",
+              "value": "2026-07",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "locales",
+              "value": "fr,ar",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "model",
+              "value": "gpt-5-mini",
+              "type": "string"
+            },
+            {
+              "id": "set5",
+              "name": "maxPerRun",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "set6",
+              "name": "maxTries",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "set7",
+              "name": "telegramChatId",
+              "value": "-1003952514058",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "fe000005-0000-4000-8000-000000000000",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        -300
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_translation-sync.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "fe000006-0000-4000-8000-000000000000",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "// Another run holds a fresh lock (refreshed within its stale time, kept in its description)\nconst OWN = 15;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter(isFresh);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      }
+    },
+    {
+      "id": "fe000007-0000-4000-8000-000000000000",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000008-0000-4000-8000-000000000000",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_translation-sync.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (15) }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "fe000009-0000-4000-8000-000000000000",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -380
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_translation-sync.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "fe000010-0000-4000-8000-000000000000",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -380
+      ],
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst OWN = 15;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || isFresh(l))\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      }
+    },
+    {
+      "id": "fe000011-0000-4000-8000-000000000000",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000012-0000-4000-8000-000000000000",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -240
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000013-0000-4000-8000-000000000000",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      }
+    },
+    {
+      "id": "fe000014-0000-4000-8000-000000000000",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000015-0000-4000-8000-000000000000",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -20
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 30,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "fe000016-0000-4000-8000-000000000000",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        -180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "fe000017-0000-4000-8000-000000000000",
+      "name": "Next page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// First page, or the next one after the last page read\nif ($runIndex === 0) return [{ json: { cursor: null, products: [], givenUp: 0 } }];\nconst last = $('Collect products').first().json;\nreturn [{ json: { cursor: last.cursor, products: last.products, givenUp: last.givenUp } }];"
+      }
+    },
+    {
+      "id": "fe000018-0000-4000-8000-000000000000",
+      "name": "Products page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n    query: \"query Page($after: String) { products(first: 25, after: $after, query: \\\"product_type:'Paint by Numbers Kit'\\\") { pageInfo { hasNextPage endCursor } nodes { id title handle descriptionHtml tries: metafield(namespace: \\\"darlart\\\", key: \\\"translation_tries\\\") { value } variants(first: 3) { nodes { sku } } \"\n        + String($('Settings').first().json.locales).split(\",\").map((l) => l.trim()).filter(Boolean).map((l) => \"t_\" + l.replace(/\\W/g, \"_\") + \": translations(locale: \\\"\" + l + \"\\\") { key outdated }\").join(\" \")\n        + \" } } }\",\n    variables: { after: $json.cursor }\n}) }}",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "fe000019-0000-4000-8000-000000000000",
+      "name": "Collect products",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// The Uploader's products only (handle \"<name>-<folder>\", SKUs starting with the folder number), and per product\n// the keys and languages that need a translation: none yet, or an outdated one. A product that failed maxTries times\n// is skipped until its English text changes (its tries are kept with a fingerprint of that text).\nconst settings = $('Settings').first().json;\nconst locales = String(settings.locales || \"fr,ar\").split(\",\").map((l) => l.trim()).filter(Boolean);\nconst KEYS = [\"title\",\"body_html\"];\nconst maxTries = Number(settings.maxTries) || 3;\nconst previous = $('Next page').first().json;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst fingerprint = (text) => { let h = 5381; for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0; return h.toString(16) + \"-\" + text.length; };\nconst todo = [];\nlet givenUp = previous.givenUp || 0;\nfor (const p of page.nodes) {\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    if (!m || !p.variants.nodes.length || !p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"))) continue;\n    // an empty description has nothing to translate\n    const keys = KEYS.filter((key) => key !== \"body_html\" || String(p.descriptionHtml || \"\").trim() !== \"\");\n    const need = {};\n    for (const locale of locales) {\n        const have = p[\"t_\" + locale.replace(/\\W/g, \"_\")] || [];\n        const missing = keys.filter((key) => { const t = have.find((x) => x.key === key); return !t || t.outdated; });\n        if (missing.length) need[locale] = missing;\n    }\n    if (!Object.keys(need).length) continue;\n    const hash = fingerprint(p.title + \"\\n\" + (p.descriptionHtml || \"\"));\n    let tries = 0;\n    try { const t = JSON.parse((p.tries && p.tries.value) || \"{}\"); if (t.hash === hash) tries = Number(t.tries) || 0; } catch (e) {}\n    if (tries >= maxTries) { givenUp++; continue; }\n    todo.push({ id: p.id, folder: m[1], title: p.title, need, hash, tries });\n}\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.products.concat(todo), givenUp } }];"
+      }
+    },
+    {
+      "id": "fe000020-0000-4000-8000-000000000000",
+      "name": "More pages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Morepages",
+              "leftValue": "={{ $json.more }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000021-0000-4000-8000-000000000000",
+      "name": "Products to translate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        280
+      ],
+      "parameters": {
+        "jsCode": "// At most maxPerRun products this run (never tried first, then oldest folders first): a product that failed before\n// never holds up the others. The rest wait for the next run, started right after.\nconst settings = $('Settings').first().json;\nconst all = $input.first().json.products.sort((a, b) => a.tries - b.tries || Number(a.folder) - Number(b.folder));\nconst now = all.slice(0, Number(settings.maxPerRun) || 10);\nreturn [{ json: { ids: now.map((p) => p.id), products: now, waiting: all.length - now.length, givenUp: $input.first().json.givenUp || 0 } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "fe000022-0000-4000-8000-000000000000",
+      "name": "Anything to translate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingtotranslate",
+              "leftValue": "={{ $json.products.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000023-0000-4000-8000-000000000000",
+      "name": "English texts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3320,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n    query: \"query D($ids: [ID!]!) { translatableResourcesByIds(first: 50, resourceIds: $ids) { nodes { resourceId translatableContent { key value digest locale } } } }\",\n    variables: { ids: $json.ids }\n}) }}",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "fe000024-0000-4000-8000-000000000000",
+      "name": "Texts to translate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3540,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// One item per product: its English texts, their digests, and the AI request for only what it needs (a product\n// whose French title alone is outdated sends only its title, and asks only for French)\nconst settings = $('Settings').first().json;\nconst NAMES = {\"fr\":\"French\",\"ar\":\"Arabic (Modern Standard Arabic)\"};\nconst SYSTEM = \"You translate product listings for Darl'Art, a Moroccan paint-by-numbers kit brand, from English. Write natural, appealing sales copy for customers in Morocco: keep the meaning and the tone, do not translate word by word. The description is HTML: keep exactly the same tags and paragraph structure (<p>, <br> and any other tag), translate only the text between the tags. Never translate the brand name Darl'Art. Keep numbers, sizes (e.g. 40x50) and color counts as they are. The title stays short and has no quotes.\";\nconst products = $('Products to translate').first().json.products;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst byId = {};\nfor (const n of response.data.translatableResourcesByIds.nodes) byId[n.resourceId] = n.translatableContent;\nconst out = [];\nfor (const p of products) {\n    const content = byId[p.id] || [];\n    const get = (key) => content.find((c) => c.key === key) || {};\n    const title = get(\"title\"), body = get(\"body_html\");\n    if (!title.value) continue;\n    const need = {};\n    for (const [locale, keys] of Object.entries(p.need)) {\n        const k = keys.filter((key) => key === \"title\" || String(body.value || \"\").trim() !== \"\");\n        if (k.length) need[locale] = k;\n    }\n    const locales = Object.keys(need);\n    if (!locales.length) continue;\n    const texts = [];\n    if (locales.some((l) => need[l].includes(\"title\"))) texts.push(\"TITLE:\\n\" + title.value);\n    if (locales.some((l) => need[l].includes(\"body_html\"))) texts.push(\"DESCRIPTION (HTML):\\n\" + body.value);\n    const request = {\n        model: settings.model,\n        messages: [\n            { role: \"system\", content: SYSTEM },\n            { role: \"user\", content: \"Translate into \" + locales.map((l) => l + \" (\" + (NAMES[l] || l) + \")\").join(\" and \") + \".\\n\\n\" + texts.join(\"\\n\\n\") },\n        ],\n        response_format: { type: \"json_schema\", json_schema: { name: \"translations\", strict: true, schema: {\n            type: \"object\", additionalProperties: false, required: locales,\n            properties: Object.fromEntries(locales.map((l) => [l, { type: \"object\", additionalProperties: false, required: need[l], properties: Object.fromEntries(need[l].map((k) => [k, { type: \"string\" }])) }])),\n        } } },\n    };\n    out.push({ json: { ...p, need, english: { title: title.value, body_html: body.value || \"\" }, digests: { title: title.digest, body_html: body.digest }, request } });\n}\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "fe000025-0000-4000-8000-000000000000",
+      "name": "Translate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3760,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "timeout": 180000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000026-0000-4000-8000-000000000000",
+      "name": "Any text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3650,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anytext",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000027-0000-4000-8000-000000000000",
+      "name": "Check translations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3980,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// The AI's answer, checked (same paragraphs, nothing empty); per product, the registration of what it needs\nconst items = $('Texts to translate').all().map((item) => item.json);\nconst out = [];\nconst tagsOf = (html) => (String(html).match(/<\\s*\\/?\\s*([a-z0-9]+)/gi) || []).map((t) => t.replace(/[<\\/\\s]/g, \"\").toLowerCase()).join(\",\");\n$input.all().forEach((item, i) => {\n    const p = items[i];\n    if (!p || p.none) return;\n    const r = item.json || {};\n    let answer = null;\n    let problem = \"\";\n    // the OpenAI account or service, not this product (no credit, wrong key, rate limit, OpenAI down): not counted as a try\n    const service = !!r.error && /insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i.test(JSON.stringify(r.error));\n    try {\n        if (r.error) throw new Error(String(r.error.message || r.error).slice(0, 200));\n        const msg = r.choices && r.choices[0] && r.choices[0].message;\n        if (!msg || msg.refusal) throw new Error(\"no answer\" + (msg && msg.refusal ? \": \" + msg.refusal : \"\"));\n        answer = JSON.parse(msg.content);\n    } catch (e) { problem = \"AI: \" + e.message; }\n    const translations = {};\n    if (answer) {\n        for (const [locale, keys] of Object.entries(p.need)) {\n            const t = answer[locale] || {};\n            for (const key of keys) {\n                const value = String(t[key] || \"\").trim();\n                if (!value) { problem = locale + \" \" + key + \" is empty\"; continue; }\n                if (key === \"body_html\" && tagsOf(value) !== tagsOf(p.english.body_html)) { problem = locale + \" description lost its paragraphs\"; continue; }\n                if (key === \"title\" && value.length > 255) { problem = locale + \" title too long\"; continue; }\n                (translations[locale] = translations[locale] || []).push({ locale, key, value, translatableContentDigest: p.digests[key] });\n            }\n        }\n    }\n    const locales = Object.keys(translations);\n    out.push({ json: {\n        id: p.id, folder: p.folder, title: p.title, problem, service, hash: p.hash, tries: p.tries, locales,\n        body: locales.length ? {\n            query: \"mutation R(\" + locales.map((l) => \"$\" + l + \": [TranslationInput!]!\").join(\", \") + \") { \" + locales.map((l) => l + \": translationsRegister(resourceId: \\\"\" + p.id + \"\\\", translations: $\" + l + \") { userErrors { field message } }\").join(\" \") + \" }\",\n            variables: translations,\n        } : null,\n    } });\n});\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "fe000028-0000-4000-8000-000000000000",
+      "name": "Translations to save",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const out = $input.all().filter((item) => item.json.body).map((item) => ({ json: item.json }));\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "fe000029-0000-4000-8000-000000000000",
+      "name": "Anything to save?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4310,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingtosave",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000030-0000-4000-8000-000000000000",
+      "name": "Save translations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4420,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000031-0000-4000-8000-000000000000",
+      "name": "Translation report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4640,
+        280
+      ],
+      "parameters": {
+        "jsCode": "// What was translated, and what failed: a failure counts as a try of the product (kept in its metafield\n// darlart.translation_tries with a fingerprint of its English text); after maxTries it is given up until that text changes\nconst settings = $('Settings').first().json;\nconst maxTries = Number(settings.maxTries) || 3;\nconst checked = $('Check translations').isExecuted ? $('Check translations').all().map((item) => item.json).filter((c) => !c.none) : [];\nconst toSave = checked.filter((c) => c.body);\nconst saved = $('Save translations').isExecuted ? $('Save translations').all().map((item) => item.json) : [];\nconst lines = [];\nconst record = [];\nlet done = 0, failed = 0, service = \"\";\nconst tried = (c, why) => {\n    if (c.service) { service = service || why; return \" (service problem, not counted)\"; }\n    const tries = (Number(c.tries) || 0) + 1;\n    record.push({ ownerId: c.id, namespace: \"darlart\", key: \"translation_tries\", type: \"json\", value: JSON.stringify({ hash: c.hash, tries }) });\n    return tries >= maxTries ? \" | GIVEN UP after \" + tries + \" tries: translate it by hand in Translate & Adapt (it is tried again when its English text changes)\" : \" (try \" + tries + \" of \" + maxTries + \")\";\n};\ntoSave.forEach((c, i) => {\n    const a = saved[i] || {};\n    const errors = [];\n    if (a.error) errors.push(String(a.error.message || a.error));\n    for (const e of a.errors || []) errors.push(e.message);\n    for (const part of Object.values(a.data || {})) for (const e of (part && part.userErrors) || []) errors.push(e.message);\n    if (errors.length) { failed++; lines.push(\"- \" + c.folder + \" \" + c.title + \": ERROR \" + errors.join(\"; \").slice(0, 200) + tried({ ...c, service: /insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i.test(errors.join(\" \")) }, errors[0])); }\n    else { done++; lines.push(\"- \" + c.folder + \" \" + c.title + \" (\" + c.locales.join(\", \") + \")\" + (c.problem ? \" | partly: \" + c.problem + tried(c, c.problem) : \"\")); }\n});\nfor (const c of checked.filter((c) => !c.body)) { failed++; lines.push(\"- \" + c.folder + \" \" + c.title + \": not translated (\" + (c.problem || \"no answer\") + \")\" + tried(c, c.problem)); }\nconst planned = $('Products to translate').first().json;\nconst waiting = planned.waiting;\nconst head = \"Translation Sync: \" + done + \" product\" + (done === 1 ? \"\" : \"s\") + \" translated\" + (failed ? \", \" + failed + \" failed\" : \"\") + (waiting ? \", \" + waiting + \" more coming\" : \"\");\nif (service) lines.push(\"\", \"A service refused the calls (\" + String(service).slice(0, 200) + \"): check the OpenAI account (credit, API key) or the Shopify app. Nothing was counted against the products.\");\nreturn [{ json: { done, failed, waiting, record, send: !!(done || failed) && String(settings.telegramChatId || \"\").trim() !== \"\", text: [head, ...lines].join(\"\\n\").slice(0, 4000) } }];"
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fe000032-0000-4000-8000-000000000000",
+      "name": "Any try to record?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4750,
+        440
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anytrytorecord",
+              "leftValue": "={{ $json.record.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000033-0000-4000-8000-000000000000",
+      "name": "Record failed tries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4860,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n    query: \"mutation T($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) { userErrors { field message } } }\",\n    variables: { m: $json.record }\n}) }}",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000034-0000-4000-8000-000000000000",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5080,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ $('Translation report').first().json.send }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fe000035-0000-4000-8000-000000000000",
+      "name": "Telegram: translation report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5300,
+        200
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($('Translation report').first().json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000036-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5300,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = $('Products to translate').isExecuted && $('Products to translate').first().json.waiting > 0 && $('Translation report').isExecuted && $('Translation report').first().json.done > 0;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "fe000037-0000-4000-8000-000000000000",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5520,
+        400
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fe000038-0000-4000-8000-000000000000",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5740,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "fe000039-0000-4000-8000-000000000000",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5960,
+        320
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called by itself": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
+      "main": [
+        [
+          {
+            "node": "Next page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next page": {
+      "main": [
+        [
+          {
+            "node": "Products page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Products page": {
+      "main": [
+        [
+          {
+            "node": "Collect products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect products": {
+      "main": [
+        [
+          {
+            "node": "More pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More pages?": {
+      "main": [
+        [
+          {
+            "node": "Next page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Products to translate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Products to translate": {
+      "main": [
+        [
+          {
+            "node": "Anything to translate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to translate?": {
+      "main": [
+        [
+          {
+            "node": "English texts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "English texts": {
+      "main": [
+        [
+          {
+            "node": "Texts to translate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts to translate": {
+      "main": [
+        [
+          {
+            "node": "Any text?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any text?": {
+      "main": [
+        [
+          {
+            "node": "Translate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Translation report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translate": {
+      "main": [
+        [
+          {
+            "node": "Check translations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check translations": {
+      "main": [
+        [
+          {
+            "node": "Translations to save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translations to save": {
+      "main": [
+        [
+          {
+            "node": "Anything to save?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to save?": {
+      "main": [
+        [
+          {
+            "node": "Save translations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Translation report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save translations": {
+      "main": [
+        [
+          {
+            "node": "Translation report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translation report": {
+      "main": [
+        [
+          {
+            "node": "Any try to record?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any try to record?": {
+      "main": [
+        [
+          {
+            "node": "Record failed tries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record failed tries": {
+      "main": [
+        [
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: translation report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: translation report": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true
+  },
+  "pinData": {}
+}

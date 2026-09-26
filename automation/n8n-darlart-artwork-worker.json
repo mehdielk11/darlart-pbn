@@ -935,10 +935,235 @@
       },
       "retryOnFail": true,
       "maxTries": 2,
-      "waitBetweenTries": 5000
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "ab000034-0000-4000-8000-000000000000",
+      "name": "Painting received?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4730,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Paintingreceived",
+              "leftValue": "={{ !$json.error && !!($json.data && $json.data[0] && $json.data[0].b64_json) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000035-0000-4000-8000-000000000000",
+      "name": "Why no painting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4730,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst text = JSON.stringify(r.error || r).slice(0, 3000);\nconst message = String((r.error && (r.error.description || r.error.message)) || \"OpenAI returned no image\").slice(0, 400);\nconst refused = /moderation_blocked|safety system|content_policy|safety_violation/i.test(text);\nreturn [{ json: { refused, service: !refused && /insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i.test(text), message } }];"
+      }
+    },
+    {
+      "id": "ab000036-0000-4000-8000-000000000000",
+      "name": "Refused by OpenAI?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4950,
+        -600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "RefusedbyOpenAI",
+              "leftValue": "={{ $json.refused }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000037-0000-4000-8000-000000000000",
+      "name": "Result: refused",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5170,
+        -680
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { status: \"failed\", reason: \"OpenAI refused to paint this reference (its safety filter): \" + $('Why no painting').first().json.message } }];"
+      }
+    },
+    {
+      "id": "ab000038-0000-4000-8000-000000000000",
+      "name": "OpenAI account problem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5170,
+        -520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "OpenAIaccountproblem",
+              "leftValue": "={{ $json.service }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000039-0000-4000-8000-000000000000",
+      "name": "Give the try back",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5390,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "// Not this reference's fault: its try is not counted\nconst next = $('Next reference').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst entry = manifest && Array.isArray(manifest.files) ? manifest.files.find((e) => e.queueName === next.queueName) : null;\nif (!entry || entry.status !== \"queued\") return [{ json: { hasManifest: false } }];\nentry.tries = Math.max(0, (Number(entry.tries) || 1) - 1);\nreturn [{ json: { hasManifest: true }, binary: { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: next.batchId + \"_batch.json\" } } }];"
+      }
+    },
+    {
+      "id": "ab000040-0000-4000-8000-000000000000",
+      "name": "Try to give back?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5610,
+        -600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Trytogiveback",
+              "leftValue": "={{ $json.hasManifest }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ab000041-0000-4000-8000-000000000000",
+      "name": "Save manifest (try given back)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5830,
+        -680
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $('Next reference').first().json.manifestId + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "manifest",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ab000042-0000-4000-8000-000000000000",
+      "name": "Stop: OpenAI unavailable",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        6050,
+        -600
+      ],
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ 'OpenAI account problem, nothing painted (check the credit and the API key): ' + $('Why no painting').first().json.message }}"
+      }
+    },
+    {
+      "id": "ab000043-0000-4000-8000-000000000000",
+      "name": "Stop: painting failed",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        5390,
+        -440
+      ],
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ 'The painting failed: ' + $('Why no painting').first().json.message }}"
+      }
+    },
+    {
+      "id": "ab000044-0000-4000-8000-000000000000",
       "name": "Raw artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -957,7 +1182,7 @@
       }
     },
     {
-      "id": "ab000035-0000-4000-8000-000000000000",
+      "id": "ab000045-0000-4000-8000-000000000000",
       "name": "Check artwork",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -973,10 +1198,13 @@
           "systemMessage": "You check artwork files before they go to a paint-by-numbers production tool. You look at the image and report problems. Be strict.",
           "passthroughBinaryImages": true
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "ab000036-0000-4000-8000-000000000000",
+      "id": "ab000046-0000-4000-8000-000000000000",
       "name": "Checker model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -994,7 +1222,7 @@
       }
     },
     {
-      "id": "ab000037-0000-4000-8000-000000000000",
+      "id": "ab000047-0000-4000-8000-000000000000",
       "name": "Check format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -1008,7 +1236,7 @@
       }
     },
     {
-      "id": "ab000038-0000-4000-8000-000000000000",
+      "id": "ab000048-0000-4000-8000-000000000000",
       "name": "Artwork clean?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1041,7 +1269,7 @@
       }
     },
     {
-      "id": "ab000039-0000-4000-8000-000000000000",
+      "id": "ab000049-0000-4000-8000-000000000000",
       "name": "Count attempts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1054,7 +1282,7 @@
       }
     },
     {
-      "id": "ab000040-0000-4000-8000-000000000000",
+      "id": "ab000050-0000-4000-8000-000000000000",
       "name": "Paint again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1087,7 +1315,7 @@
       }
     },
     {
-      "id": "ab000041-0000-4000-8000-000000000000",
+      "id": "ab000051-0000-4000-8000-000000000000",
       "name": "Result: not painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1100,7 +1328,7 @@
       }
     },
     {
-      "id": "ab000042-0000-4000-8000-000000000000",
+      "id": "ab000052-0000-4000-8000-000000000000",
       "name": "Approved artwork",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1113,7 +1341,7 @@
       }
     },
     {
-      "id": "ab000043-0000-4000-8000-000000000000",
+      "id": "ab000053-0000-4000-8000-000000000000",
       "name": "Snap to palette (48 colors)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1170,7 +1398,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000044-0000-4000-8000-000000000000",
+      "id": "ab000054-0000-4000-8000-000000000000",
       "name": "Check palette",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1183,7 +1411,7 @@
       }
     },
     {
-      "id": "ab000045-0000-4000-8000-000000000000",
+      "id": "ab000055-0000-4000-8000-000000000000",
       "name": "Artwork file",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
@@ -1202,7 +1430,7 @@
       }
     },
     {
-      "id": "ab000046-0000-4000-8000-000000000000",
+      "id": "ab000056-0000-4000-8000-000000000000",
       "name": "List Artwork Agent folders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1252,7 +1480,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000047-0000-4000-8000-000000000000",
+      "id": "ab000057-0000-4000-8000-000000000000",
       "name": "Next folder number",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1265,7 +1493,7 @@
       }
     },
     {
-      "id": "ab000048-0000-4000-8000-000000000000",
+      "id": "ab000058-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1293,7 +1521,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000049-0000-4000-8000-000000000000",
+      "id": "ab000059-0000-4000-8000-000000000000",
       "name": "Files for the folder",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1306,7 +1534,7 @@
       }
     },
     {
-      "id": "ab000050-0000-4000-8000-000000000000",
+      "id": "ab000060-0000-4000-8000-000000000000",
       "name": "Upload to folder",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1334,7 +1562,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000051-0000-4000-8000-000000000000",
+      "id": "ab000061-0000-4000-8000-000000000000",
       "name": "Run Titling Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1358,7 +1586,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000052-0000-4000-8000-000000000000",
+      "id": "ab000062-0000-4000-8000-000000000000",
       "name": "Run Print Agent",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1382,7 +1610,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000053-0000-4000-8000-000000000000",
+      "id": "ab000063-0000-4000-8000-000000000000",
       "name": "Result: painted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1396,7 +1624,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000054-0000-4000-8000-000000000000",
+      "id": "ab000064-0000-4000-8000-000000000000",
       "name": "Update entry",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1409,7 +1637,7 @@
       }
     },
     {
-      "id": "ab000055-0000-4000-8000-000000000000",
+      "id": "ab000065-0000-4000-8000-000000000000",
       "name": "Telegram on?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1442,7 +1670,7 @@
       }
     },
     {
-      "id": "ab000056-0000-4000-8000-000000000000",
+      "id": "ab000066-0000-4000-8000-000000000000",
       "name": "Artwork message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1451,11 +1679,11 @@
         360
       ],
       "parameters": {
-        "jsCode": "// The artwork (a photo with its product number) or, when it could not be painted, the reason\nconst next = $('Next reference').first().json;\nconst entryResult = $('Update entry').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst originalName = $('Start attempt').first().json.originalName;\nlet position = \"\";\nif (manifest && Array.isArray(manifest.files)) {\n    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);\n    if (i >= 0) position = \", \" + (i + 1) + \" of \" + manifest.files.length;\n}\nconst from = \"From: \" + originalName + \" (batch \" + next.batchId + position + \")\";\n// finished by a later run (the first one stopped before this message): a text, the artwork image is not at hand\nif (entryResult.recovered) {\n    const lines = entryResult.status === \"done\"\n        ? [\"Artwork \" + entryResult.folder + \" painted\", from, \"https://drive.google.com/drive/folders/\" + entryResult.folderId]\n        : [\"Not painted: \" + originalName, from, \"Reason: \" + entryResult.reason, \"The reference is in Artwork Ref/Failed.\"];\n    return [{ json: { painted: false, text: lines.join(\"\\n\") } }];\n}\nif (entryResult.status === \"done\") {\n    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n    const colors = $('Check palette').first().json.paletteJson.colorCount;\n    const caption = [\n        \"Artwork \" + folder.name + \" painted, \" + colors + \" Darl'Art colors\",\n        from,\n        \"Next: product texts, print files and mockup, then the Shopify draft.\",\n        \"https://drive.google.com/drive/folders/\" + folder.id,\n    ].join(\"\\n\");\n    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];\n}\nconst reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : \"\";\nreturn [{ json: { painted: false, text: [\"Not painted: \" + originalName, from, \"Reason: \" + reason, \"The reference is in Artwork Ref/Failed.\"].join(\"\\n\") } }];"
+        "jsCode": "// The artwork (a photo with its product number) or, when it could not be painted, the reason\nconst next = $('Next reference').first().json;\nconst entryResult = $('Update entry').first().json;\nconst manifest = $('Start attempt').first().json.manifest;\nconst originalName = $('Start attempt').first().json.originalName;\nlet position = \"\";\nif (manifest && Array.isArray(manifest.files)) {\n    const i = manifest.files.findIndex((e) => e.queueName === next.queueName);\n    if (i >= 0) position = \", \" + (i + 1) + \" of \" + manifest.files.length;\n}\nconst from = \"From: \" + originalName + \" (batch \" + next.batchId + position + \")\";\n// finished by a later run (the first one stopped before this message): a text, the artwork image is not at hand\nif (entryResult.recovered) {\n    const lines = entryResult.status === \"done\"\n        ? [\"Artwork \" + entryResult.folder + \" painted\", from, \"https://drive.google.com/drive/folders/\" + entryResult.folderId]\n        : [\"Not painted: \" + originalName, from, \"Reason: \" + entryResult.reason, \"The reference is in Artwork Ref/Failed.\"];\n    return [{ json: { painted: false, text: lines.join(\"\\n\") } }];\n}\nif (entryResult.status === \"done\") {\n    const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n    const colors = $('Check palette').first().json.paletteJson.colorCount;\n    const caption = [\n        \"Artwork \" + folder.name + \" painted, \" + colors + \" Darl'Art colors\",\n        from,\n        \"Next: product texts, print files and mockup, then the Shopify draft.\",\n        \"https://drive.google.com/drive/folders/\" + folder.id,\n    ].join(\"\\n\");\n    return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];\n}\nconst reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : $('Result: refused').isExecuted ? $('Result: refused').first().json.reason : \"\";\nreturn [{ json: { painted: false, text: [\"Not painted: \" + originalName, from, \"Reason: \" + reason, \"The reference is in Artwork Ref/Failed.\"].join(\"\\n\") } }];"
       }
     },
     {
-      "id": "ab000057-0000-4000-8000-000000000000",
+      "id": "ab000067-0000-4000-8000-000000000000",
       "name": "Painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1488,7 +1716,7 @@
       }
     },
     {
-      "id": "ab000058-0000-4000-8000-000000000000",
+      "id": "ab000068-0000-4000-8000-000000000000",
       "name": "Telegram: artwork",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1509,7 +1737,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000059-0000-4000-8000-000000000000",
+      "id": "ab000069-0000-4000-8000-000000000000",
       "name": "Telegram: not painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1529,7 +1757,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000060-0000-4000-8000-000000000000",
+      "id": "ab000070-0000-4000-8000-000000000000",
       "name": "Record the result?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1562,7 +1790,7 @@
       }
     },
     {
-      "id": "ab000061-0000-4000-8000-000000000000",
+      "id": "ab000071-0000-4000-8000-000000000000",
       "name": "Save manifest (result)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1587,7 +1815,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000062-0000-4000-8000-000000000000",
+      "id": "ab000072-0000-4000-8000-000000000000",
       "name": "Move reference out of the queue",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1612,7 +1840,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000063-0000-4000-8000-000000000000",
+      "id": "ab000073-0000-4000-8000-000000000000",
       "name": "Batch painted?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1645,7 +1873,7 @@
       }
     },
     {
-      "id": "ab000064-0000-4000-8000-000000000000",
+      "id": "ab000074-0000-4000-8000-000000000000",
       "name": "Move manifest to Done",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1670,7 +1898,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000065-0000-4000-8000-000000000000",
+      "id": "ab000075-0000-4000-8000-000000000000",
       "name": "Telegram on? (batch)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1703,7 +1931,7 @@
       }
     },
     {
-      "id": "ab000066-0000-4000-8000-000000000000",
+      "id": "ab000076-0000-4000-8000-000000000000",
       "name": "Batch message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1716,7 +1944,7 @@
       }
     },
     {
-      "id": "ab000067-0000-4000-8000-000000000000",
+      "id": "ab000077-0000-4000-8000-000000000000",
       "name": "Telegram: batch painted",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1736,7 +1964,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000068-0000-4000-8000-000000000000",
+      "id": "ab000078-0000-4000-8000-000000000000",
       "name": "Leftover manifests",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1749,7 +1977,7 @@
       }
     },
     {
-      "id": "ab000069-0000-4000-8000-000000000000",
+      "id": "ab000079-0000-4000-8000-000000000000",
       "name": "Any leftover?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1782,7 +2010,7 @@
       }
     },
     {
-      "id": "ab000070-0000-4000-8000-000000000000",
+      "id": "ab000080-0000-4000-8000-000000000000",
       "name": "Download leftover",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1809,7 +2037,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000071-0000-4000-8000-000000000000",
+      "id": "ab000081-0000-4000-8000-000000000000",
       "name": "Finished batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1822,7 +2050,7 @@
       }
     },
     {
-      "id": "ab000072-0000-4000-8000-000000000000",
+      "id": "ab000082-0000-4000-8000-000000000000",
       "name": "Any finished?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1855,7 +2083,7 @@
       }
     },
     {
-      "id": "ab000073-0000-4000-8000-000000000000",
+      "id": "ab000083-0000-4000-8000-000000000000",
       "name": "Save finished manifest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1880,7 +2108,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000074-0000-4000-8000-000000000000",
+      "id": "ab000084-0000-4000-8000-000000000000",
       "name": "Move finished manifest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1905,7 +2133,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "ab000075-0000-4000-8000-000000000000",
+      "id": "ab000085-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1919,7 +2147,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000076-0000-4000-8000-000000000000",
+      "id": "ab000086-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1939,7 +2167,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "ab000077-0000-4000-8000-000000000000",
+      "id": "ab000087-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1973,7 +2201,7 @@
       "executeOnce": true
     },
     {
-      "id": "ab000078-0000-4000-8000-000000000000",
+      "id": "ab000088-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -2376,7 +2604,112 @@
       "main": [
         [
           {
+            "node": "Painting received?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Painting received?": {
+      "main": [
+        [
+          {
             "node": "Raw artwork file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Why no painting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Why no painting": {
+      "main": [
+        [
+          {
+            "node": "Refused by OpenAI?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refused by OpenAI?": {
+      "main": [
+        [
+          {
+            "node": "Result: refused",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenAI account problem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI account problem?": {
+      "main": [
+        [
+          {
+            "node": "Give the try back",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: painting failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Give the try back": {
+      "main": [
+        [
+          {
+            "node": "Try to give back?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Try to give back?": {
+      "main": [
+        [
+          {
+            "node": "Save manifest (try given back)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: OpenAI unavailable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save manifest (try given back)": {
+      "main": [
+        [
+          {
+            "node": "Stop: OpenAI unavailable",
             "type": "main",
             "index": 0
           }
@@ -2632,6 +2965,17 @@
       ]
     },
     "Result: recorded before": {
+      "main": [
+        [
+          {
+            "node": "Update entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result: refused": {
       "main": [
         [
           {

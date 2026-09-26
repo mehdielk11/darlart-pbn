@@ -281,7 +281,7 @@ if (tr) {
     if (errs.length) { lines.push("- translations: ERROR " + errs.join("; ").slice(0, 300)); failed++; }
 }
 const head = "Price Sync: " + changes.length + " product" + (changes.length === 1 ? "" : "s") + " brought in line with the prices sheet" + (failed ? ", " + failed + " with errors (retried next hour)" : "");
-return [{ json: { failed, text: [head, ...lines].join("\\n").slice(0, 4000) } }];`, { executeOnce: true });
+return [{ json: { failed, text: [head, ...lines].join("\\n").slice(0, 4000) } }];`);
 connect("Apply changes", "Sync report");
 ifNode("Telegram on?", [4640, 100], "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}");
 connect("Sync report", "Telegram on?");
@@ -303,7 +303,9 @@ const workflow = {
     name: "Darl'Art Price Sync",
     nodes,
     connections,
-    settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID, saveDataSuccessExecution: "all", saveManualExecutions: true },
+    // runs that succeed are not kept (they would fill the n8n database every hour; the Telegram report says what was
+    // done); failed runs and "Run now" runs are kept
+    settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID, saveDataSuccessExecution: "none", saveManualExecutions: true },
     pinData: {},
 };
 const out = path.join(root, "automation/n8n-darlart-price-sync.json");

@@ -74,3 +74,9 @@ To the group in `telegramChatId` (Settings of both workflows; empty = no message
 ## Busy and failed runs
 
 A worker call that finds another run working waits 30 s and tries again (3 times). When a worker run fails, the Darl'Art Error Handler releases its lock, alerts on Telegram and starts the worker again (only when the failure came after the reference's try was recorded, so a reference that keeps failing is set aside after 3 tries and a lasting outage cannot loop).
+
+## Credit safety
+
+- **OpenAI refuses a reference** (its safety filter): the reference is set aside in `Artwork Ref/Failed` at once, with the reason. It is not painted again.
+- **The OpenAI account can't be used** (no credit, wrong key, rate limit): the run stops without painting, the reference's try is given back, and the queue waits. The Error Handler alerts and does not restart the worker; the Queue Watchdog tries again every 30 minutes, so the queue resumes by itself once the account works.
+- **The checker fails** (a glitch of the check, not a verdict): it is tried again (3 times), instead of failing the run and painting the artwork again.

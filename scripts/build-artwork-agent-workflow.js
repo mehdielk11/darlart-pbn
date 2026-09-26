@@ -14,13 +14,16 @@
  *   -> Titling and Print agents start; the worker starts again while references are queued
  *   A reference whose result is already in the manifest (a run that stopped after painting it) is only moved, never
  *   painted twice; a batch manifest left in the queue once all its references are gone is finished and moved to Done.
+ *   When OpenAI refuses to paint a reference (its safety filter), the reference is set aside at once, not painted
+ *   again; when the OpenAI account can't be used (no credit, wrong key, rate limit), the run stops without counting
+ *   the try, and the queue waits (the Queue Watchdog tries again every 30 minutes, the Error Handler alerts).
  *
  * "Check palette" embeds the palette from server/palettes/darlart-v3.json: run `node scripts/build-artwork-agent-workflow.js`
  * again after changing it, then re-import the workflows.
  */
 const fs = require("fs");
 const path = require("path");
-const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
+const { queueLock, RETRY, SERVICE_PROBLEM } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -533,9 +536,49 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
             ],
         },
         options: { timeout: 300000 },
-    }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000 });
+    }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000, onError: "continueRegularOutput" });
     connect("Build image prompt", "Generate ART");
     connect("Build image prompt", "Heartbeat (refresh lock)");
+
+    // no image: OpenAI refused this reference (set aside, never painted again), the account can't be used (the try is
+    // given back, the run stops, the queue waits), or another error (the run fails: the Error Handler starts it again)
+    ifNode("Painting received?", [X + 550, -220], "={{ !$json.error && !!($json.data && $json.data[0] && $json.data[0].b64_json) }}");
+    connect("Generate ART", "Painting received?");
+    code("Why no painting", [X + 550, -600], `const r = $input.first().json;
+const text = JSON.stringify(r.error || r).slice(0, 3000);
+const message = String((r.error && (r.error.description || r.error.message)) || "OpenAI returned no image").slice(0, 400);
+const refused = /moderation_blocked|safety system|content_policy|safety_violation/i.test(text);
+return [{ json: { refused, service: !refused && ${SERVICE_PROBLEM}.test(text), message } }];`);
+    connect("Painting received?", "Why no painting", 1);
+    ifNode("Refused by OpenAI?", [X + 770, -600], "={{ $json.refused }}");
+    connect("Why no painting", "Refused by OpenAI?");
+    code("Result: refused", [X + 990, -680], `return [{ json: { status: "failed", reason: "OpenAI refused to paint this reference (its safety filter): " + $('Why no painting').first().json.message } }];`);
+    connect("Refused by OpenAI?", "Result: refused", 0);
+    ifNode("OpenAI account problem?", [X + 990, -520], "={{ $json.service }}");
+    connect("Refused by OpenAI?", "OpenAI account problem?", 1);
+    code("Give the try back", [X + 1210, -600], `// Not this reference's fault: its try is not counted
+const next = $('Next reference').first().json;
+const manifest = $('Start attempt').first().json.manifest;
+const entry = manifest && Array.isArray(manifest.files) ? manifest.files.find((e) => e.queueName === next.queueName) : null;
+if (!entry || entry.status !== "queued") return [{ json: { hasManifest: false } }];
+entry.tries = Math.max(0, (Number(entry.tries) || 1) - 1);
+return [{ json: { hasManifest: true }, binary: { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: next.batchId + "_batch.json" } } }];`);
+    connect("OpenAI account problem?", "Give the try back", 0);
+    ifNode("Try to give back?", [X + 1430, -600], "={{ $json.hasManifest }}");
+    connect("Give the try back", "Try to give back?");
+    saveManifest("Save manifest (try given back)", [X + 1650, -680]);
+    connect("Try to give back?", "Save manifest (try given back)", 0);
+    node("Stop: OpenAI unavailable", "n8n-nodes-base.stopAndError", 1, [X + 1870, -600], {
+        errorType: "errorMessage",
+        errorMessage: "={{ 'OpenAI account problem, nothing painted (check the credit and the API key): ' + $('Why no painting').first().json.message }}",
+    });
+    connect("Save manifest (try given back)", "Stop: OpenAI unavailable");
+    connect("Try to give back?", "Stop: OpenAI unavailable", 1);
+    node("Stop: painting failed", "n8n-nodes-base.stopAndError", 1, [X + 1210, -440], {
+        errorType: "errorMessage",
+        errorMessage: "={{ 'The painting failed: ' + $('Why no painting').first().json.message }}",
+    });
+    connect("OpenAI account problem?", "Stop: painting failed", 1);
 
     node("Raw artwork file", "n8n-nodes-base.convertToFile", 1.1, [X + 660, -120], {
         operation: "toBinary",
@@ -543,7 +586,7 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
         binaryPropertyName: "artwork",
         options: { fileName: "artwork.png", mimeType: "image/png" },
     });
-    connect("Generate ART", "Raw artwork file");
+    connect("Painting received?", "Raw artwork file", 0);
 
     node("Check artwork", "@n8n/n8n-nodes-langchain.agent", 2.2, [X + 880, -120], {
         promptType: "define",
@@ -553,7 +596,8 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
             systemMessage: "You check artwork files before they go to a paint-by-numbers production tool. You look at the image and report problems. Be strict.",
             passthroughBinaryImages: true,
         },
-    });
+    // a failed check is tried again (cheap), instead of failing the run and painting the artwork again (expensive)
+    }, { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000 });
     connect("Raw artwork file", "Check artwork");
 
     node("Checker model", "@n8n/n8n-nodes-langchain.lmChatOpenAi", 1.2, [X + 840, 100], { model: { __rl: true, value: "gpt-5-mini", mode: "id" }, options: {} });
@@ -721,7 +765,7 @@ const move = result.status === "done"
 const out = { json: { status: result.status, folder: result.folder || "", folderId: result.folderId || "", reason: result.reason || "", recovered: !!result.recovered, painted, hasManifest: !!manifest, move, manifest } };
 if (manifest) out.binary = { manifest: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"), mimeType: "application/json", fileName: next.batchId + "_batch.json" } };
 return [out];`);
-    for (const result of ["Result: painted", "Result: not painted", "Result: stopped too often", "Result: recorded before"]) { connect(result, "Update entry"); }
+    for (const result of ["Result: painted", "Result: not painted", "Result: stopped too often", "Result: recorded before", "Result: refused"]) { connect(result, "Update entry"); }
 
     // ---- Telegram: the painted artwork with its product number, or why the reference was set aside ----------------
     ifNode("Telegram on?", [Y + 220, 360], telegramOn);
@@ -755,7 +799,7 @@ if (entryResult.status === "done") {
     ].join("\\n");
     return [{ json: { painted: true, caption }, binary: { data: $('Artwork file').first().binary.artwork } }];
 }
-const reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : "";
+const reason = $('Result: not painted').isExecuted ? $('Result: not painted').first().json.reason : $('Result: stopped too often').isExecuted ? $('Result: stopped too often').first().json.reason : $('Result: refused').isExecuted ? $('Result: refused').first().json.reason : "";
 return [{ json: { painted: false, text: ["Not painted: " + originalName, from, "Reason: " + reason, "The reference is in Artwork Ref/Failed."].join("\\n") } }];`);
     connect("Telegram on?", "Artwork message", 0);
     ifNode("Painted?", [Y + 660, 360], "={{ $json.painted }}");

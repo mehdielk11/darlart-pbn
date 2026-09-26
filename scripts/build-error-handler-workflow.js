@@ -13,9 +13,14 @@
  *      refreshed): the Queue Watchdog does not start it again for 30 minutes, so a lasting problem is not retried
  *      every 5 minutes
  *   -> the same failure (workflow, step, error) is announced at most once an hour
+ *   -> a failure of an account or a service (no OpenAI credit, wrong key, missing permission, rate limit, service
+ *      unreachable) is not the work's fault: the worker is not restarted at once (it would fail the same way), and
+ *      the run's try markers ("_titling-try-<execution>", "_upload-try-<execution>") are deleted, so the folders it
+ *      was working on are not given up for it
  */
 const fs = require("fs");
 const path = require("path");
+const { SERVICE_PROBLEM } = require("./lib/n8n-queue-lock");
 
 const root = path.join(__dirname, "..");
 
@@ -38,8 +43,12 @@ const WORKFLOWS = {
 const WORKER_STEPS_BEFORE_TRY = ["Settings", "List locks", "Lock state", "Lock free?", "Create lock", "List locks again", "Won the lock?", "Lock won?",
     "Step back (drop my lock)", "Busy: try again?", "Retry?", "Wait before retry", "List queue", "Next reference", "Anything queued?", "Has manifest?",
     "Download manifest", "Start attempt", "Record the try?", "Save manifest (try)",
-    "Leftover manifests", "Any leftover?", "Download leftover", "Finished batches", "Any finished?", "Save finished manifest", "Move finished manifest"];
-const LOCK_PREFIXES = ["_artwork-worker.lock", "_titling-agent.lock", "_print-agent.lock", "_shopify-uploader.lock", "_price-sync.lock"];
+    "Leftover manifests", "Any leftover?", "Download leftover", "Finished batches", "Any finished?", "Save finished manifest", "Move finished manifest",
+    // the OpenAI account can't be used: the try was given back, the queue waits
+    "Stop: OpenAI unavailable", "Save manifest (try given back)"];
+// the try markers a run leaves in the folders it works on (deleted when the run failed on an account or service problem)
+const TRY_PREFIXES = ["_titling-try-", "_upload-try-"];
+const LOCK_PREFIXES = ["_artwork-worker.lock", "_titling-agent.lock", "_print-agent.lock", "_shopify-uploader.lock", "_price-sync.lock", "_translation-sync.lock"];
 
 let nextId = 1;
 const nodes = [];
@@ -92,7 +101,7 @@ node("Find locks", "n8n-nodes-base.httpRequest", 4.2, [660, 0], {
     sendQuery: true,
     queryParameters: {
         parameters: [
-            { name: "q", value: "(" + LOCK_PREFIXES.map((p) => `name contains '${p}'`).join(" or ") + " or name contains '_failed-') and trashed = false" },
+            { name: "q", value: "(" + [...LOCK_PREFIXES, ...TRY_PREFIXES].map((p) => `name contains '${p}'`).join(" or ") + " or name contains '_failed-') and trashed = false" },
             { name: "fields", value: "files(id,name,parents)" },
             { name: "pageSize", value: "1000" },
             { name: "supportsAllDrives", value: "true" },
@@ -103,9 +112,13 @@ node("Find locks", "n8n-nodes-base.httpRequest", 4.2, [660, 0], {
 }, { onError: "continueRegularOutput", retryOnFail: true, maxTries: 3, waitBetweenTries: 5000 });
 connect("Error details", "Find locks");
 
-code("Locks of the run", [880, 0], `// Only the failed run's own lock: its name ends with "-<execution id>"
-const id = $('Error details').first().json.executionId;
-const locks = id ? ($input.first().json.files || []).filter((f) => f.name.includes(".lock-") && f.name.endsWith("-" + id)) : [];
+code("Locks of the run", [880, 0], `// Only the failed run's own lock: its name ends with "-<execution id>"; and its try markers when the failure was an
+// account or service problem (the folders are not given up for it)
+const d = $('Error details').first().json;
+const id = d.executionId;
+const service = d.step === "Stop: OpenAI unavailable" || ${SERVICE_PROBLEM}.test(d.message);
+const TRY = ${JSON.stringify(TRY_PREFIXES)};
+const locks = id ? ($input.first().json.files || []).filter((f) => f.name.endsWith("-" + id) && (f.name.includes(".lock-") || (service && TRY.some((p) => f.name.startsWith(p))))) : [];
 return locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];`);
 connect("Find locks", "Locks of the run");
 
@@ -126,7 +139,8 @@ code("Next steps", [1540, 0], `// What happens now, for the alert; the worker is
 const d = $('Error details').first().json;
 const W = ${JSON.stringify(WORKFLOWS)};
 const beforeTry = ${JSON.stringify(WORKER_STEPS_BEFORE_TRY)};
-const released = $('Locks to delete').isExecuted ? $('Locks to delete').all().length : 0;
+const released = $('Locks to delete').isExecuted ? $('Locks to delete').all().filter((item) => item.json.name.includes(".lock-")).length : 0;
+const service = d.step === "Stop: OpenAI unavailable" || ${SERVICE_PROBLEM}.test(d.message);
 const settings = $('Settings').first().json;
 const memory = $getWorkflowStaticData("global");
 const now = Date.now();
@@ -135,7 +149,9 @@ let restartWorker = false;
 if (d.workflowId === W.worker) {
     // restarts of the last restartWindowMinutes: a failure that repeats whatever the reference stops being retried at once
     memory.restarts = (memory.restarts || []).filter((t) => now - t < Number(settings.restartWindowMinutes) * 60000);
-    if (d.step && !beforeTry.includes(d.step) && memory.restarts.length < Number(settings.maxRestarts)) {
+    if (service) {
+        next = "An account or service problem (credit, key, permission, rate limit): the worker is not restarted at once, the queue is kept.";
+    } else if (d.step && !beforeTry.includes(d.step) && memory.restarts.length < Number(settings.maxRestarts)) {
         restartWorker = true;
         memory.restarts.push(now);
         next = "The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.";
@@ -158,6 +174,7 @@ for (const [k, t] of Object.entries(memory.alerts)) if (now - t > 24 * 3600000) 
 const sendAlert = !memory.alerts[key] || now - memory.alerts[key] >= Number(settings.alertEveryMinutes) * 60000;
 if (sendAlert) memory.alerts[key] = now;
 if (stage && !restartWorker) next += " The Queue Watchdog starts it again in 30 minutes if work is still waiting (click Run now to go sooner).";
+if (service && d.workflowId !== W.worker) next += " This looks like an account or service problem (OpenAI credit or key, Shopify or Drive permission, rate limit): it does not count as a try on the folders.";
 const lines = [
     "Workflow failed: " + d.workflowName,
     d.step ? "Step: " + d.step : "",

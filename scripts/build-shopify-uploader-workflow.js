@@ -20,6 +20,12 @@
  * "batch-messages" mode and waits), so a message is never sent twice.
  * The product's handle is the product JSON's handle plus the folder number (e.g. blue-iris-1003): a rerun updates
  * the same draft instead of creating a second one, and never touches an existing product.
+ *
+ * Each try on a folder leaves a marker "_upload-try-<execution>" in it (deleted once its <date+time>_shopify.json is
+ * saved). A folder is given up after maxTries tries (marker "_upload-gave-up", one Telegram alert), so a folder that
+ * always fails is not uploaded again every 30 minutes; folders never tried go first, so it never holds up the others.
+ * Delete its "_upload-..." markers to try it again. The Error Handler deletes the try markers of a run that failed on
+ * an account or service problem (Shopify permission, rate limit...): that is not the folder's fault.
  */
 const fs = require("fs");
 const path = require("path");
@@ -45,6 +51,7 @@ const SETTINGS = {
     // 3_package-kit, 4_rolled-stretched, 5_order-package
     sharedImages: "gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409",
     maxPerRun: 10, // folders handled per run, the rest wait for the next run
+    maxTries: 3, // tries on a folder before it is given up (one Telegram alert)
     pbnApiUrl: "http://127.0.0.1:3000", // makes the featured image (POST /v1/featured)
     // batch messages: the chat the "Telegram account" bot writes to (empty = no messages)
     telegramChatId: "-1003952514058",
@@ -69,6 +76,7 @@ function connect(from, to, output = 0, type = "main") {
     outputs[output].push({ node: to, type, index: 0 });
 }
 const code = (name, position, jsCode, extra) => node(name, "n8n-nodes-base.code", 2, position, { jsCode }, extra);
+const googleAuth = { authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api" };
 const drive = { __rl: true, mode: "list", value: "My Drive" };
 const byId = (value) => ({ __rl: true, mode: "id", value });
 const driveList = (name, position, q) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
@@ -189,8 +197,10 @@ connect("List Artwork Agent folders", "Folders");
 driveList("List folder files", [1760, 200], "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}");
 connect("Folders", "List folder files");
 
-code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <date+time>_shopify.json yet
+code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <date+time>_shopify.json yet,
+// and were not given up (maxTries tries); folders never tried first, then the oldest
 const settings = $('Settings').first().json;
+const maxTries = Number(settings.maxTries) || 3;
 const folders = $('Folders').all();
 const pending = [];
 $input.all().forEach((item, i) => {
@@ -209,11 +219,63 @@ $input.all().forEach((item, i) => {
     const names = { featured: stamp + "_featured.webp", mockup: stamp + "_mockup.webp" };
     const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));
     if (!product || !mockup || !featured || find("_shopify.json")) return;
-    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName } });
+    const tries = files.filter((f) => f.name.startsWith("_upload-try-")).length;
+    if (tries >= maxTries || files.some((f) => f.name === "_upload-gave-up")) return;
+    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName, tries } });
 });
+pending.sort((a, b) => a.json.tries - b.json.tries || Number(a.json.folder) - Number(b.json.folder));
 const todo = pending.slice(0, Number(settings.maxPerRun) || 10);
 return todo.length ? todo : [{ json: { none: true } }];`);
 connect("List folder files", "Pending folders");
+
+// ---- folders given up: tried maxTries times without a Shopify draft; one marker and one alert each -----------
+// (placed above the main path: it runs first)
+code("Given up folders", [1980, -120], `// Folders tried maxTries times that still have no <date+time>_shopify.json and no "_upload-gave-up" marker yet
+const settings = $('Settings').first().json;
+const maxTries = Number(settings.maxTries) || 3;
+const folders = $('Folders').all();
+const out = [];
+$input.all().forEach((item, i) => {
+    const folder = folders[i].json;
+    if (folder.none) return;
+    const files = item.json.files || [];
+    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));
+    if (!art || files.some((f) => f.name === art.name.slice(0, 19) + "_shopify.json")) return;
+    const tries = files.filter((f) => f.name.startsWith("_upload-try-")).length;
+    if (tries >= maxTries && !files.some((f) => f.name === "_upload-gave-up")) out.push({ json: { folderId: folder.id, folder: folder.name, tries } });
+});
+return out.length ? out : [{ json: { none: true } }];`);
+connect("List folder files", "Given up folders");
+node("Any given up?", "n8n-nodes-base.if", 2, [2200, -120], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "anygivenup", leftValue: "={{ !$json.none }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Given up folders", "Any given up?");
+node("Mark given up", "n8n-nodes-base.httpRequest", 4.2, [2420, -160], {
+    method: "POST",
+    url: "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: '_upload-gave-up', mimeType: 'text/plain', parents: [$json.folderId], description: 'Shopify Uploader: ' + $json.tries + ' tries without a draft. Delete the _upload-... files to try again.' }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Any given up?", "Mark given up", 0);
+code("Given up message", [2640, -160], `const settings = $('Settings').first().json;
+const up = $('Given up folders').all().map((item) => item.json).filter((f) => !f.none);
+if (!up.length || !String(settings.telegramChatId || "").trim()) return [];
+return [{ json: { text: ["Shopify Uploader: gave up on folder" + (up.length === 1 ? " " : "s ") + up.map((f) => f.folder).join(", ") + " after " + settings.maxTries + " tries (no Shopify draft).", "", "The error is in the Error Handler's alerts. To try again, delete the files named _upload-... in the folder."].join("\\n") } }];`, { executeOnce: true });
+connect("Mark given up", "Given up message");
+node("Telegram: given up", "n8n-nodes-base.telegram", 1.2, [2860, -160], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
+}, { onError: "continueRegularOutput" });
+connect("Given up message", "Telegram: given up");
 
 // ---- 4. one folder at a time ------------------------------------------------------------------------
 node("Loop over folders", "n8n-nodes-base.splitInBatches", 3, [2200, 200], { options: {} });
@@ -231,7 +293,18 @@ connect("Folders to upload?", "Loop over folders", 0);
 lock.heartbeat("Heartbeat (refresh lock)", [2310, 460]);
 connect("Loop over folders", "Heartbeat (refresh lock)", 1);
 driveDownload("Download product JSON", [2420, 300], "$('Loop over folders').first().json.productId", "json");
-connect("Heartbeat (refresh lock)", "Download product JSON");
+// one try on this folder, recorded before anything goes to Shopify (a run that crashes midway still counts it)
+node("Record the try", "n8n-nodes-base.httpRequest", 4.2, [2420, 460], {
+    method: "POST",
+    url: "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: '_upload-try-' + $execution.id, mimeType: 'text/plain', parents: [$('Loop over folders').first().json.folderId] }) }}",
+    options: { timeout: 30000 },
+}, { ...RETRY, onError: "continueRegularOutput" });
+connect("Heartbeat (refresh lock)", "Record the try");
+connect("Record the try", "Download product JSON");
 
 shopify("Stage uploads", [2640, 300], `={{ JSON.stringify({
   query: 'mutation StageImages($input: [StagedUploadInput!]!) { stagedUploadsCreate(input: $input) { stagedTargets { url resourceUrl parameters { name value } } userErrors { field message } } }',
@@ -549,6 +622,14 @@ connect("Shopify marker", "Save marker");
 code("Uploaded", [7480, 200], `const product = $('Shopify marker').first().json;
 return [{ json: { ...product, markerId: $input.first().json.id } }];`);
 connect("Save marker", "Uploaded");
+// the folder is done: its try marker is no longer needed (a side branch above the loop, so it runs first)
+node("Delete the try", "n8n-nodes-base.httpRequest", 4.2, [7480, 60], {
+    method: "DELETE",
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $('Record the try').first().json.id }}?supportsAllDrives=true",
+    ...googleAuth,
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Save marker", "Delete the try");
 connect("Uploaded", "Loop over folders");
 
 code("Summary", [2420, 60], `// What this run uploaded (visible in the execution log)

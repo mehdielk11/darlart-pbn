@@ -822,8 +822,7 @@
       ],
       "parameters": {
         "jsCode": "// One message: what changed per product, and any error Shopify returned\nconst changes = $('Changes').all().map((item) => item.json);\nconst answers = $input.all().map((item) => item.json);\nconst lines = [];\nlet failed = 0;\nchanges.forEach((c, i) => {\n    const a = answers[i] || {};\n    const errors = [];\n    if (a.error) errors.push(String(a.error.message || a.error));\n    for (const e of a.errors || []) errors.push(e.message);\n    for (const part of Object.values(a.data || {})) for (const e of (part && part.userErrors) || []) errors.push(e.message);\n    const s = c.summary;\n    const bits = [];\n    if (s.updated.length) bits.push(s.updated.length + \" price\" + (s.updated.length === 1 ? \"\" : \"s\") + \" updated\");\n    if (s.removed.length) bits.push(s.removed.length + \" not sold (removed)\");\n    if (s.created.length) bits.push(s.created.length + \" back on sale\");\n    if (s.keptAll) bits.push(\"nothing removed: every price of this product is 0 in the sheet\");\n    lines.push(\"- \" + c.folder + \" \" + c.title + \": \" + bits.join(\", \") + (errors.length ? \" | ERROR: \" + errors.join(\"; \").slice(0, 300) : \"\"));\n    if (errors.length) failed++;\n});\nconst tr = $('Save translations').isExecuted ? $('Save translations').first().json : null;\nif (tr) {\n    const errs = [];\n    if (tr.error) errs.push(String(tr.error.message || tr.error));\n    for (const e of tr.errors || []) errs.push(e.message);\n    for (const part of Object.values(tr.data || {})) for (const e of (part && part.userErrors) || []) errs.push(e.message);\n    if (errs.length) { lines.push(\"- translations: ERROR \" + errs.join(\"; \").slice(0, 300)); failed++; }\n}\nconst head = \"Price Sync: \" + changes.length + \" product\" + (changes.length === 1 ? \"\" : \"s\") + \" brought in line with the prices sheet\" + (failed ? \", \" + failed + \" with errors (retried next hour)\" : \"\");\nreturn [{ json: { failed, text: [head, ...lines].join(\"\\n\").slice(0, 4000) } }];"
-      },
-      "executeOnce": true
+      }
     },
     {
       "id": "ff000034-0000-4000-8000-000000000000",
@@ -1440,7 +1439,7 @@
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
     "errorWorkflow": "aokToPHKOa4MciN1",
-    "saveDataSuccessExecution": "all",
+    "saveDataSuccessExecution": "none",
     "saveManualExecutions": true
   },
   "pinData": {}

@@ -29,3 +29,7 @@ A price of 0 means the combination gets no variant at all, from the Uploader (ne
 - on the product page, the choice is greyed out, labelled "Not available" ("Non disponible" / "غير متوفر") and can't be clicked. This is done by the theme script `shopify/darlart-variant-gate.js`, which the theme stores as `assets/darlart-variant-gate.js`. It loads on product pages from `snippets/global-script-2.liquid`.
 - Choices are made top to bottom (canvas, then size, then colours). A choice is greyed only when no variant for sale matches it and the choices above it. After a click, the choices below move to the nearest variant for sale.
 - If **every** combination of a value is 0 (for example all of 20x25), that value no longer appears on the page.
+
+## Execution list
+
+Runs that succeed are not kept in the n8n execution list (one run an hour would fill the database); the Telegram report says what changed. Failed runs and "Run now" runs are kept.

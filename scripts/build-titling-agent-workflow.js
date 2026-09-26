@@ -8,6 +8,12 @@
  * One run at a time (a Drive lock in "Artwork Agent", see scripts/lib/n8n-queue-lock.js): a call that finds another
  * run working waits and tries again, and a run that wrote product JSONs starts itself again until none is missing.
  *
+ * Each try on a folder leaves a marker "_titling-try-<execution>" in it (deleted when its product JSON is saved). A
+ * folder is given up after maxTries tries (marker "_titling-gave-up", one Telegram alert), so a folder that always
+ * fails never costs AI calls run after run; folders never tried go first, so it never holds up the others either.
+ * Delete its "_titling-..." markers to try it again. The Error Handler deletes the try markers of a run that failed
+ * on an account or service problem (no OpenAI credit, wrong key...): that is not the folder's fault.
+ *
  * The JSON follows Shopify's product fields (title, handle, productType, vendor, collections, tags) and a
  * plain-text description (wrap its paragraphs in <p> for Shopify's descriptionHtml).
  */
@@ -26,6 +32,8 @@ const SETTINGS = {
     apiVersion: "2026-07",
     language: "English",
     maxPerRun: 20, // folders handled per run, the rest wait for the next run
+    maxTries: 3, // tries on a folder before it is given up (one Telegram alert)
+    telegramChatId: "-1003952514058", // where the given-up alert goes (empty = no alert)
     productType: "Paint by Numbers Kit",
     vendor: "Darl'Art",
     baseTags: "paint-by-numbers", // always added, comma-separated
@@ -46,6 +54,16 @@ function connect(from, to, output = 0, type = "main") {
     while (outputs.length <= output) { outputs.push([]); }
     outputs[output].push({ node: to, type, index: 0 });
 }
+const code = (name, position, jsCode, extra) => node(name, "n8n-nodes-base.code", 2, position, { jsCode }, extra);
+const ifNode = (name, position, left, extra) => node(name, "n8n-nodes-base.if", 2, position, {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: name.replace(/\W/g, ""), leftValue: left, rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+}, extra);
+const googleAuth = { authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api" };
 const drive = { __rl: true, mode: "list", value: "My Drive" };
 const byId = (value) => ({ __rl: true, mode: "id", value });
 const driveList = (name, position, q) => node(name, "n8n-nodes-base.httpRequest", 4.2, position, {
@@ -144,8 +162,10 @@ driveList("List folder files", [1320, 100], "={{ $json.none ? \"name = '__none__
 connect("Folders", "List folder files");
 
 node("Pending folders", "n8n-nodes-base.code", 2, [1540, 100], {
-    jsCode: `// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet
+    jsCode: `// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet, and were not
+// given up (maxTries tries); folders never tried first, then the oldest
 const settings = $('Settings').first().json;
+const maxTries = Number(settings.maxTries) || 3;
 const folders = $('Folders').all();
 const pending = [];
 $input.all().forEach((item, i) => {
@@ -157,13 +177,60 @@ $input.all().forEach((item, i) => {
     const stamp = art.name.slice(0, 19);
     const productName = stamp + "_product.json";
     if (files.some((f) => f.name === productName)) return;
+    const tries = files.filter((f) => f.name.startsWith("_titling-try-")).length;
+    if (tries >= maxTries || files.some((f) => f.name === "_titling-gave-up")) return;
     const ref = files.find((f) => f.name.startsWith(stamp + "_ref."));
-    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : "", productName } });
+    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : "", productName, tries } });
 });
+pending.sort((a, b) => a.json.tries - b.json.tries || Number(a.json.folder) - Number(b.json.folder));
 const todo = pending.slice(0, Number(settings.maxPerRun) || 20);
 return todo.length ? todo : [{ json: { none: true } }];`,
 });
 connect("List folder files", "Pending folders");
+
+// ---- folders given up: tried maxTries times without a product JSON; one marker and one alert each ------------
+// (placed above the main path: it runs first)
+code("Given up folders", [1540, -160], `// Folders tried maxTries times that still have no product JSON and no "_titling-gave-up" marker yet
+const settings = $('Settings').first().json;
+const maxTries = Number(settings.maxTries) || 3;
+const folders = $('Folders').all();
+const out = [];
+$input.all().forEach((item, i) => {
+    const folder = folders[i].json;
+    if (folder.none) return;
+    const files = item.json.files || [];
+    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));
+    if (!art || files.some((f) => f.name === art.name.slice(0, 19) + "_product.json")) return;
+    const tries = files.filter((f) => f.name.startsWith("_titling-try-")).length;
+    if (tries >= maxTries && !files.some((f) => f.name === "_titling-gave-up")) out.push({ json: { folderId: folder.id, folder: folder.name, tries } });
+});
+return out.length ? out : [{ json: { none: true } }];`);
+connect("List folder files", "Given up folders");
+ifNode("Any given up?", [1760, -160], "={{ !$json.none }}");
+connect("Given up folders", "Any given up?");
+node("Mark given up", "n8n-nodes-base.httpRequest", 4.2, [1980, -240], {
+    method: "POST",
+    url: "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: '_titling-gave-up', mimeType: 'text/plain', parents: [$json.folderId], description: 'Titling Agent: ' + $json.tries + ' tries without a product JSON. Delete the _titling-... files to try again.' }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Any given up?", "Mark given up", 0);
+code("Given up message", [2200, -240], `const settings = $('Settings').first().json;
+const up = $('Given up folders').all().map((item) => item.json).filter((f) => !f.none);
+if (!up.length || !String(settings.telegramChatId || "").trim()) return [{ json: { none: true } }];
+return [{ json: { text: ["Titling Agent: gave up on folder" + (up.length === 1 ? " " : "s ") + up.map((f) => f.folder).join(", ") + " after " + settings.maxTries + " tries (no product texts).", "", "Its print files are still made, but it gets no Shopify draft until it has its product JSON. To try again, delete the files named _titling-... in the folder. The last error is in the Error Handler's alerts."].join("\\n") } }];`, { executeOnce: true });
+connect("Mark given up", "Given up message");
+ifNode("Alert?", [2420, -240], "={{ !$json.none }}");
+connect("Given up message", "Alert?");
+node("Telegram: given up", "n8n-nodes-base.telegram", 1.2, [2640, -240], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
+}, { onError: "continueRegularOutput" });
+connect("Alert?", "Telegram: given up", 0);
 
 node("Folders to title?", "n8n-nodes-base.if", 2, [1650, 260], {
     conditions: {
@@ -188,7 +255,18 @@ node("Download artwork", "n8n-nodes-base.httpRequest", 4.2, [1980, 200], {
     nodeCredentialType: "googleDriveOAuth2Api",
     options: { response: { response: { responseFormat: "file", outputPropertyName: "artwork" } }, timeout: 120000 },
 });
-connect("Heartbeat (refresh lock)", "Download artwork");
+// one try on this folder, recorded before the AI call (a run that crashes midway still counts it)
+node("Record the try", "n8n-nodes-base.httpRequest", 4.2, [1980, 360], {
+    method: "POST",
+    url: "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: '_titling-try-' + $execution.id, mimeType: 'text/plain', parents: [$('Loop over folders').first().json.folderId] }) }}",
+    options: { timeout: 30000 },
+}, { ...RETRY, onError: "continueRegularOutput" });
+connect("Heartbeat (refresh lock)", "Record the try");
+connect("Record the try", "Download artwork");
 
 node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
     promptType: "define",
@@ -203,7 +281,7 @@ node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
 4. THEMES: the store collections this painting belongs to, 1 to 3 names copied exactly from the theme list in the prompt, the best fit first. Pick every theme that genuinely fits and only those: a theme fits when a shopper browsing that collection would expect to find this painting there (an eagle belongs in Animals, a sunset over the sea in Sunsets, a couple in Romance). Judge by the main subject and the overall scene, never by a small detail in the background. Only names from that list.`,
         passthroughBinaryImages: true,
     },
-});
+}, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000 });
 connect("Download artwork", "Titling agent");
 
 node("Titling model", "@n8n/n8n-nodes-langchain.lmChatOpenAi", 1.2, [2160, 420], { model: { __rl: true, value: "gpt-5-mini", mode: "id" }, options: {} });
@@ -283,6 +361,14 @@ node("Save product JSON", "n8n-nodes-base.googleDrive", 3, [2720, 200], {
 });
 connect("Build product JSON", "Save product JSON");
 connect("Save product JSON", "Loop over folders");
+// the product JSON is saved: the folder's try marker is no longer needed (a side branch above the loop, so it runs first)
+node("Delete the try", "n8n-nodes-base.httpRequest", 4.2, [2940, 60], {
+    method: "DELETE",
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $('Record the try').first().json.id }}?supportsAllDrives=true",
+    ...googleAuth,
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Save product JSON", "Delete the try");
 
 node("Summary", "n8n-nodes-base.code", 2, [1980, -40], {
     jsCode: `// What this run produced (visible in the execution log)

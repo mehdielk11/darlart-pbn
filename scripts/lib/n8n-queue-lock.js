@@ -19,6 +19,10 @@ const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
 const googleAuth = { authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api" };
 // a read that failed on a network blip or a Drive 5xx is tried again before the run fails
 const RETRY = { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000 };
+// a regular expression (source text, for the generated Code nodes) matching errors of an account or a service, not of
+// the item being worked on: no credit, wrong key or missing permission, rate limit, service unreachable. Such a failure
+// is never counted against a folder or a product (it would be given up for nothing).
+const SERVICE_PROBLEM = "/insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i";
 // fresh = refreshed within the lock's own stale time (its description), or within `own` for an older lock without one
 const FRESH_CODE = (own) => `const OWN = ${own};
 const staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || ""); return (m ? Number(m[1]) : OWN) * 60000; };
@@ -143,4 +147,4 @@ return ids.map((id) => ({ json: { id, processed: !!processed } }));`, { executeO
     };
 }
 
-module.exports = { queueLock, RETRY };
+module.exports = { queueLock, RETRY, SERVICE_PROBLEM };

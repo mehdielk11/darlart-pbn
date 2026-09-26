@@ -9,6 +9,7 @@ a run fails -> its queue lock is deleted at once (its name ends with the run's e
 ```
 
 - Without it, a failed run's lock would block the next runs until it goes stale (15 to 20 min).
+- **Account or service problems** (no OpenAI credit, wrong key, missing permission, rate limit, service unreachable) are not the work's fault: the worker is not restarted at once, and the run's try markers (`_titling-try-<execution>`, `_upload-try-<execution>`) are deleted, so its folders are not given up for it.
 - The worker is not restarted after a failure before its try is recorded (e.g. Drive unreachable) or in its queue clean-up, nor more than `maxRestarts` (5) times in `restartWindowMinutes` (30): the queue is kept, and the Queue Watchdog starts the worker again after 30 minutes.
 - n8n runs error workflows for production executions, not for manual test runs ("Run now" in the editor).
 - `telegramChatId` in its Settings node; empty = no alert. The same failure (workflow, step, error) is announced at most once every `alertEveryMinutes` (60).

@@ -73,3 +73,10 @@ A Drive lock (`_shopify-uploader.lock-<execution id>` in Artwork Agent, `scripts
 
 ## Price 0 = not sold
 A price of 0 (or an empty price) in the sheet means that combination is not sold: the Uploader creates no variant for it, and the product page greys it out. Products already in Shopify follow sheet changes through the Darl'Art Price Sync workflow (`PRICE-SYNC.md`).
+
+## A folder that keeps failing
+
+Each try on a folder leaves a small marker `_upload-try-<execution>` in it, deleted as soon as its `<date+time>_shopify.json` is saved. After **3 tries** (`maxTries` in Settings) the folder is **given up**: it gets the marker `_upload-gave-up`, one Telegram alert, and it is no longer uploaded again every 30 minutes. Folders never tried go first, so a folder that fails never holds up the others. The Queue Watchdog skips given-up folders too.
+
+- **To try it again:** delete the files named `_upload-...` in the folder.
+- A run that failed because of an **account or a service** (Shopify permission, rate limit, Drive access) does not count: the Error Handler deletes its try markers.

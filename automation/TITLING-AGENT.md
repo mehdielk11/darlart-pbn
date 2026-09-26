@@ -33,3 +33,11 @@ Shopify's own field names, so a later workflow can create the product as is:
 ## One run at a time
 
 A Drive lock (`_titling-agent.lock-<execution id>` in Artwork Agent, `scripts/lib/n8n-queue-lock.js`) lets one run work at a time: a call that finds another run working waits 30 s and tries again (3 times), and a run that wrote product JSONs starts itself again until none is missing. The lock is refreshed for each folder; one not refreshed for 15 min belongs to a crashed run and is removed. A failed run's lock is released at once by the Darl'Art Error Handler.
+
+## A folder that keeps failing
+
+Each try on a folder leaves a small marker `_titling-try-<execution>` in it, deleted as soon as its product JSON is saved. After **3 tries** (`maxTries` in Settings) the folder is **given up**: it gets the marker `_titling-gave-up`, one Telegram alert, and no more AI calls. Folders never tried go first, so a folder that fails never holds up the others. The Queue Watchdog skips given-up folders too.
+
+- **To try it again:** delete the files named `_titling-...` in the folder.
+- A run that failed because of the **OpenAI account or a service** (no credit, wrong key, missing permission, rate limit) does not count: the Error Handler deletes its try markers.
+- The AI call is tried twice before the run fails (a one-off glitch does not count as a try).

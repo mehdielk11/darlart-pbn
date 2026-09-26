@@ -90,24 +90,36 @@
             },
             {
               "id": "set5",
+              "name": "maxTries",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "set6",
+              "name": "telegramChatId",
+              "value": "-1003952514058",
+              "type": "string"
+            },
+            {
+              "id": "set7",
               "name": "productType",
               "value": "Paint by Numbers Kit",
               "type": "string"
             },
             {
-              "id": "set6",
+              "id": "set8",
               "name": "vendor",
               "value": "Darl'Art",
               "type": "string"
             },
             {
-              "id": "set7",
+              "id": "set9",
               "name": "baseTags",
               "value": "paint-by-numbers",
               "type": "string"
             },
             {
-              "id": "set8",
+              "id": "set10",
               "name": "skipCollections",
               "value": "all-kits,Best Sellers,Extras,Mini Kits",
               "type": "string"
@@ -574,11 +586,147 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet\nconst settings = $('Settings').first().json;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const productName = stamp + \"_product.json\";\n    if (files.some((f) => f.name === productName)) return;\n    const ref = files.find((f) => f.name.startsWith(stamp + \"_ref.\"));\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : \"\", productName } });\n});\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 20);\nreturn todo.length ? todo : [{ json: { none: true } }];"
+        "jsCode": "// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet, and were not\n// given up (maxTries tries); folders never tried first, then the oldest\nconst settings = $('Settings').first().json;\nconst maxTries = Number(settings.maxTries) || 3;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));\n    if (!art) return;\n    const stamp = art.name.slice(0, 19);\n    const productName = stamp + \"_product.json\";\n    if (files.some((f) => f.name === productName)) return;\n    const tries = files.filter((f) => f.name.startsWith(\"_titling-try-\")).length;\n    if (tries >= maxTries || files.some((f) => f.name === \"_titling-gave-up\")) return;\n    const ref = files.find((f) => f.name.startsWith(stamp + \"_ref.\"));\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, artworkId: art.id, artworkName: art.name, referenceName: ref ? ref.name : \"\", productName, tries } });\n});\npending.sort((a, b) => a.json.tries - b.json.tries || Number(a.json.folder) - Number(b.json.folder));\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 20);\nreturn todo.length ? todo : [{ json: { none: true } }];"
       }
     },
     {
       "id": "bb000023-0000-4000-8000-000000000000",
+      "name": "Given up folders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "// Folders tried maxTries times that still have no product JSON and no \"_titling-gave-up\" marker yet\nconst settings = $('Settings').first().json;\nconst maxTries = Number(settings.maxTries) || 3;\nconst folders = $('Folders').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));\n    if (!art || files.some((f) => f.name === art.name.slice(0, 19) + \"_product.json\")) return;\n    const tries = files.filter((f) => f.name.startsWith(\"_titling-try-\")).length;\n    if (tries >= maxTries && !files.some((f) => f.name === \"_titling-gave-up\")) out.push({ json: { folderId: folder.id, folder: folder.name, tries } });\n});\nreturn out.length ? out : [{ json: { none: true } }];"
+      }
+    },
+    {
+      "id": "bb000024-0000-4000-8000-000000000000",
+      "name": "Any given up?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anygivenup",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bb000025-0000-4000-8000-000000000000",
+      "name": "Mark given up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_titling-gave-up', mimeType: 'text/plain', parents: [$json.folderId], description: 'Titling Agent: ' + $json.tries + ' tries without a product JSON. Delete the _titling-... files to try again.' }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000026-0000-4000-8000-000000000000",
+      "name": "Given up message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -240
+      ],
+      "parameters": {
+        "jsCode": "const settings = $('Settings').first().json;\nconst up = $('Given up folders').all().map((item) => item.json).filter((f) => !f.none);\nif (!up.length || !String(settings.telegramChatId || \"\").trim()) return [{ json: { none: true } }];\nreturn [{ json: { text: [\"Titling Agent: gave up on folder\" + (up.length === 1 ? \" \" : \"s \") + up.map((f) => f.folder).join(\", \") + \" after \" + settings.maxTries + \" tries (no product texts).\", \"\", \"Its print files are still made, but it gets no Shopify draft until it has its product JSON. To try again, delete the files named _titling-... in the folder. The last error is in the Error Handler's alerts.\"].join(\"\\n\") } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "bb000027-0000-4000-8000-000000000000",
+      "name": "Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Alert",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bb000028-0000-4000-8000-000000000000",
+      "name": "Telegram: given up",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        -240
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000029-0000-4000-8000-000000000000",
       "name": "Folders to title?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -612,7 +760,7 @@
       "executeOnce": true
     },
     {
-      "id": "bb000024-0000-4000-8000-000000000000",
+      "id": "bb000030-0000-4000-8000-000000000000",
       "name": "Loop over folders",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -625,7 +773,7 @@
       }
     },
     {
-      "id": "bb000025-0000-4000-8000-000000000000",
+      "id": "bb000031-0000-4000-8000-000000000000",
       "name": "Heartbeat (refresh lock)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -649,7 +797,7 @@
       "executeOnce": true
     },
     {
-      "id": "bb000026-0000-4000-8000-000000000000",
+      "id": "bb000032-0000-4000-8000-000000000000",
       "name": "Download artwork",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -673,7 +821,33 @@
       }
     },
     {
-      "id": "bb000027-0000-4000-8000-000000000000",
+      "id": "bb000033-0000-4000-8000-000000000000",
+      "name": "Record the try",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        360
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_titling-try-' + $execution.id, mimeType: 'text/plain', parents: [$('Loop over folders').first().json.folderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000034-0000-4000-8000-000000000000",
       "name": "Titling agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
@@ -689,10 +863,13 @@
           "systemMessage": "=You write product listings for Darl'Art, a Moroccan paint-by-numbers brand. Each product is a kit: the customer paints the attached artwork on a numbered canvas. You look at the artwork and write in {{ $('Settings').first().json.language }}.\n\n1. TITLE: 2 to 5 words naming what the painting shows, evocative and specific, in Title Case (e.g. \"Blue Iris\", \"Red Umbrella\", \"Lanterns of Fes\", \"Golden Hour Camel Ride\"). Never \"paint by numbers\", \"kit\" or the brand. Never a real person's name, a brand or a trademarked character.\n2. DESCRIPTION: plain text, no HTML, two short paragraphs separated by a blank line, 50 to 90 words in all. First: what the finished painting shows and its mood. Second: why it is a pleasure to paint and who it suits (a relaxing hobby, a gift, which room it brightens). Warm and simple, no emojis, no prices, no sizes, no number of colors.\n3. TAGS: 6 to 12 lowercase keywords for the store search: the subject, its elements, the style, the mood, the main colors, where it fits (e.g. \"iris\", \"blue flowers\", \"botanical\", \"calm\", \"living room decor\"). No brand, no \"paint by numbers\".\n4. THEMES: the store collections this painting belongs to, 1 to 3 names copied exactly from the theme list in the prompt, the best fit first. Pick every theme that genuinely fits and only those: a theme fits when a shopper browsing that collection would expect to find this painting there (an eagle belongs in Animals, a sunset over the sea in Sunsets, a couple in Romance). Judge by the main subject and the overall scene, never by a small detail in the background. Only names from that list.",
           "passthroughBinaryImages": true
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "bb000028-0000-4000-8000-000000000000",
+      "id": "bb000035-0000-4000-8000-000000000000",
       "name": "Titling model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
@@ -710,7 +887,7 @@
       }
     },
     {
-      "id": "bb000029-0000-4000-8000-000000000000",
+      "id": "bb000036-0000-4000-8000-000000000000",
       "name": "Listing format",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -724,7 +901,7 @@
       }
     },
     {
-      "id": "bb000030-0000-4000-8000-000000000000",
+      "id": "bb000037-0000-4000-8000-000000000000",
       "name": "Build product JSON",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -737,7 +914,7 @@
       }
     },
     {
-      "id": "bb000031-0000-4000-8000-000000000000",
+      "id": "bb000038-0000-4000-8000-000000000000",
       "name": "Save product JSON",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -762,7 +939,27 @@
       }
     },
     {
-      "id": "bb000032-0000-4000-8000-000000000000",
+      "id": "bb000039-0000-4000-8000-000000000000",
+      "name": "Delete the try",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2940,
+        60
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Record the try').first().json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bb000040-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -775,7 +972,7 @@
       }
     },
     {
-      "id": "bb000033-0000-4000-8000-000000000000",
+      "id": "bb000041-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -789,7 +986,7 @@
       "executeOnce": true
     },
     {
-      "id": "bb000034-0000-4000-8000-000000000000",
+      "id": "bb000042-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -809,7 +1006,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "bb000035-0000-4000-8000-000000000000",
+      "id": "bb000043-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -843,7 +1040,7 @@
       "executeOnce": true
     },
     {
-      "id": "bb000036-0000-4000-8000-000000000000",
+      "id": "bb000044-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1105,6 +1302,66 @@
             "node": "Pending folders",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Given up folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Given up folders": {
+      "main": [
+        [
+          {
+            "node": "Any given up?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any given up?": {
+      "main": [
+        [
+          {
+            "node": "Mark given up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark given up": {
+      "main": [
+        [
+          {
+            "node": "Given up message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Given up message": {
+      "main": [
+        [
+          {
+            "node": "Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: given up",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1157,6 +1414,17 @@
       ]
     },
     "Heartbeat (refresh lock)": {
+      "main": [
+        [
+          {
+            "node": "Record the try",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record the try": {
       "main": [
         [
           {
@@ -1227,6 +1495,11 @@
         [
           {
             "node": "Loop over folders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Delete the try",
             "type": "main",
             "index": 0
           }

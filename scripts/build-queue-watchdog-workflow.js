@@ -131,7 +131,7 @@ $input.all().forEach((item, i) => {
     const status = String(r.status || "");
     if (["success", "error", "canceled", "crashed"].includes(status)) out.push({ json: { ...lock, status } });
 });
-return out.length ? out : [{ json: { none: true } }];`, { executeOnce: true });
+return out.length ? out : [{ json: { none: true } }];`);
 connect("Run of the lock", "Locks of finished runs");
 node("Any to delete?", "n8n-nodes-base.if", 2, [1760, -280], {
     conditions: {
@@ -191,11 +191,13 @@ $input.all().forEach((item, i) => {
     if (!art) return;
     const stamp = art.slice(0, 19);
     const has = (suffix) => names.includes(stamp + suffix);
-    if (!has("_product.json")) pending.titling.push(folder.name);
+    // folders the Titling Agent or the Shopify Uploader gave up on (3 tries) are not waiting for them any more
+    const gaveUp = (prefix) => names.includes(prefix + "gave-up") || names.filter((n) => n.startsWith(prefix + "try-")).length >= 3;
+    if (!has("_product.json") && !gaveUp("_titling-")) pending.titling.push(folder.name);
     // a folder the Print Agent gave up on (3 runs with failed jobs) is not waiting for it any more
     const givenUp = names.filter((n) => n.startsWith(stamp + "_print-failed-")).length >= 3;
     if ((!has("_featured.png") || !has("_mockup.png")) && !givenUp) pending.print.push(folder.name);
-    if (has("_product.json") && has("_featured.png") && has("_mockup.png") && !has("_shopify.json")) pending.uploader.push(folder.name);
+    if (has("_product.json") && has("_featured.png") && has("_mockup.png") && !has("_shopify.json") && !gaveUp("_upload-")) pending.uploader.push(folder.name);
 });
 
 const start = [];
