@@ -176,6 +176,137 @@
     },
     {
       "id": "dd000006-0000-4000-8000-000000000000",
+      "name": "Locks to check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "// Every lock (\"<prefix>.lock-<execution id>\") in the queue and Artwork Agent folders, a minute old or more\nconst files = [...($('List queue').first().json.files || []), ...($('List Artwork Agent').first().json.files || [])];\nconst locks = files.filter((f) => /\\.lock-\\d+$/.test(f.name) && Date.now() - new Date(f.createdTime).getTime() > 60000)\n    .map((f) => ({ json: { id: f.id, name: f.name, executionId: f.name.split(\"-\").pop() } }));\nreturn locks.length ? locks : [{ json: { none: true } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "dd000007-0000-4000-8000-000000000000",
+      "name": "Any lock?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "anylock",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dd000008-0000-4000-8000-000000000000",
+      "name": "Run of the lock",
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        -280
+      ],
+      "parameters": {
+        "resource": "execution",
+        "operation": "get",
+        "executionId": "={{ $json.executionId }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "dd000009-0000-4000-8000-000000000000",
+      "name": "Locks of finished runs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -280
+      ],
+      "parameters": {
+        "jsCode": "// A run that is over no longer needs its lock; a run still going (or one that cannot be checked) keeps it\nconst locks = $('Locks to check').all().map((item) => item.json);\nconst out = [];\n$input.all().forEach((item, i) => {\n    const lock = locks[i];\n    const r = item.json || {};\n    if (!lock) return;\n    if (r.error) {\n        // gone from n8n (deleted or pruned): the run is long over\n        const text = JSON.stringify(r.error);\n        if (!/credential/i.test(text) && /\b404\b|could not be found/i.test(text)) out.push({ json: { ...lock, status: \"gone\" } });\n        return;\n    }\n    const status = String(r.status || \"\");\n    if ([\"success\", \"error\", \"canceled\", \"crashed\"].includes(status)) out.push({ json: { ...lock, status } });\n});\nreturn out.length ? out : [{ json: { none: true } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "dd000010-0000-4000-8000-000000000000",
+      "name": "Any to delete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "anytodelete",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dd000011-0000-4000-8000-000000000000",
+      "name": "Delete lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -360
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "dd000012-0000-4000-8000-000000000000",
       "name": "Recent folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -184,11 +315,12 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($input.first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
-      }
+        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($('List Artwork Agent').first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
+      },
+      "executeOnce": true
     },
     {
-      "id": "dd000007-0000-4000-8000-000000000000",
+      "id": "dd000013-0000-4000-8000-000000000000",
       "name": "List folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -238,7 +370,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "dd000008-0000-4000-8000-000000000000",
+      "id": "dd000014-0000-4000-8000-000000000000",
       "name": "Stages to start",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -247,11 +379,11 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Which stages have waiting work, no fresh lock and no recent failure\nconst settings = $('Settings').first().json;\nconst STAGES = {\"worker\":{\"workflowId\":\"dO8EdyDM4ua2hRrA\",\"lock\":\"_artwork-worker.lock\",\"staleMinutes\":20},\"titling\":{\"workflowId\":\"tOSHbCt7hJ6ORh8a\",\"lock\":\"_titling-agent.lock\",\"staleMinutes\":15},\"print\":{\"workflowId\":\"ytxV3m341mDLCdt4\",\"lock\":\"_print-agent.lock\",\"staleMinutes\":20},\"uploader\":{\"workflowId\":\"XAwk67SiWmvVSu1d\",\"lock\":\"_shopify-uploader.lock\",\"staleMinutes\":20}};\nconst now = Date.now();\nconst queueFiles = $('List queue').first().json.files || [];\nconst rootFiles = $('List Artwork Agent').first().json.files || [];\nconst age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;\n// a lock's own stale time is in its description (\"staleMinutes=20\"); older locks use the stage's value\nconst staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || \"\"); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };\nconst locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + \"-\") && age(f) < staleOf(f, stage));\nconst failedRecently = (stage) => rootFiles.some((f) => f.name === \"_failed-\" + stage && age(f) < Number(settings.backoffMinutes));\n\nconst pending = { worker: [], titling: [], print: [], uploader: [] };\npending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_\\d{2}\\.(jpg|png|webp)$/.test(f.name)).map((f) => f.name);\n// no reference left but a batch manifest still there: the worker finishes the batch (moves it to Done)\nif (!pending.worker.length) pending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name) && age(f) > 10).map((f) => f.name);\nconst folders = $('Recent folders').all();\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const names = (item.json.files || []).map((f) => f.name);\n    const art = names.find((n) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(n));\n    if (!art) return;\n    const stamp = art.slice(0, 19);\n    const has = (suffix) => names.includes(stamp + suffix);\n    if (!has(\"_product.json\")) pending.titling.push(folder.name);\n    if (!has(\"_featured.png\") || !has(\"_mockup.png\")) pending.print.push(folder.name);\n    if (has(\"_product.json\") && has(\"_featured.png\") && has(\"_mockup.png\") && !has(\"_shopify.json\")) pending.uploader.push(folder.name);\n});\n\nconst start = [];\nfor (const stage of Object.keys(STAGES)) {\n    if (!pending[stage].length) continue;\n    if (locked(stage) || failedRecently(stage)) continue;\n    start.push({ json: { stage, workflowId: STAGES[stage].workflowId, waiting: pending[stage].slice(0, 20) } });\n}\nreturn start;"
+        "jsCode": "// Which stages have waiting work, no fresh lock and no recent failure\nconst settings = $('Settings').first().json;\nconst STAGES = {\"worker\":{\"workflowId\":\"dO8EdyDM4ua2hRrA\",\"lock\":\"_artwork-worker.lock\",\"staleMinutes\":20},\"titling\":{\"workflowId\":\"tOSHbCt7hJ6ORh8a\",\"lock\":\"_titling-agent.lock\",\"staleMinutes\":15},\"print\":{\"workflowId\":\"ytxV3m341mDLCdt4\",\"lock\":\"_print-agent.lock\",\"staleMinutes\":20},\"uploader\":{\"workflowId\":\"XAwk67SiWmvVSu1d\",\"lock\":\"_shopify-uploader.lock\",\"staleMinutes\":20}};\nconst now = Date.now();\nconst queueFiles = $('List queue').first().json.files || [];\nconst rootFiles = $('List Artwork Agent').first().json.files || [];\nconst age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;\n// a lock's own stale time is in its description (\"staleMinutes=20\"); older locks use the stage's value\nconst staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || \"\"); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };\nconst cleared = $('Locks of finished runs').isExecuted ? $('Locks of finished runs').all().map((item) => item.json.id).filter(Boolean) : [];\nconst locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + \"-\") && age(f) < staleOf(f, stage) && !cleared.includes(f.id));\nconst failedRecently = (stage) => rootFiles.some((f) => f.name === \"_failed-\" + stage && age(f) < Number(settings.backoffMinutes));\n\nconst pending = { worker: [], titling: [], print: [], uploader: [] };\npending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_\\d{2}\\.(jpg|png|webp)$/.test(f.name)).map((f) => f.name);\n// no reference left but a batch manifest still there: the worker finishes the batch (moves it to Done)\nif (!pending.worker.length) pending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name) && age(f) > 10).map((f) => f.name);\nconst folders = $('Recent folders').all();\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const names = (item.json.files || []).map((f) => f.name);\n    const art = names.find((n) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(n));\n    if (!art) return;\n    const stamp = art.slice(0, 19);\n    const has = (suffix) => names.includes(stamp + suffix);\n    if (!has(\"_product.json\")) pending.titling.push(folder.name);\n    // a folder the Print Agent gave up on (3 runs with failed jobs) is not waiting for it any more\n    const givenUp = names.filter((n) => n.startsWith(stamp + \"_print-failed-\")).length >= 3;\n    if ((!has(\"_featured.png\") || !has(\"_mockup.png\")) && !givenUp) pending.print.push(folder.name);\n    if (has(\"_product.json\") && has(\"_featured.png\") && has(\"_mockup.png\") && !has(\"_shopify.json\")) pending.uploader.push(folder.name);\n});\n\nconst start = [];\nfor (const stage of Object.keys(STAGES)) {\n    if (!pending[stage].length) continue;\n    if (locked(stage) || failedRecently(stage)) continue;\n    start.push({ json: { stage, workflowId: STAGES[stage].workflowId, waiting: pending[stage].slice(0, 20) } });\n}\nreturn start;"
       }
     },
     {
-      "id": "dd000009-0000-4000-8000-000000000000",
+      "id": "dd000015-0000-4000-8000-000000000000",
       "name": "Start stage",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -320,6 +452,86 @@
       ]
     },
     "List Artwork Agent": {
+      "main": [
+        [
+          {
+            "node": "Locks to check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to check": {
+      "main": [
+        [
+          {
+            "node": "Any lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any lock?": {
+      "main": [
+        [
+          {
+            "node": "Run of the lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recent folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run of the lock": {
+      "main": [
+        [
+          {
+            "node": "Locks of finished runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks of finished runs": {
+      "main": [
+        [
+          {
+            "node": "Any to delete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any to delete?": {
+      "main": [
+        [
+          {
+            "node": "Delete lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recent folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete lock": {
       "main": [
         [
           {

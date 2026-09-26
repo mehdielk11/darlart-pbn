@@ -283,6 +283,8 @@ define("settings", ["require", "exports"], function (require, exports) {
     class Settings {
         constructor() {
             this.kMeansNrOfClusters = 16;
+            /** Merge the tiny areas of a very speckled image at once before the facet reduction (src/core/despeckle.ts); the API turns it on */
+            this.despeckleTinyAreas = false;
             this.kMeansMinDeltaDifference = 1;
             this.kMeansClusteringColorSpace = ClusteringColorSpace.RGB;
             this.kMeansColorRestrictions = [];
@@ -3450,12 +3452,13 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
 define("core/mockup", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.MOCKUP_KITS_GLOBAL = exports.MOCKUP_STYLE = exports.MOCKUP_TEMPLATES = void 0;
+    exports.MOCKUP_KITS_GLOBAL = exports.FEATURED_TEMPLATES = exports.MOCKUP_STYLE = exports.MOCKUP_TEMPLATES = void 0;
     exports.pickMockupTemplate = pickMockupTemplate;
     exports.insetBox = insetBox;
     exports.sheetGeometry = sheetGeometry;
     exports.darkenForSheet = darkenForSheet;
     exports.coverSource = coverSource;
+    exports.pickFeaturedTemplate = pickFeaturedTemplate;
     exports.containBox = containBox;
     /** Placeholder positions, measured on the 1254 x 1254 kit photos */
     exports.MOCKUP_TEMPLATES = {
@@ -3533,6 +3536,27 @@ define("core/mockup", ["require", "exports"], function (require, exports) {
         const width = boxWidth / scale;
         const height = boxHeight / scale;
         return { left: (sourceWidth - width) / 2, top: (sourceHeight - height) / 2, width, height };
+    }
+    /** Face positions, measured on the 800 x 800 photos */
+    exports.FEATURED_TEMPLATES = {
+        landscape: {
+            name: "landscape",
+            source: "featured-landscape.webp",
+            blank: "featured-landscape-blank.webp",
+            size: 800,
+            face: { left: 23, top: 99, width: 754, height: 603 },
+        },
+        portrait: {
+            name: "portrait",
+            source: "featured-portrait.webp",
+            blank: "featured-portrait-blank.webp",
+            size: 800,
+            face: { left: 98, top: 24, width: 603, height: 754 },
+        },
+    };
+    /** Landscape for an artwork wider than tall, portrait otherwise (a square artwork is portrait) */
+    function pickFeaturedTemplate(aspect) {
+        return aspect > 1 ? exports.FEATURED_TEMPLATES.landscape : exports.FEATURED_TEMPLATES.portrait;
     }
     /** Where a kit's script (see MockupTemplate.script) puts its layers, as data URLs */
     exports.MOCKUP_KITS_GLOBAL = "DARLART_MOCKUP_KITS";
@@ -3782,12 +3806,151 @@ define("core/settings", ["require", "exports", "settings"], function (require, e
         return settings;
     }
 });
-define("core/pipeline", ["require", "exports", "colorreductionmanagement", "facetBorderSegmenter", "facetBorderTracer", "facetCreator", "facetLabelPlacer", "facetmanagement", "facetReducer", "core/palette"], function (require, exports, colorreductionmanagement_2, facetBorderSegmenter_1, facetBorderTracer_1, facetCreator_3, facetLabelPlacer_1, facetmanagement_4, facetReducer_1, palette_2) {
+define("core/despeckle", ["require", "exports"], function (require, exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PIPELINE_STEPS = void 0;
+    exports.despeckle = despeckle;
+    /** Labels the 4-connected areas of one color; returns the label of each pixel and each area's size */
+    function labelAreas(width, height, colors) {
+        const labels = new Int32Array(width * height).fill(-1);
+        const sizes = [];
+        const stack = new Int32Array(width * height);
+        for (let start = 0; start < width * height; start++) {
+            if (labels[start] !== -1) {
+                continue;
+            }
+            const label = sizes.length;
+            const color = colors.get(start % width, Math.floor(start / width));
+            let top = 0;
+            let size = 0;
+            stack[top++] = start;
+            labels[start] = label;
+            while (top > 0) {
+                const idx = stack[--top];
+                size++;
+                const x = idx % width;
+                const y = (idx - x) / width;
+                if (x > 0 && labels[idx - 1] === -1 && colors.get(x - 1, y) === color) {
+                    labels[idx - 1] = label;
+                    stack[top++] = idx - 1;
+                }
+                if (x < width - 1 && labels[idx + 1] === -1 && colors.get(x + 1, y) === color) {
+                    labels[idx + 1] = label;
+                    stack[top++] = idx + 1;
+                }
+                if (y > 0 && labels[idx - width] === -1 && colors.get(x, y - 1) === color) {
+                    labels[idx - width] = label;
+                    stack[top++] = idx - width;
+                }
+                if (y < height - 1 && labels[idx + width] === -1 && colors.get(x, y + 1) === color) {
+                    labels[idx + width] = label;
+                    stack[top++] = idx + width;
+                }
+            }
+            sizes.push(size);
+        }
+        return { labels, sizes };
+    }
+    function despeckle(width, height, colors, colorsByIndex, maxSize, minAreas, maxPasses = 3) {
+        const result = { areasBefore: 0, merged: 0, passes: 0 };
+        if (maxSize <= 1) {
+            return result;
+        }
+        const distance = (a, b) => {
+            const ca = colorsByIndex[a];
+            const cb = colorsByIndex[b];
+            if (!ca || !cb) {
+                return Number.MAX_VALUE;
+            }
+            return Math.pow((ca[0] - cb[0]), 2) + Math.pow((ca[1] - cb[1]), 2) + Math.pow((ca[2] - cb[2]), 2);
+        };
+        for (let pass = 0; pass < maxPasses; pass++) {
+            const { labels, sizes } = labelAreas(width, height, colors);
+            if (pass === 0) {
+                result.areasBefore = sizes.length;
+                if (sizes.length <= minAreas) {
+                    return result;
+                }
+            }
+            // per small area: how many of its border pixels touch each other color
+            const counts = new Map();
+            const ownColor = new Map();
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    const label = labels[idx];
+                    if (sizes[label] >= maxSize) {
+                        continue;
+                    }
+                    let byColor = counts.get(label);
+                    if (!byColor) {
+                        byColor = new Map();
+                        counts.set(label, byColor);
+                        ownColor.set(label, colors.get(x, y));
+                    }
+                    const add = (nIdx, nx, ny) => {
+                        if (labels[nIdx] === label) {
+                            return;
+                        }
+                        const c = colors.get(nx, ny);
+                        byColor.set(c, (byColor.get(c) || 0) + 1);
+                    };
+                    if (x > 0) {
+                        add(idx - 1, x - 1, y);
+                    }
+                    if (x < width - 1) {
+                        add(idx + 1, x + 1, y);
+                    }
+                    if (y > 0) {
+                        add(idx - width, x, y - 1);
+                    }
+                    if (y < height - 1) {
+                        add(idx + width, x, y + 1);
+                    }
+                }
+            }
+            // the new color of each small area: the most common bordering color, the closest one on a tie
+            const target = new Map();
+            counts.forEach((byColor, label) => {
+                let best = -1;
+                let bestCount = -1;
+                const own = ownColor.get(label);
+                byColor.forEach((count, color) => {
+                    if (count > bestCount || (count === bestCount && distance(own, color) < distance(own, best))) {
+                        best = color;
+                        bestCount = count;
+                    }
+                });
+                if (best >= 0) {
+                    target.set(label, best);
+                }
+            });
+            if (!target.size) {
+                break;
+            }
+            // the new colors, set in one sweep
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const color = target.get(labels[y * width + x]);
+                    if (color !== undefined) {
+                        colors.set(x, y, color);
+                    }
+                }
+            }
+            result.merged += target.size;
+            result.passes = pass + 1;
+        }
+        return result;
+    }
+});
+define("core/pipeline", ["require", "exports", "colorreductionmanagement", "facetBorderSegmenter", "facetBorderTracer", "facetCreator", "facetLabelPlacer", "facetmanagement", "facetReducer", "core/despeckle", "core/palette"], function (require, exports, colorreductionmanagement_2, facetBorderSegmenter_1, facetBorderTracer_1, facetCreator_3, facetLabelPlacer_1, facetmanagement_4, facetReducer_1, despeckle_1, palette_2) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.DESPECKLE_MIN_AREAS = exports.PIPELINE_STEPS = void 0;
     exports.runPipeline = runPipeline;
     exports.PIPELINE_STEPS = ["kmeans", "facetBuilding", "facetReduction", "borderTracing", "borderSegmentation", "labelPlacement"];
+    /** Above this many areas of one color, the tiny ones are merged at once before the facet reduction */
+    exports.DESPECKLE_MIN_AREAS = 20000;
     function runPipeline(image_1, settings_3) {
         return __awaiter(this, arguments, void 0, function* (image, settings, callbacks = {}) {
             const state = {};
@@ -3837,6 +4000,14 @@ define("core/pipeline", ["require", "exports", "colorreductionmanagement", "face
             }
             let facetResult = new facetmanagement_4.FacetResult();
             const buildAndReduceFacets = () => __awaiter(this, void 0, void 0, function* () {
+                // a very speckled image: its tiny areas are merged into their surroundings at once, before the facet reduction
+                // deletes them one by one (which grows with the square of their number; see despeckle.ts)
+                const speckles = settings.despeckleTinyAreas
+                    ? (0, despeckle_1.despeckle)(colormapResult.width, colormapResult.height, colormapResult.imgColorIndices, colormapResult.colorsByIndex, settings.removeFacetsSmallerThanNrOfPoints, exports.DESPECKLE_MIN_AREAS)
+                    : null;
+                if (speckles && speckles.passes > 0) {
+                    console.log(`Despeckle: ${speckles.areasBefore} areas, ${speckles.merged} tiny ones merged in ${speckles.passes} passes`);
+                }
                 facetResult = yield facetCreator_3.FacetCreator.getFacets(colormapResult.width, colormapResult.height, colormapResult.imgColorIndices, (progress) => {
                     report("facetBuilding", progress);
                 });
@@ -4142,7 +4313,11 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         const difficultyValue = Math.round(parseFloat($("#difficultySlider").val() + ""));
         const difficulty = difficultyValue === 1 ? "easy" : (difficultyValue === 3 ? "hard" : "medium");
         const customColors = ($("#colorRestrictionsInput").val() ? $("#colorRestrictionsInput").val() : $("#txtKMeansColorRestrictions").val()) + "";
-        return (0, settings_3.buildSettings)({ colors, difficulty, customColors });
+        const settings = (0, settings_3.buildSettings)({ colors, difficulty, customColors });
+        // like the API: a very speckled image has its tiny areas merged at once before the facet reduction (src/core/despeckle.ts).
+        // Add ?despeckle=0 to the page URL to compare with the result without it.
+        settings.despeckleTinyAreas = new URLSearchParams(window.location.search).get("despeckle") !== "0";
+        return settings;
     }
     function process() {
         return __awaiter(this, void 0, void 0, function* () {

@@ -11,6 +11,7 @@ import { FacetLabelPlacer } from "../facetLabelPlacer";
 import { FacetResult } from "../facetmanagement";
 import { FacetReducer } from "../facetReducer";
 import { Settings } from "../settings";
+import { despeckle, DespeckleResult } from "./despeckle";
 import { reorderColorsByFamily } from "./palette";
 
 export interface RGBAImage {
@@ -45,6 +46,9 @@ export interface PipelineResult {
     width: number;
     height: number;
 }
+
+/** Above this many areas of one color, the tiny ones are merged at once before the facet reduction */
+export const DESPECKLE_MIN_AREAS = 20000;
 
 export async function runPipeline(image: RGBAImage, settings: Settings, callbacks: PipelineCallbacks = {}): Promise<PipelineResult> {
     const state: PipelineState = {};
@@ -96,6 +100,15 @@ export async function runPipeline(image: RGBAImage, settings: Settings, callback
 
     let facetResult: FacetResult = new FacetResult();
     const buildAndReduceFacets = async () => {
+        // a very speckled image: its tiny areas are merged into their surroundings at once, before the facet reduction
+        // deletes them one by one (which grows with the square of their number; see despeckle.ts)
+        const speckles: DespeckleResult | null = settings.despeckleTinyAreas
+            ? despeckle(colormapResult.width, colormapResult.height, colormapResult.imgColorIndices, colormapResult.colorsByIndex,
+                settings.removeFacetsSmallerThanNrOfPoints, DESPECKLE_MIN_AREAS)
+            : null;
+        if (speckles && speckles.passes > 0) {
+            console.log(`Despeckle: ${speckles.areasBefore} areas, ${speckles.merged} tiny ones merged in ${speckles.passes} passes`);
+        }
         facetResult = await FacetCreator.getFacets(colormapResult.width, colormapResult.height, colormapResult.imgColorIndices, (progress) => {
             report("facetBuilding", progress);
         });

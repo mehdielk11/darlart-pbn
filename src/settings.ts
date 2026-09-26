@@ -8,6 +8,8 @@ export enum ClusteringColorSpace {
 
 export class Settings {
     public kMeansNrOfClusters: number = 16;
+    /** Merge the tiny areas of a very speckled image at once before the facet reduction (src/core/despeckle.ts); the API turns it on */
+    public despeckleTinyAreas: boolean = false;
     public kMeansMinDeltaDifference: number = 1;
     public kMeansClusteringColorSpace: ClusteringColorSpace = ClusteringColorSpace.RGB;
 

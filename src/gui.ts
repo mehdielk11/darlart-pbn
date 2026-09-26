@@ -44,7 +44,11 @@ export function parseSettings(): Settings {
     const difficultyValue = Math.round(parseFloat($("#difficultySlider").val() + ""));
     const difficulty: Difficulty = difficultyValue === 1 ? "easy" : (difficultyValue === 3 ? "hard" : "medium");
     const customColors = ($("#colorRestrictionsInput").val() ? $("#colorRestrictionsInput").val() : $("#txtKMeansColorRestrictions").val()) + "";
-    return buildSettings({ colors, difficulty, customColors });
+    const settings = buildSettings({ colors, difficulty, customColors });
+    // like the API: a very speckled image has its tiny areas merged at once before the facet reduction (src/core/despeckle.ts).
+    // Add ?despeckle=0 to the page URL to compare with the result without it.
+    settings.despeckleTinyAreas = new URLSearchParams(window.location.search).get("despeckle") !== "0";
+    return settings;
 }
 
 export async function process() {

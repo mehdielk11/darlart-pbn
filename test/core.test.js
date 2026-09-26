@@ -373,3 +373,27 @@ test("createGate runs one heavy task at a time, in order, and a failed task free
     assert.deepEqual(results.map((r) => r.status), ["fulfilled", "rejected", "fulfilled", "fulfilled"]);
     assert.deepEqual(gate.stats(), { running: 0, waiting: 0, limit: 1 });
 });
+
+test("despeckle merges the tiny areas of a very speckled image, and leaves an ordinary image alone", () => {
+    const { despeckle } = require(path.join(dist, "src/core/despeckle"));
+    const { Uint8Array2D } = require(path.join(dist, "src/structs/typedarrays"));
+    const colors = [[255, 255, 255], [0, 0, 0], [200, 0, 0]];
+    const w = 40, h = 40;
+    const build = () => {
+        const img = new Uint8Array2D(w, h);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) img.set(x, y, x < 20 ? 0 : 2);
+        // single-pixel specks on a checker grid, in both halves
+        for (let y = 1; y < h; y += 3) for (let x = 1; x < w; x += 3) img.set(x, y, 1);
+        return img;
+    };
+    // few areas: nothing changes
+    const calm = build();
+    const r0 = despeckle(w, h, calm, colors, 30, 100000);
+    assert.equal(r0.passes, 0);
+    assert.equal(calm.get(1, 1), 1);
+    // many areas: every speck takes the color around it, the two halves stay
+    const img = build();
+    const r = despeckle(w, h, img, colors, 30, 10);
+    assert.ok(r.merged >= 169);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) assert.equal(img.get(x, y), x < 20 ? 0 : 2);
+});

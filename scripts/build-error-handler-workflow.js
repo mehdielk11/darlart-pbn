@@ -20,7 +20,7 @@ const path = require("path");
 const root = path.join(__dirname, "..");
 
 const SETTINGS = {
-    telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no alert)
+    telegramChatId: "-1003952514058", // the Telegram group the "Telegram account" bot reports to (empty = no alert)
     agentFolderId: "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH", // Drive "Artwork Agent": where the "_failed-<stage>" markers live
     alertEveryMinutes: "60", // the same failure is announced at most once in this time
     maxRestarts: "5", // the worker is restarted at most this many times...
@@ -39,7 +39,7 @@ const WORKER_STEPS_BEFORE_TRY = ["Settings", "List locks", "Lock state", "Lock f
     "Step back (drop my lock)", "Busy: try again?", "Retry?", "Wait before retry", "List queue", "Next reference", "Anything queued?", "Has manifest?",
     "Download manifest", "Start attempt", "Record the try?", "Save manifest (try)",
     "Leftover manifests", "Any leftover?", "Download leftover", "Finished batches", "Any finished?", "Save finished manifest", "Move finished manifest"];
-const LOCK_PREFIXES = ["_artwork-worker.lock", "_titling-agent.lock", "_print-agent.lock", "_shopify-uploader.lock"];
+const LOCK_PREFIXES = ["_artwork-worker.lock", "_titling-agent.lock", "_print-agent.lock", "_shopify-uploader.lock", "_price-sync.lock"];
 
 let nextId = 1;
 const nodes = [];
@@ -185,8 +185,9 @@ ifNode("Telegram on?", [1760, 120], "={{ $json.sendAlert && String($('Settings')
 connect("Next steps", "Telegram on?");
 node("Telegram: failure alert", "n8n-nodes-base.telegram", 1.2, [1980, 120], {
     chatId: "={{ $('Settings').first().json.telegramChatId }}",
-    text: "={{ $('Next steps').first().json.text }}",
-    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+    // HTML with the text escaped: Markdown (n8n's default) refuses texts with "_"
+    text: "={{ String($('Next steps').first().json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
 }, { onError: "continueRegularOutput" });
 connect("Telegram on?", "Telegram: failure alert", 0);
 

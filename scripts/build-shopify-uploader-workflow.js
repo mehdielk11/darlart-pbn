@@ -9,7 +9,8 @@
  *      prices from the sheet, images: featured, mockup, then the shared images) -> <date+time>_shopify.json
  *
  * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
- * applies to every product uploaded after the change. Columns: canvas_type,size,colors,price[,compare_at_price].
+ * applies to every product uploaded after the change (products already in Shopify: the "Darl'Art Price Sync" workflow).
+ * Columns: canvas_type,size,colors,price[,compare_at_price]; a price of 0 means "not sold": no variant for it.
  * After each run, every artwork batch (manifests in Drive "Artwork Ref/Queue/Done", written by the Artwork Worker)
  * whose drafts are all in Shopify gets one Telegram message; a batch still incomplete batchStuckHours after it was
  * painted gets one warning listing what its folders miss.
@@ -23,6 +24,7 @@
 const fs = require("fs");
 const path = require("path");
 const { queueLock, RETRY } = require("./lib/n8n-queue-lock");
+const { PRICES_CODE } = require("./lib/prices-code");
 
 const root = path.join(__dirname, "..");
 // "Darl'Art Error Handler" (scripts/build-error-handler-workflow.js): releases a failed run's lock and alerts on Telegram
@@ -45,7 +47,7 @@ const SETTINGS = {
     maxPerRun: 10, // folders handled per run, the rest wait for the next run
     pbnApiUrl: "http://127.0.0.1:3000", // makes the featured image (POST /v1/featured)
     // batch messages: the chat the "Telegram account" bot writes to (empty = no messages)
-    telegramChatId: "-5252292447",
+    telegramChatId: "-1003952514058",
     batchDoneFolderId: "1qph_ttrwCa303b2GxsHGpdLujqUm2y_B", // Drive "Artwork Ref/Queue/Done": manifests of painted batches
     batchStuckHours: 6, // a batch not all in Shopify this long after it was painted gets a warning
     // every product is put on the Online Store channel ("Boutique en ligne"), drafts included: a draft stays hidden
@@ -169,90 +171,8 @@ node("Export prices sheet", "n8n-nodes-base.httpRequest", 4.2, [880, 200], {
 });
 connect("Prices file", "Export prices sheet");
 
-code("Prices", [1100, 200], `// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits
-const settings = $('Settings').first().json;
-const file = $('Prices file').first().json;
-const text = String($input.first().json.data || "").replace(/^\\uFEFF/, "");
-// empty rows of the sheet export as ",,," lines
-const lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;"\\s]/g, ""));
-// one CSV line into cells; a quoted cell may hold a comma (e.g. "179,00" in a French-format sheet)
-const split = (line) => {
-    const cells = [];
-    let cell = "";
-    let quoted = false;
-    for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (quoted) {
-            if (ch === '"' && line[i + 1] === '"') { cell += '"'; i++; }
-            else if (ch === '"') quoted = false;
-            else cell += ch;
-        } else if (ch === '"') quoted = true;
-        else if (ch === "," || ch === ";") { cells.push(cell.trim()); cell = ""; }
-        else cell += ch;
-    }
-    cells.push(cell.trim());
-    return cells;
-};
-const header = split(lines.shift() || "").map((h) => h.toLowerCase().replace(/\\s+/g, "_"));
-const col = (name) => header.indexOf(name);
-for (const name of ["canvas_type", "size", "colors", "price"]) {
-    if (col(name) < 0) throw new Error(file.name + ": missing column " + name + " (columns: canvas_type,size,colors,price)");
-}
-// "179", "179.00", "179,00" or "179,00 MAD"
-const money = (value) => Number(String(value).replace(/[^\\d,.-]/g, "").replace(",", "."));
-const normSize = (value) => String(value || "").toLowerCase().trim().replace(/\\s*cm$/, "").replace(/\\s*[x×]\\s*/, "x");
-const soldSizes = String(settings.sizes || "").split(",").map(normSize).filter(Boolean);
-const rows = [];
-const seen = new Set();
-lines.forEach((line, i) => {
-    const cells = split(line);
-    const size = normSize(cells[col("size")]);
-    if (soldSizes.length && !soldSizes.includes(size)) return; // not a size the store sells
-    let canvasType = cells[col("canvas_type")];
-    if (!/canvas$/i.test(canvasType)) canvasType += " Canvas"; // "Rolled" -> "Rolled Canvas", the store's wording
-    const colors = String(parseInt(cells[col("colors")], 10));
-    const price = money(cells[col("price")]);
-    const compareCell = col("compare_at_price") >= 0 ? cells[col("compare_at_price")] : "";
-    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);
-    const where = file.name + " line " + (i + 2);
-    if (!/^\\d+x\\d+$/.test(size)) throw new Error(where + ": size must look like 30x40");
-    if (colors === "NaN") throw new Error(where + ": colors must be a number");
-    if (!(price > 0)) throw new Error(where + ": price must be a number above 0");
-    const key = size + "|" + canvasType + "|" + colors;
-    if (seen.has(key)) throw new Error(where + ": " + key.replace(/\\|/g, " / ") + " is listed twice");
-    seen.add(key);
-    rows.push({ size, canvasType, colors, price: price.toFixed(2), compareAtPrice: compareAt > price ? compareAt.toFixed(2) : null });
-});
-if (!rows.length) throw new Error(file.name + " has no prices" + (soldSizes.length ? " for the sizes in Settings (" + soldSizes.join(", ") + ")" : ""));
-const missing = soldSizes.filter((s) => !rows.some((r) => r.size === s));
-if (missing.length) throw new Error(file.name + " has no prices for " + missing.join(", ") + " (sizes in Settings)");
-if (rows.length > 100) throw new Error(file.name + ": Shopify allows 100 variants per product, the CSV has " + rows.length);
-
-const area = (s) => s.split("x").reduce((a, b) => a * Number(b), 1);
-const unique = (values) => [...new Set(values)];
-const sizes = unique(rows.map((r) => r.size)).sort((a, b) => area(a) - area(b));
-const canvasTypes = unique(rows.map((r) => r.canvasType)).sort();
-const colors = unique(rows.map((r) => r.colors)).sort((a, b) => a - b);
-rows.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);
-
-const productOptions = [
-    { name: "Size", position: 1, values: sizes.map((name) => ({ name })) },
-    { name: "Canvas Type", position: 2, values: canvasTypes.map((name) => ({ name })) },
-    { name: "Colors", position: 3, values: colors.map((name) => ({ name })) },
-];
-const variants = rows.map((r, i) => ({
-    optionValues: [
-        { optionName: "Size", name: r.size },
-        { optionName: "Canvas Type", name: r.canvasType },
-        { optionName: "Colors", name: r.colors },
-    ],
-    price: r.price,
-    compareAtPrice: r.compareAtPrice,
-    position: i + 1,
-    inventoryPolicy: "DENY",
-    inventoryItem: { tracked: false, requiresShipping: true },
-}));
-return [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, productOptions, variants } }];`);
+// shared with the Price Sync workflow (scripts/lib/prices-code.js): a price of 0 means "not sold", no variant
+code("Prices", [1100, 200], PRICES_CODE);
 connect("Export prices sheet", "Prices");
 
 // ---- 3. folders waiting for Shopify ------------------------------------------------------------------
@@ -651,8 +571,9 @@ return [{ json: { text: lines.join("\\n").slice(0, 4000) } }];`);
 connect("Summary", "Upload report");
 node("Telegram: upload report", "n8n-nodes-base.telegram", 1.2, [2860, 60], {
     chatId: "={{ $('Settings').first().json.telegramChatId }}",
-    text: "={{ $json.text }}",
-    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+    // HTML with the text escaped: Markdown (n8n's default) refuses texts with "_", e.g. batch names
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
 }, { onError: "continueRegularOutput" });
 connect("Upload report", "Telegram: upload report");
 
@@ -803,8 +724,9 @@ connect("Download markers", "Batch messages");
 // a Telegram error leaves the manifest as it was, so the next run tries the message again
 node("Send batch message", "n8n-nodes-base.telegram", 1.2, [4840, -300], {
     chatId: "={{ $('Settings').first().json.telegramChatId }}",
-    text: "={{ $json.text }}",
-    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+    // HTML with the text escaped: Markdown (n8n's default) refuses texts with "_", e.g. batch names
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
 }, { onError: "continueErrorOutput" });
 connect("Batch messages", "Send batch message");
 

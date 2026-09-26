@@ -142,7 +142,7 @@
             {
               "id": "set17",
               "name": "telegramChatId",
-              "value": "-5252292447",
+              "value": "-1003952514058",
               "type": "string"
             },
             {
@@ -1502,7 +1502,8 @@
         "binaryData": true,
         "binaryPropertyName": "data",
         "additionalFields": {
-          "caption": "={{ $json.caption }}"
+          "caption": "={{ String($json.caption || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+          "parse_mode": "HTML"
         }
       },
       "onError": "continueRegularOutput"
@@ -1518,10 +1519,11 @@
       ],
       "parameters": {
         "chatId": "={{ $('Settings').first().json.telegramChatId }}",
-        "text": "={{ $json.text }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
-          "disable_web_page_preview": true
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
         }
       },
       "onError": "continueRegularOutput"
@@ -1724,10 +1726,11 @@
       ],
       "parameters": {
         "chatId": "={{ $('Settings').first().json.telegramChatId }}",
-        "text": "={{ $json.text }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
-          "disable_web_page_preview": true
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
         }
       },
       "onError": "continueRegularOutput"

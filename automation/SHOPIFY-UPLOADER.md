@@ -70,3 +70,6 @@ At the end of a run that created drafts: each draft with its folder, title, vari
 ## One run at a time
 
 A Drive lock (`_shopify-uploader.lock-<execution id>` in Artwork Agent, `scripts/lib/n8n-queue-lock.js`) lets one run work at a time: a call that finds another run working waits 30 s and tries again (3 times), and a run that created drafts starts itself again until no folder is ready. The lock is refreshed for each folder (stale after 20 min without a refresh). Drive reads and Shopify calls are retried on network errors or 5xx answers. The batch messages are checked by the same run before it releases the lock: the workflow calls itself in `batch-messages` mode and waits, so a batch message is never sent twice. A failed run's lock is released at once by the Darl'Art Error Handler.
+
+## Price 0 = not sold
+A price of 0 (or an empty price) in the sheet means that combination is not sold: the Uploader creates no variant for it, and the product page greys it out. Products already in Shopify follow sheet changes through the Darl'Art Price Sync workflow (`PRICE-SYNC.md`).

@@ -126,32 +126,38 @@
             },
             {
               "id": "set11",
+              "name": "maxFailedRuns",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "set12",
               "name": "lockStaleMinutes",
               "value": 20,
               "type": "number"
             },
             {
-              "id": "set12",
+              "id": "set13",
               "name": "parallelJobs",
               "value": 1,
               "type": "number"
             },
             {
-              "id": "set13",
+              "id": "set14",
               "name": "jobTimeoutMinutes",
               "value": 10,
               "type": "number"
             },
             {
-              "id": "set14",
+              "id": "set15",
               "name": "pollSeconds",
               "value": 30,
               "type": "number"
             },
             {
-              "id": "set15",
+              "id": "set16",
               "name": "telegramChatId",
-              "value": "-5252292447",
+              "value": "-1003952514058",
               "type": "string"
             }
           ]
@@ -825,7 +831,7 @@
         40
       ],
       "parameters": {
-        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$('List Print files').all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    const has = (size, n, suffix) => printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
+        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$('List Print files').all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    // given up after maxFailedRuns runs with failed jobs (delete its \"_print-failed-\" markers to try again)\n    if (state.rootFiles.filter((n) => n.startsWith(state.stamp + \"_print-failed-\")).length >= Number(settings.maxFailedRuns || 3)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    const has = (size, n, suffix) => printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
       },
       "executeOnce": true
     },
@@ -1461,6 +1467,143 @@
     },
     {
       "id": "cc000055-0000-4000-8000-000000000000",
+      "name": "Failed folders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        -860
+      ],
+      "parameters": {
+        "jsCode": "// One marker per folder with failed jobs in this run, and the folders given up now\nconst settings = $('Settings').first().json;\nconst summary = $('Run summary').first().json;\nconst states = $('Folder states').all().map((item) => item.json).filter((s) => !s.none);\nconst byFolder = {};\nfor (const f of summary.failed || []) (byFolder[f.folder] = byFolder[f.folder] || []).push(f.job + \": \" + f.reason);\nconst out = [];\nfor (const [folder, reasons] of Object.entries(byFolder)) {\n    const state = states.find((s) => s.folder === folder);\n    if (!state) continue;\n    const before = state.rootFiles.filter((n) => n.startsWith(state.stamp + \"_print-failed-\")).length;\n    out.push({ json: {\n        folder, folderId: state.folderId, name: state.stamp + \"_print-failed-\" + $execution.id,\n        description: reasons.join(\"; \").slice(0, 900),\n        givenUp: before + 1 >= Number(settings.maxFailedRuns || 3), runs: before + 1, reasons,\n    } });\n}\nreturn out.length ? out : [{ json: { none: true } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000056-0000-4000-8000-000000000000",
+      "name": "Any failed folder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        -860
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anyfailedfolder",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000057-0000-4000-8000-000000000000",
+      "name": "Mark failed folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5060,
+        -940
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.name, mimeType: 'text/plain', parents: [$json.folderId], description: $json.description }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000058-0000-4000-8000-000000000000",
+      "name": "Given up message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        -940
+      ],
+      "parameters": {
+        "jsCode": "// One alert per folder given up in this run\nconst settings = $('Settings').first().json;\nconst up = $('Failed folders').all().map((item) => item.json).filter((f) => f.givenUp);\nif (!up.length || !String(settings.telegramChatId || \"\").trim()) return [{ json: { none: true } }];\nconst lines = [\"Print Agent: gave up on \" + up.length + \" folder\" + (up.length === 1 ? \"\" : \"s\") + \" after \" + settings.maxFailedRuns + \" failed runs\"];\nfor (const f of up) lines.push(\"\", \"- \" + f.folder + \": \" + f.reasons.slice(0, 4).join(\"; \"));\nlines.push(\"\", \"Its print files and mockup are not made, so no Shopify draft. To try again, delete the files named ..._print-failed-... in the folder.\");\nreturn [{ json: { text: lines.join(\"\\n\").slice(0, 4000) } }];"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "cc000059-0000-4000-8000-000000000000",
+      "name": "Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        -940
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Alert",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cc000060-0000-4000-8000-000000000000",
+      "name": "Telegram: given up",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5720,
+        -1020
+      ],
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000061-0000-4000-8000-000000000000",
       "name": "Find failure marker",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1510,7 +1653,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000056-0000-4000-8000-000000000000",
+      "id": "cc000062-0000-4000-8000-000000000000",
       "name": "Mark the failure",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1533,7 +1676,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000057-0000-4000-8000-000000000000",
+      "id": "cc000063-0000-4000-8000-000000000000",
       "name": "Print report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1547,7 +1690,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000058-0000-4000-8000-000000000000",
+      "id": "cc000064-0000-4000-8000-000000000000",
       "name": "Save the tally?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1580,7 +1723,7 @@
       }
     },
     {
-      "id": "cc000059-0000-4000-8000-000000000000",
+      "id": "cc000065-0000-4000-8000-000000000000",
       "name": "Store print report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1603,7 +1746,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000060-0000-4000-8000-000000000000",
+      "id": "cc000066-0000-4000-8000-000000000000",
       "name": "Send the report?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1636,7 +1779,7 @@
       }
     },
     {
-      "id": "cc000061-0000-4000-8000-000000000000",
+      "id": "cc000067-0000-4000-8000-000000000000",
       "name": "Telegram: print report",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1646,16 +1789,17 @@
       ],
       "parameters": {
         "chatId": "={{ $('Settings').first().json.telegramChatId }}",
-        "text": "={{ $json.text }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
-          "disable_web_page_preview": true
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
         }
       },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000062-0000-4000-8000-000000000000",
+      "id": "cc000068-0000-4000-8000-000000000000",
       "name": "Drop the tally?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1688,7 +1832,7 @@
       }
     },
     {
-      "id": "cc000063-0000-4000-8000-000000000000",
+      "id": "cc000069-0000-4000-8000-000000000000",
       "name": "Drop print report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1708,7 +1852,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000064-0000-4000-8000-000000000000",
+      "id": "cc000070-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1722,7 +1866,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000065-0000-4000-8000-000000000000",
+      "id": "cc000071-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1742,7 +1886,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000066-0000-4000-8000-000000000000",
+      "id": "cc000072-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1776,7 +1920,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000067-0000-4000-8000-000000000000",
+      "id": "cc000073-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1800,7 +1944,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000068-0000-4000-8000-000000000000",
+      "id": "cc000074-0000-4000-8000-000000000000",
       "name": "Run Shopify Uploader",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -2449,6 +2593,66 @@
           },
           {
             "node": "No progress?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Failed folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Failed folders": {
+      "main": [
+        [
+          {
+            "node": "Any failed folder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any failed folder?": {
+      "main": [
+        [
+          {
+            "node": "Mark failed folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark failed folder": {
+      "main": [
+        [
+          {
+            "node": "Given up message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Given up message": {
+      "main": [
+        [
+          {
+            "node": "Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: given up",
             "type": "main",
             "index": 0
           }

@@ -10,6 +10,8 @@
  *      only a job with no result 2 x jobTimeoutMinutes + 5 after it was sent is given up (retried by the next run)
  *   -> 1xxx/<stamp>_featured.png (pbn API /v1/featured: the artwork on a canvas photo, the product's first image)
  *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
+ *   -> a folder with failed jobs gets a marker "<stamp>_print-failed-<execution>"; after maxFailedRuns of them it is
+ *      given up (one Telegram alert), instead of being retried by every run: delete its markers to try it again
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
  *
  * Rebuild with `node scripts/build-print-agent-workflow.js`, then re-import the workflow.
@@ -35,6 +37,8 @@ const SETTINGS = {
     paperSize: "a4", // page size of the PDFs (Agency / User)
     mockupColors: 48, // the single mockup comes from the first canvas size at this color count
     maxPerRun: 5, // folders per run; the next run starts by itself when work remains
+    // runs with failed jobs before a folder is given up (its markers "<stamp>_print-failed-*" are in the folder)
+    maxFailedRuns: 3,
     // the lock is refreshed every 30 s while jobs run, so this only covers the longest step between two refreshes
     // (the featured images, a few minutes), not the whole run
     lockStaleMinutes: 20,
@@ -43,7 +47,7 @@ const SETTINGS = {
     parallelJobs: 1,
     jobTimeoutMinutes: 10, // the pbn API stops a job after this long (JOB_TIMEOUT_MS on the VM)
     pollSeconds: 30, // how often the run checks its jobs
-    telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
+    telegramChatId: "-1003952514058", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
 };
 // the "Darl'Art Shopify Uploader" workflow, started when a run saved new files
 const SHOPIFY_UPLOADER_WORKFLOW_ID = "XAwk67SiWmvVSu1d";
@@ -225,6 +229,8 @@ let folderCount = 0;
 $('List Print files').all().forEach((item, i) => {
     const state = states[i].json;
     if (state.none || folderCount >= Number(settings.maxPerRun)) return;
+    // given up after maxFailedRuns runs with failed jobs (delete its "_print-failed-" markers to try again)
+    if (state.rootFiles.filter((n) => n.startsWith(state.stamp + "_print-failed-")).length >= Number(settings.maxFailedRuns || 3)) return;
     const printFiles = new Set((item.json.files || []).map((f) => f.name));
     const has = (size, n, suffix) => printFiles.has(state.stamp + "_" + size + "_" + n + suffix) || printFiles.has(state.stamp + "_" + flip(size) + "_" + n + suffix);
     const needMockupFile = !state.rootFiles.includes(state.stamp + "_mockup.png");
@@ -490,6 +496,56 @@ connect("Run summary", "Find print report");
 // 30 minutes before starting the Print Agent again, instead of retrying the same failing jobs every 5 minutes
 ifNode("No progress?", [4620, -640], "={{ $('Run summary').first().json.saved === 0 && (($('Run summary').first().json.failed || []).length + ($('Run summary').first().json.errors || []).length) > 0 }}");
 connect("Run summary", "No progress?");
+
+// ---- a folder whose jobs failed gets a marker; after maxFailedRuns markers it is given up, with one alert --------
+code("Failed folders", [4620, -860], `// One marker per folder with failed jobs in this run, and the folders given up now
+const settings = $('Settings').first().json;
+const summary = $('Run summary').first().json;
+const states = $('Folder states').all().map((item) => item.json).filter((s) => !s.none);
+const byFolder = {};
+for (const f of summary.failed || []) (byFolder[f.folder] = byFolder[f.folder] || []).push(f.job + ": " + f.reason);
+const out = [];
+for (const [folder, reasons] of Object.entries(byFolder)) {
+    const state = states.find((s) => s.folder === folder);
+    if (!state) continue;
+    const before = state.rootFiles.filter((n) => n.startsWith(state.stamp + "_print-failed-")).length;
+    out.push({ json: {
+        folder, folderId: state.folderId, name: state.stamp + "_print-failed-" + $execution.id,
+        description: reasons.join("; ").slice(0, 900),
+        givenUp: before + 1 >= Number(settings.maxFailedRuns || 3), runs: before + 1, reasons,
+    } });
+}
+return out.length ? out : [{ json: { none: true } }];`, { executeOnce: true });
+connect("Run summary", "Failed folders");
+ifNode("Any failed folder?", [4840, -860], "={{ !$json.none }}");
+connect("Failed folders", "Any failed folder?");
+node("Mark failed folder", "n8n-nodes-base.httpRequest", 4.2, [5060, -940], {
+    method: "POST",
+    url: `${driveFiles}?supportsAllDrives=true&fields=id`,
+    ...googleAuth,
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ name: $json.name, mimeType: 'text/plain', parents: [$json.folderId], description: $json.description }) }}",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Any failed folder?", "Mark failed folder", 0);
+code("Given up message", [5280, -940], `// One alert per folder given up in this run
+const settings = $('Settings').first().json;
+const up = $('Failed folders').all().map((item) => item.json).filter((f) => f.givenUp);
+if (!up.length || !String(settings.telegramChatId || "").trim()) return [{ json: { none: true } }];
+const lines = ["Print Agent: gave up on " + up.length + " folder" + (up.length === 1 ? "" : "s") + " after " + settings.maxFailedRuns + " failed runs"];
+for (const f of up) lines.push("", "- " + f.folder + ": " + f.reasons.slice(0, 4).join("; "));
+lines.push("", "Its print files and mockup are not made, so no Shopify draft. To try again, delete the files named ..._print-failed-... in the folder.");
+return [{ json: { text: lines.join("\\n").slice(0, 4000) } }];`, { executeOnce: true });
+connect("Mark failed folder", "Given up message");
+ifNode("Alert?", [5500, -940], "={{ !$json.none }}");
+connect("Given up message", "Alert?");
+node("Telegram: given up", "n8n-nodes-base.telegram", 1.2, [5720, -1020], {
+    chatId: "={{ $('Settings').first().json.telegramChatId }}",
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
+}, { onError: "continueRegularOutput" });
+connect("Alert?", "Telegram: given up", 0);
 driveList("Find failure marker", [4840, -640], "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_failed-print' and trashed = false", "files(id)");
 connect("No progress?", "Find failure marker", 0);
 node("Mark the failure", "n8n-nodes-base.httpRequest", 4.2, [5060, -640], {
@@ -566,8 +622,9 @@ ifNode("Send the report?", [5280, -340], "={{ $json.action === 'send' }}");
 connect("Save the tally?", "Send the report?", 1);
 node("Telegram: print report", "n8n-nodes-base.telegram", 1.2, [5500, -400], {
     chatId: "={{ $('Settings').first().json.telegramChatId }}",
-    text: "={{ $json.text }}",
-    additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+    // HTML with the text escaped: Markdown (n8n's default) refuses texts with "_"
+    text: "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+    additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
 }, { onError: "continueRegularOutput" });
 connect("Send the report?", "Telegram: print report", 0);
 

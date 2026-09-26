@@ -27,7 +27,7 @@
             {
               "id": "set0",
               "name": "telegramChatId",
-              "value": "-5252292447",
+              "value": "-1003952514058",
               "type": "string"
             },
             {
@@ -91,7 +91,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock' or name contains '_failed-') and trashed = false"
+              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock' or name contains '_price-sync.lock' or name contains '_failed-') and trashed = false"
             },
             {
               "name": "fields",
@@ -316,10 +316,11 @@
       ],
       "parameters": {
         "chatId": "={{ $('Settings').first().json.telegramChatId }}",
-        "text": "={{ $('Next steps').first().json.text }}",
+        "text": "={{ String($('Next steps').first().json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
-          "disable_web_page_preview": true
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
         }
       },
       "onError": "continueRegularOutput"

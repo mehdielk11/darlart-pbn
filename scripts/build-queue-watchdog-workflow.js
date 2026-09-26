@@ -14,6 +14,12 @@
  * "_failed-<stage>" in Artwork Agent, so a lasting problem is not retried every 5 minutes. Recent folders are those
  * created in the last recentDays days (the daily runs of each workflow still cover older ones). Successful runs of
  * the watchdog are not kept in the n8n execution list; failed ones are.
+ *
+ * Every run also removes the locks left behind by runs that are over: a cancelled or crashed run does not reach its
+ * "Release lock" step, and n8n does not call the Error Handler for it, so its lock would block its workflow until the
+ * lock goes stale. Each lock is named "<prefix>-<execution id>": the watchdog asks the n8n API (credential "n8n API")
+ * about that execution and deletes the lock when the execution is finished (success, error, canceled, crashed) or no
+ * longer exists. A lock whose execution cannot be checked (no credential, API down) is kept: nothing is deleted blindly.
  */
 const fs = require("fs");
 const path = require("path");
@@ -85,14 +91,76 @@ connect("Settings", "List queue");
 driveList("List Artwork Agent", [660, 100], "='{{ $('Settings').first().json.agentFolderId }}' in parents and trashed = false", "files(id,name,mimeType,description,createdTime,modifiedTime)");
 connect("List queue", "List Artwork Agent");
 
+// ---- locks of runs that are over (cancelled, crashed...): checked with the n8n API, then deleted ----------------
+code("Locks to check", [880, -200], `// Every lock ("<prefix>.lock-<execution id>") in the queue and Artwork Agent folders, a minute old or more
+const files = [...($('List queue').first().json.files || []), ...($('List Artwork Agent').first().json.files || [])];
+const locks = files.filter((f) => /\\.lock-\\d+$/.test(f.name) && Date.now() - new Date(f.createdTime).getTime() > 60000)
+    .map((f) => ({ json: { id: f.id, name: f.name, executionId: f.name.split("-").pop() } }));
+return locks.length ? locks : [{ json: { none: true } }];`, { executeOnce: true });
+connect("List Artwork Agent", "Locks to check");
+node("Any lock?", "n8n-nodes-base.if", 2, [1100, -200], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "anylock", leftValue: "={{ !$json.none }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Locks to check", "Any lock?");
+// the n8n API: needs the credential "n8n API" (Settings > n8n API > API key); without it every lock is kept
+node("Run of the lock", "n8n-nodes-base.n8n", 1, [1320, -280], {
+    resource: "execution",
+    operation: "get",
+    executionId: "={{ $json.executionId }}",
+    options: {},
+}, { onError: "continueRegularOutput" });
+connect("Any lock?", "Run of the lock", 0);
+code("Locks of finished runs", [1540, -280], `// A run that is over no longer needs its lock; a run still going (or one that cannot be checked) keeps it
+const locks = $('Locks to check').all().map((item) => item.json);
+const out = [];
+$input.all().forEach((item, i) => {
+    const lock = locks[i];
+    const r = item.json || {};
+    if (!lock) return;
+    if (r.error) {
+        // gone from n8n (deleted or pruned): the run is long over
+        const text = JSON.stringify(r.error);
+        if (!/credential/i.test(text) && /404|could not be found/i.test(text)) out.push({ json: { ...lock, status: "gone" } });
+        return;
+    }
+    const status = String(r.status || "");
+    if (["success", "error", "canceled", "crashed"].includes(status)) out.push({ json: { ...lock, status } });
+});
+return out.length ? out : [{ json: { none: true } }];`, { executeOnce: true });
+connect("Run of the lock", "Locks of finished runs");
+node("Any to delete?", "n8n-nodes-base.if", 2, [1760, -280], {
+    conditions: {
+        options: { caseSensitive: true, leftValue: "", typeValidation: "loose" },
+        conditions: [{ id: "anytodelete", leftValue: "={{ !$json.none }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }],
+        combinator: "and",
+    },
+    options: {},
+});
+connect("Locks of finished runs", "Any to delete?");
+node("Delete lock", "n8n-nodes-base.httpRequest", 4.2, [1980, -360], {
+    method: "DELETE",
+    url: "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "googleDriveOAuth2Api",
+    options: { timeout: 30000 },
+}, { onError: "continueRegularOutput" });
+connect("Any to delete?", "Delete lock", 0);
+
 code("Recent folders", [880, 100], `// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)
 const settings = $('Settings').first().json;
 const since = Date.now() - Number(settings.recentDays) * 86400000;
-const folders = ($input.first().json.files || [])
+const folders = ($('List Artwork Agent').first().json.files || [])
     .filter((f) => f.mimeType === "application/vnd.google-apps.folder" && /^\\d+$/.test(String(f.name).trim()) && new Date(f.createdTime).getTime() >= since)
     .sort((a, b) => Number(a.name) - Number(b.name));
-return folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];`);
-connect("List Artwork Agent", "Recent folders");
+return folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];`, { executeOnce: true });
+connect("Delete lock", "Recent folders");
+connect("Any to delete?", "Recent folders", 1);
+connect("Any lock?", "Recent folders", 1);
 
 driveList("List folder files", [1100, 100], `={{ $json.none ? "${NONE_Q}" : "'" + $json.id + "' in parents and trashed = false" }}`, "files(name)");
 connect("Recent folders", "List folder files");
@@ -106,7 +174,8 @@ const rootFiles = $('List Artwork Agent').first().json.files || [];
 const age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;
 // a lock's own stale time is in its description ("staleMinutes=20"); older locks use the stage's value
 const staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || ""); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };
-const locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + "-") && age(f) < staleOf(f, stage));
+const cleared = $('Locks of finished runs').isExecuted ? $('Locks of finished runs').all().map((item) => item.json.id).filter(Boolean) : [];
+const locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + "-") && age(f) < staleOf(f, stage) && !cleared.includes(f.id));
 const failedRecently = (stage) => rootFiles.some((f) => f.name === "_failed-" + stage && age(f) < Number(settings.backoffMinutes));
 
 const pending = { worker: [], titling: [], print: [], uploader: [] };
@@ -123,7 +192,9 @@ $input.all().forEach((item, i) => {
     const stamp = art.slice(0, 19);
     const has = (suffix) => names.includes(stamp + suffix);
     if (!has("_product.json")) pending.titling.push(folder.name);
-    if (!has("_featured.png") || !has("_mockup.png")) pending.print.push(folder.name);
+    // a folder the Print Agent gave up on (3 runs with failed jobs) is not waiting for it any more
+    const givenUp = names.filter((n) => n.startsWith(stamp + "_print-failed-")).length >= 3;
+    if ((!has("_featured.png") || !has("_mockup.png")) && !givenUp) pending.print.push(folder.name);
     if (has("_product.json") && has("_featured.png") && has("_mockup.png") && !has("_shopify.json")) pending.uploader.push(folder.name);
 });
 

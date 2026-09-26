@@ -30,3 +30,13 @@ a run fails -> its queue lock is deleted at once (its name ends with the run's e
 - Each lock says in its Drive description how long it stays fresh without a refresh (`staleMinutes=20`): worker 20, Titling 15, Uploader 20, Print 20. Every running workflow refreshes its lock while it works, so a long run (a 20-image batch) is never mistaken for a crashed one.
 - Its successful runs are not kept in the n8n execution list (every 5 minutes); failed ones are, and they alert through the Error Handler.
 - It must be **published** to run.
+
+### Locks of cancelled or crashed runs
+
+n8n doesn't call the Error Handler for a **cancelled** or **crashed** run, so its lock would stay in place until it expires. Every 5 minutes, the Watchdog cleans these up:
+
+- It reads the execution id at the end of each lock's name (`<prefix>.lock-<execution id>`), for locks more than a minute old.
+- It asks the n8n API about that execution (node "Run of the lock", credential **n8n API**: an API key from Settings → n8n API, Base URL `https://n8n-vm.taildc9f8f.ts.net/api/v1`).
+- It deletes the lock when the execution is finished (success, error, canceled, crashed) or no longer exists (404).
+- A lock is kept when its run is still going or waiting, or when the check itself fails (missing credential, API down).
+

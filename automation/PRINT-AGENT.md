@@ -50,3 +50,11 @@ Before its print jobs, each run makes the missing `1xxx/<date+time>_featured.png
 ## Busy and failed runs
 
 A call that finds another run working waits 30 s and tries again (3 times), so work that arrives while a run is finishing is never left behind. A failed run's lock is released at once by the Darl'Art Error Handler (`ERROR-HANDLER.md`).
+
+## Speckled artworks and folders that keep failing
+
+- **Very speckled artworks** (more than 20,000 small areas of one colour, e.g. heavily textured paintings) used to take 10+ minutes per job in the facet reduction, which deletes tiny areas one at a time. The pbn API now merges those tiny areas into their surroundings in one pass first (`src/core/despeckle.ts`, API only; the website generator is unchanged).
+  - Artwork 1023: 559 s → 73 s.
+  - A normal artwork: about 4× faster, with 2–3% of pixels changing colour along borders.
+- **A folder whose jobs keep failing** gets a marker `<stamp>_print-failed-<execution>` after each run with failed jobs. After `maxFailedRuns` (3) markers, the Print Agent and the Queue Watchdog skip it, and one Telegram alert says so. Delete its `_print-failed-` markers to try it again.
+

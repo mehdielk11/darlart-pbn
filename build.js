@@ -36,10 +36,13 @@ if (!fs.existsSync('./dist')) {
   fs.mkdirSync('./dist');
 }
 
-// Copy styles and static assets to dist so Vercel deployment has latest CSS & libraries
+// Copy styles and static assets to dist so Vercel deployment has latest CSS & libraries.
+// scripts/lib also holds the n8n workflow generators' helpers: they are not part of the website
+const NOT_WEBSITE = ["n8n-queue-lock.js", "prices-code.js"];
+const websiteFile = (src) => !NOT_WEBSITE.includes(path.basename(src));
 if (fs.cpSync) {
   fs.cpSync('./styles', './dist/styles', { recursive: true, force: true });
-  fs.cpSync('./scripts/lib', './dist/scripts/lib', { recursive: true, force: true });
+  fs.cpSync('./scripts/lib', './dist/scripts/lib', { recursive: true, force: true, filter: websiteFile });
 } else {
   const copyDir = (src, dest) => {
     fs.mkdirSync(dest, { recursive: true });
@@ -47,7 +50,7 @@ if (fs.cpSync) {
       const srcPath = path.join(src, entry.name);
       const destPath = path.join(dest, entry.name);
       if (entry.isDirectory()) copyDir(srcPath, destPath);
-      else fs.copyFileSync(srcPath, destPath);
+      else if (websiteFile(srcPath)) fs.copyFileSync(srcPath, destPath);
     }
   };
   copyDir('./styles', './dist/styles');

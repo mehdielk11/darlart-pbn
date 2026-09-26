@@ -52,7 +52,7 @@ const SETTINGS = {
     // the lock is refreshed before every long step, so this only covers the longest single step (one painting with
     // its retry, about 10 min at worst), not the whole run
     lockStaleMinutes: 20,
-    telegramChatId: "-5252292447", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
+    telegramChatId: "-1003952514058", // the Telegram group the "Telegram account" bot reports to (empty = no messages)
     timezone: "Africa/Casablanca",
 };
 const MAX_BATCH = 20; // references per upload, the rest are refused on the page
@@ -117,15 +117,16 @@ function workflowBuilder(idPrefix) {
     const telegramOn = "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}";
     const telegramText = (name, position, textExpression) => node(name, "n8n-nodes-base.telegram", 1.2, position, {
         chatId: "={{ $('Settings').first().json.telegramChatId }}",
-        text: textExpression,
-        additionalFields: { appendAttribution: false, disable_web_page_preview: true },
+        // HTML with the text escaped: Markdown (n8n's default) refuses texts with "_", e.g. batch names
+        text: textExpression.replace(/^=\{\{\s*([\s\S]*?)\s*\}\}$/, (m, x) => "={{ " + "String(X || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')".replace("X", x) + " }}"),
+        additionalFields: { appendAttribution: false, disable_web_page_preview: true, parse_mode: "HTML" },
     }, { onError: "continueRegularOutput" });
     const telegramPhoto = (name, position, captionExpression) => node(name, "n8n-nodes-base.telegram", 1.2, position, {
         operation: "sendPhoto",
         chatId: "={{ $('Settings').first().json.telegramChatId }}",
         binaryData: true,
         binaryPropertyName: "data",
-        additionalFields: { caption: captionExpression },
+        additionalFields: { caption: captionExpression.replace(/^=\{\{\s*([\s\S]*?)\s*\}\}$/, (m, x) => "={{ " + "String(X || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')".replace("X", x) + " }}"), parse_mode: "HTML" },
     }, { onError: "continueRegularOutput" });
     const completionPage = (name, position, responseText) => node(name, "n8n-nodes-base.form", 2.3, position, { operation: "completion", respondWith: "showText", responseText });
     const save = (file, name) => {
