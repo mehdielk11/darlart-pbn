@@ -33,3 +33,12 @@ A price of 0 means the combination gets no variant at all, from the Uploader (ne
 ## Execution list
 
 Runs that succeed are not kept in the n8n execution list (one run an hour would fill the database); the Telegram report says what changed. Failed runs and "Run now" runs are kept.
+
+## Before-price (compare-at) by tag
+
+A product shows a crossed-out "before" price only when it has a tag `sale-<percent>`, e.g. `sale-50`:
+
+- before-price = price / (1 - percent), rounded: 249 with `sale-50` shows 498 (SAVE 50%), with `sale-30` 356 (SAVE 30%).
+- It follows the prices sheet: a new price in the sheet updates the before-price too.
+- Products without the tag have no before-price (`compareAtMultiplier` is 0). Removing the tag removes it on the next run (every hour at :20, or "Run now").
+- A whole collection at once: Products > filter by collection > select all > More actions > Add tags.

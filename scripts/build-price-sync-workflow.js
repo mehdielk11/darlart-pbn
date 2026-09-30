@@ -10,6 +10,8 @@
  *        price set to 0 in the sheet ("not sold")    -> variant deleted (the product page shows it greyed out)
  *        price above 0 again for a missing variant   -> variant created, SKU as the Uploader makes it
  *      a combination missing from the sheet is never deleted (a sheet mistake cannot empty the store)
+ *   -> compare-at ("before") price: only on products tagged "sale-<percent>" (e.g. sale-50: 249 shows as 498, SAVE 50%),
+ *      kept in line with the sheet's prices; removing the tag removes it on the next run
  *   -> the canvas option values get their French and Arabic names (canvasTranslations), like the store's other kits:
  *      the product page picks the canvas icons by these names, so without them fr/ar pages show a default icon
  *   -> one Telegram message when something changed or failed (nothing when all is already in line)
@@ -31,7 +33,7 @@ const SETTINGS = {
     shopDomain: "smgi0i-0a.myshopify.com",
     apiVersion: "2026-07",
     sizes: "20x25,32x40,40x50", // same as the Uploader: rows of other sizes are ignored
-    compareAtMultiplier: 2, // same as the Uploader
+    compareAtMultiplier: 0, // same as the Uploader; 0 = no compare-at ("before") price
     telegramChatId: "-1003952514058", // empty = no message
     // the canvas values' names in the store's other languages (same as the manual kits)
     canvasTranslations: JSON.stringify({
@@ -117,7 +119,7 @@ const last = $('Collect products').first().json;
 return [{ json: { cursor: last.cursor, products: last.products } }];`);
 connect("Prices", "Next page");
 shopify("Products page", [3100, 100], `={{ JSON.stringify({
-    query: "query Page($after: String) { products(first: 10, after: $after, query: \\"product_type:'Paint by Numbers Kit'\\") { pageInfo { hasNextPage endCursor } nodes { id title handle options { name position optionValues { id name fr: translations(locale: \\"fr\\") { key value } ar: translations(locale: \\"ar\\") { key value } } } variants(first: 60) { nodes { id sku price compareAtPrice selectedOptions { name value } } } } } }",
+    query: "query Page($after: String) { products(first: 10, after: $after, query: \\"product_type:'Paint by Numbers Kit'\\") { pageInfo { hasNextPage endCursor } nodes { id title handle tags options { name position optionValues { id name fr: translations(locale: \\"fr\\") { key value } ar: translations(locale: \\"ar\\") { key value } } } variants(first: 60) { nodes { id sku price compareAtPrice selectedOptions { name value } } } } } }",
     variables: { after: $json.cursor }
 }) }}`);
 connect("Next page", "Products page");
@@ -196,8 +198,14 @@ for (const row of prices.rows) byKey[row.key] = row;
 const optionOf = (v, name) => (v.selectedOptions.find((o) => o.name === name) || {}).value;
 const keyOf = (v) => optionOf(v, "Size") + "|" + optionOf(v, "Canvas Type") + "|" + optionOf(v, "Colors");
 const money = (x) => (x === null || x === undefined || x === "" ? null : Number(x).toFixed(2));
+// a product tagged "sale-<percent>" (e.g. sale-50) shows a compare-at ("before") price that makes that discount:
+// price / (1 - percent), rounded to a whole number (249 with sale-50 -> 498). Without the tag: the sheet's value
+// (compare_at_price column, or price x compareAtMultiplier), none when both are empty/0.
+const saleOf = (p) => { for (const t of p.tags || []) { const m = /^sale-(\\d{1,2})$/i.exec(String(t).trim()); if (m && Number(m[1]) > 0) return Number(m[1]); } return 0; };
+const compareFor = (row, sale) => (sale ? Math.round(Number(row.price) / (1 - sale / 100)).toFixed(2) : row.compareAtPrice);
 const out = [];
 for (const p of products) {
+    const sale = saleOf(p);
     const existing = {};
     for (const v of p.variants.nodes) existing[keyOf(v)] = v;
     const update = [];
@@ -207,8 +215,9 @@ for (const p of products) {
         const row = byKey[key];
         if (!row) continue; // not in the sheet (another size...): left alone
         if (!row.sold) { remove.push({ id: v.id, key }); continue; }
-        if (money(v.price) !== row.price || money(v.compareAtPrice) !== row.compareAtPrice) {
-            update.push({ id: v.id, price: row.price, compareAtPrice: row.compareAtPrice, key, was: money(v.price) });
+        const compareAtPrice = compareFor(row, sale);
+        if (money(v.price) !== row.price || money(v.compareAtPrice) !== compareAtPrice) {
+            update.push({ id: v.id, price: row.price, compareAtPrice, key, was: money(v.price), wasBefore: money(v.compareAtPrice) });
         }
     }
     for (const row of prices.rows) {
@@ -216,7 +225,7 @@ for (const p of products) {
         create.push({
             optionValues: [{ optionName: "Size", name: row.size }, { optionName: "Canvas Type", name: row.canvasType }, { optionName: "Colors", name: row.colors }],
             price: row.price,
-            compareAtPrice: row.compareAtPrice,
+            compareAtPrice: compareFor(row, sale),
             inventoryPolicy: "DENY",
             inventoryItem: { tracked: false, requiresShipping: true, sku: p.folder + row.size.replace("x", "") + row.colors + row.canvasType.charAt(0).toUpperCase() },
         });
@@ -239,7 +248,8 @@ for (const p of products) {
         productId: p.id,
         folder: p.folder,
         title: p.title,
-        summary: { updated: update.map((u) => u.key + " " + u.was + " -> " + u.price), removed: removeNow.map((r) => r.key), created: create.map((c) => c.optionValues.map((o) => o.name).join("|")), keptAll: remove.length !== removeNow.length },
+        sale,
+        summary: { updated: update.map((u) => u.key + " " + u.was + " -> " + u.price + (u.wasBefore !== u.compareAtPrice ? " (before-price " + (u.wasBefore || "none") + " -> " + (u.compareAtPrice || "none") + ")" : "")), removed: removeNow.map((r) => r.key), created: create.map((c) => c.optionValues.map((o) => o.name).join("|")), keptAll: remove.length !== removeNow.length },
         body: {
             query: "mutation Sync($p: ID!" + (vars.length ? ", " + vars.join(", ") : "") + ") { " + parts.join(" ") + " }",
             variables: { p: p.id, c: create, u: update.map((u) => ({ id: u.id, price: u.price, compareAtPrice: u.compareAtPrice })), d: removeNow.map((r) => r.id), o: reorder },

@@ -80,3 +80,6 @@ A worker call that finds another run working waits 30 s and tries again (3 times
 - **OpenAI refuses a reference** (its safety filter): the reference is set aside in `Artwork Ref/Failed` at once, with the reason. It is not painted again.
 - **The OpenAI account can't be used** (no credit, wrong key, rate limit): the run stops without painting, the reference's try is given back, and the queue waits. The Error Handler alerts and does not restart the worker; the Queue Watchdog tries again every 30 minutes, so the queue resumes by itself once the account works.
 - **The checker fails** (a glitch of the check, not a verdict): it is tried again (3 times), instead of failing the run and painting the artwork again.
+- **Text and logos in a reference** (signs, shop names, license plates, car badges, calligraphy, signatures) are left out of the painting: signs become blank boards, logos plain shapes. Before this, such references failed the checker 3 times out of 3.
+- **A new try learns from the last one:** the painting prompt of try 2 and 3 includes what the checker rejected.
+- **The checker flags only real problems:** readable text or a known logo, a palette strip, a border around the whole image. A window, arch, sun rays or stripes in the scene are not problems.

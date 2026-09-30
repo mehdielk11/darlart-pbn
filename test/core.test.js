@@ -397,3 +397,57 @@ test("despeckle merges the tiny areas of a very speckled image, and leaves an or
     assert.ok(r.merged >= 169);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) assert.equal(img.get(x, y), x < 20 ? 0 : 2);
 });
+
+test("callout layout: dots inside their region and clear of every outline, numbers in the right region", async () => {
+    const { runPipeline } = require(path.join(dist, "src/core/pipeline"));
+    const { computeLabelLayout } = require(path.join(dist, "src/core/callouts"));
+    const { getFacetOutline } = require(path.join(dist, "src/core/svg"));
+    const { prepareImage } = require(path.join(dist, "server/src/image"));
+    const prepared = await prepareImage(fs.readFileSync(photoImage), { canvasSize: "40x50", orientation: "portrait", crop: null, cropMode: "attention", maxSide: 1024 });
+    const settings = buildSettings({ colors: 24, difficulty: "hard", customColors: paletteText });
+    settings.despeckleTinyAreas = true;
+    const log = console.log;
+    console.log = () => undefined;
+    let result;
+    try { result = await runPipeline(prepared.image, settings); } finally { console.log = log; }
+    const fr = result.facetResult;
+    const layout = computeLabelLayout(fr);
+    assert.ok(layout.callouts.size > 0, "a hard template has regions too small for their number");
+
+    // a point belongs to the smallest drawn outline that contains it (a region can enclose others)
+    const outlines = new Map();
+    const areas = new Map();
+    const segments = [];
+    for (const f of fr.facets) {
+        if (!f || f.borderSegments.length === 0) continue;
+        const o = getFacetOutline(f);
+        outlines.set(f.id, o);
+        let a = 0;
+        for (let i = 0, j = o.length - 1; i < o.length; j = i++) a += (o[j].x + o[i].x) * (o[j].y - o[i].y);
+        areas.set(f.id, Math.abs(a / 2));
+        for (let i = 1; i < o.length; i++) segments.push([o[i - 1], o[i]]);
+    }
+    const inPolygon = (p, poly) => {
+        let c = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const a = poly[i], b = poly[j];
+            if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) c = !c;
+        }
+        return c;
+    };
+    const inRegion = (id, p) => inPolygon(p, outlines.get(id)) &&
+        !(fr.facets[id].neighbourFacets || []).some((n) => outlines.has(n) && areas.get(n) < areas.get(id) && inPolygon(p, outlines.get(n)));
+    const distanceToOutlines = (p) => Math.min(...segments.map(([a, b]) => {
+        const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy;
+        const t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0;
+        return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+    }));
+    for (const c of layout.callouts.values()) {
+        assert.ok(inRegion(c.facetId, c.anchor), `the dot of region ${c.facetId} is outside it`);
+        assert.ok(distanceToOutlines(c.anchor) >= c.dotRadius, `the dot of region ${c.facetId} touches an outline`);
+        assert.ok(inRegion(c.hostFacetId, c.text), `the callout number of region ${c.facetId} is not in region ${c.hostFacetId}`);
+    }
+    for (const l of layout.labels.values()) {
+        if (l.fontSize > 0) assert.ok(inRegion(l.facetId, l.center), `the number of region ${l.facetId} is outside it`);
+    }
+});

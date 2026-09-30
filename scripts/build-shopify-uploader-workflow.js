@@ -45,7 +45,7 @@ const SETTINGS = {
     status: "DRAFT",
     // the sizes sold: sheet rows of any other size (e.g. 60x75, the print size: it is not sold) are skipped
     sizes: "20x25,32x40,40x50",
-    compareAtMultiplier: 2, // compare-at price = price x this, when the CSV has no compare_at_price
+    compareAtMultiplier: 0, // compare-at price = price x this, when the CSV has no compare_at_price; 0 = none
     // the images shown on every product after the featured image and the mockup: Shopify Files URLs
     // (Content > Files > copy link) or file IDs (gid://shopify/MediaImage/...), comma-separated
     // 3_package-kit, 4_rolled-stretched, 5_order-package
@@ -452,10 +452,24 @@ String(settings.sharedImages || "").split(",").map((s) => s.trim()).filter(Boole
     }
 });
 
-// Mini Kits and Kids Kits collections are filled by hand later: never a collection with "mini kit" or "kids kit" in
-// its title, and never a tag those collections match on (mini-kit, kids-kits...)
-const kitCollection = (title) => /\b(mini|kids?)[\s-]*kits?\b/i.test(String(title || ""));
+// Mini Kits collections are filled by hand later: never a collection with "mini kit" in its title, and never the tag
+// they match on (mini-kit). Kids Kits are chosen by the Titling Agent (its "kids" answer): their collections and the
+// kids-kits tag are kept.
+const kitCollection = (title) => /\bmini[\s-]*kits?\b/i.test(String(title || ""));
 const tags = (product.tags || []).filter((tag) => !kitCollection(tag));
+
+// the collection-page filters (Search & Discovery): Category (the product's themes) and Difficulty level
+const metafields = [];
+const category = (product.category || []).map((c) => String(c).trim()).filter(Boolean).slice(0, 5);
+if (category.length) metafields.push({ namespace: "custom", key: "category", type: "list.single_line_text_field", value: JSON.stringify(category) });
+// the same categories as Category entries (translatable filter values), matched by name or handle
+const entries = ((($('Category entries').first().json.data || {}).metaobjects || {}).nodes || []);
+const entryIds = category.map((name) => {
+    const entry = entries.find((e) => String((e.field || {}).value || "").toLowerCase() === name.toLowerCase() || e.handle === slug(name));
+    return entry ? entry.id : null;
+}).filter(Boolean);
+if (entryIds.length) metafields.push({ namespace: "custom", key: "theme_category", type: "list.metaobject_reference", value: JSON.stringify(entryIds) });
+if (product.difficulty) metafields.push({ namespace: "custom", key: "difficulty_level", type: "single_line_text_field", value: String(product.difficulty) });
 
 // SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R
 const sku = (variant) => {
@@ -475,9 +489,23 @@ const input = {
     productOptions: prices.productOptions,
     variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),
     files,
+    ...(metafields.length ? { metafields } : {}),
 };
 return [{ json: { handle, title, alts, shared, input } }];`);
-connect("Upload WebP to Shopify", "Build product");
+// the Category entries (Content > Metaobjects > Category): the collection-page Category filter reads them, and their
+// names are translated in Translate & Adapt (a plain text metafield can't be translated in the filter)
+node("Category entries", "n8n-nodes-base.httpRequest", 4.2, [4950, 140], {
+    method: "POST",
+    url: "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "shopifyOAuth2Api",
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: `={{ JSON.stringify({ query: '{ metaobjects(type: "category", first: 250) { nodes { id handle field(key: "name") { value } } } }' }) }}`,
+    options: { timeout: 120000 },
+}, { ...RETRY, executeOnce: true, onError: "continueRegularOutput" });
+connect("Upload WebP to Shopify", "Category entries");
+connect("Category entries", "Build product");
 
 shopify("Create draft product", [5280, 300], `={{ JSON.stringify({
   query: 'mutation UpsertDraftProduct($identifier: ProductSetIdentifiers, $input: ProductSetInput!) { productSet(synchronous: true, identifier: $identifier, input: $input) { product { id handle title status variantsCount { count } media(first: 50) { nodes { id alt } } } userErrors { field message code } } }',

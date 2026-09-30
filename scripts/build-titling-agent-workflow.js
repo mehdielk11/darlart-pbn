@@ -38,7 +38,7 @@ const SETTINGS = {
     vendor: "Darl'Art",
     baseTags: "paint-by-numbers", // always added, comma-separated
     // collections that are not themes: never proposed to the agent
-    skipCollections: "all-kits,Best Sellers,Extras,Mini Kits",
+    skipCollections: "all-kits,all-kids,classic-kits,New Arrivals,Best Sellers,Extras,Mini Kits",
 };
 // ============================================================================================
 
@@ -112,7 +112,7 @@ node("Shopify collections", "n8n-nodes-base.httpRequest", 4.2, [440, 100], {
     nodeCredentialType: "shopifyOAuth2Api",
     sendBody: true,
     specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ query: '{ collections(first: 250) { nodes { id title handle } } }' }) }}",
+    jsonBody: "={{ JSON.stringify({ query: '{ collections(first: 250) { nodes { id title handle ruleSet { appliedDisjunctively } } } metafieldDefinitions(first: 50, ownerType: PRODUCT, namespace: \"custom\") { nodes { key validations { name value } } } }' }) }}",
     options: { timeout: 30000 },
 });
 // ---- one run at a time ------------------------------------------------------------------------------
@@ -121,7 +121,8 @@ connect("Settings", "List locks");
 connect("Lock won?", "Shopify collections", 0);
 
 node("Themes", "n8n-nodes-base.code", 2, [660, 100], {
-    jsCode: `// One theme per collection family: "Animals", "Animals - Mini Kits" and "Animals - Kids Kits" are the theme "Animals".
+    jsCode: `// One theme per collection family: "Animals", "Animals - Mini Kits" and "Kids - Animals" (or "Animals - Kids Kits")
+// are the theme "Animals".
 // Its tag is the main collection's handle (the Kids Kits smart collections match on it, e.g. "animals").
 const settings = $('Settings').first().json;
 const response = $input.first().json;
@@ -133,15 +134,27 @@ const slug = (s) => String(s).toLowerCase().replace(/&/g, " ").replace(/[^a-z0-9
 const themes = {};
 for (const c of collections) {
     if (skip.has(c.title.trim().toLowerCase())) continue;
-    const name = c.title.split(" - ")[0].trim();
+    // "Kids - Animals": the Kids Kits collection of the theme after "Kids - "
+    const kidsPrefix = /^kids\\s*-\\s*(.+)$/i.exec(c.title.trim());
+    const name = kidsPrefix ? kidsPrefix[1].trim() : c.title.split(" - ")[0].trim();
     const theme = (themes[name] = themes[name] || { name, tag: slug(name), collections: [] });
-    theme.collections.push({ id: c.id, title: c.title, handle: c.handle });
+    // smart: an automated collection (its rules pick the products, e.g. by tag); a product can't be put in it by hand
+    const kids = !!kidsPrefix || /-\\s*kids kits$/i.test(c.title);
+    theme.collections.push({ id: c.id, title: c.title, handle: c.handle, smart: !!c.ruleSet, kids });
     if (c.title.trim() === name) theme.tag = c.handle; // the main collection's handle
 }
-// only themes with a main collection (e.g. "Animals"): a product never goes into a Mini Kits or Kids Kits collection by hand
-const list = Object.values(themes).filter((t) => t.collections.some((c) => c.title.trim() === t.name)).sort((a, b) => a.name.localeCompare(b.name));
+// themes with a main collection (e.g. "Animals"), for every painting; themes with only a Kids Kits collection
+// (e.g. "Kids - Space"), for kids paintings only. A Mini Kits collection alone never makes a theme.
+for (const t of Object.values(themes)) t.kidsOnly = !t.collections.some((c) => c.title.trim() === t.name) && t.collections.some((c) => c.kids);
+const list = Object.values(themes).filter((t) => !t.kidsOnly && t.collections.some((c) => c.title.trim() === t.name) || t.kidsOnly).sort((a, b) => a.name.localeCompare(b.name));
 if (!list.length) throw new Error("No theme collections found in Shopify");
-return [{ json: { themes: list, names: list.map((t) => t.name) } }];`,
+// the allowed values of the collection-page filters (Settings > Custom data > Products): Category, Difficulty level
+const choicesOf = (key) => {
+    const d = (((response.data || {}).metafieldDefinitions || {}).nodes || []).find((n) => n.key === key);
+    const v = d && (d.validations || []).find((x) => x.name === "choices");
+    try { return v ? JSON.parse(v.value) : []; } catch (e) { return []; }
+};
+return [{ json: { themes: list, names: list.filter((t) => !t.kidsOnly).map((t) => t.name), kidsNames: list.filter((t) => t.kidsOnly).map((t) => t.name), categoryChoices: choicesOf("category"), difficultyChoices: choicesOf("difficulty_level") } }];`,
 });
 connect("Shopify collections", "Themes");
 
@@ -270,7 +283,7 @@ connect("Record the try", "Download artwork");
 
 node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
     promptType: "define",
-    text: "=Theme list: {{ $('Themes').first().json.names.join(', ') }}.\nWrite the product texts for the attached artwork.",
+    text: "=Theme list: {{ $('Themes').first().json.names.join(', ') }}.{{ ($('Themes').first().json.kidsNames || []).length ? '\\nThemes for kids paintings only (use them only when KIDS is true): ' + $('Themes').first().json.kidsNames.join(', ') + '.' : '' }}\nWrite the product texts for the attached artwork.",
     hasOutputParser: true,
     options: {
         systemMessage: `=You write product listings for Darl'Art, a Moroccan paint-by-numbers brand. Each product is a kit: the customer paints the attached artwork on a numbered canvas. You look at the artwork and write in {{ $('Settings').first().json.language }}.
@@ -278,7 +291,9 @@ node("Titling agent", "@n8n/n8n-nodes-langchain.agent", 2.2, [2200, 200], {
 1. TITLE: 2 to 5 words naming what the painting shows, evocative and specific, in Title Case (e.g. "Blue Iris", "Red Umbrella", "Lanterns of Fes", "Golden Hour Camel Ride"). Never "paint by numbers", "kit" or the brand. Never a real person's name, a brand or a trademarked character.
 2. DESCRIPTION: plain text, no HTML, two short paragraphs separated by a blank line, 50 to 90 words in all. First: what the finished painting shows and its mood. Second: why it is a pleasure to paint and who it suits (a relaxing hobby, a gift, which room it brightens). Warm and simple, no emojis, no prices, no sizes, no number of colors.
 3. TAGS: 6 to 12 lowercase keywords for the store search: the subject, its elements, the style, the mood, the main colors, where it fits (e.g. "iris", "blue flowers", "botanical", "calm", "living room decor"). No brand, no "paint by numbers".
-4. THEMES: the store collections this painting belongs to, 1 to 3 names copied exactly from the theme list in the prompt, the best fit first. Pick every theme that genuinely fits and only those: a theme fits when a shopper browsing that collection would expect to find this painting there (an eagle belongs in Animals, a sunset over the sea in Sunsets, a couple in Romance). Judge by the main subject and the overall scene, never by a small detail in the background. Only names from that list.`,
+4. THEMES: the ONE store collection this painting belongs to, exactly 1 name copied exactly from the theme list in the prompt. Each painting is shown in a single collection, so pick the one a shopper would look in first: the main subject decides (an eagle in the sky goes in Animals, not Nature; a car on a coastal road goes in Vehicles; a medina street goes in Morocco; a sunset over the sea goes in Sunsets; a couple goes in Romance). Anime & Manga only for artwork drawn in a Japanese anime or manga style, never for a realistic or western scene. Judge by the main subject and the overall scene, never by a small detail in the background. Only names from that list.
+5. KIDS: true when the painting is made for children: a simple cartoon or storybook style with big bold shapes, thick outlines, bright flat colors and a cute, playful subject a child would love (friendly animals, dinosaurs, rockets, toy-like cars, smiling characters). false for anything realistic, detailed, moody or grown-up, even when its subject is an animal or a car. A kids painting goes in the Kids Kits version of the theme you pick (e.g. Kids - Animals).
+6. DIFFICULTY: how hard the painting is to paint by numbers: "Beginner" for big simple shapes and few small areas (every kids painting), "Intermediate" for a normal level of detail, "Advanced" for many small areas, fine details, faces, fur, foliage or intricate patterns.`,
         passthroughBinaryImages: true,
     },
 }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 5000 });
@@ -295,9 +310,11 @@ node("Listing format", "@n8n/n8n-nodes-langchain.outputParserStructured", 1.2, [
             title: { type: "string" },
             description: { type: "string", description: "Plain text, two paragraphs separated by a blank line" },
             tags: { type: "array", items: { type: "string" } },
-            themes: { type: "array", items: { type: "string" }, description: "1 to 3 names from the theme list, best fit first" },
+            themes: { type: "array", items: { type: "string" }, description: "exactly 1 name from the theme list" },
+            kids: { type: "boolean", description: "true when the painting is a children's cartoon style: it goes in the Kids Kits collections" },
+            difficulty: { type: "string", description: "Beginner, Intermediate or Advanced" },
         },
-        required: ["title", "description", "tags", "themes"],
+        required: ["title", "description", "tags", "themes", "kids", "difficulty"],
     }, null, 2),
 });
 connect("Listing format", "Titling agent", 0, "ai_outputParser");
@@ -317,9 +334,24 @@ const handle = title.toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g
 const chosen = [];
 for (const name of out.themes || []) {
     const theme = themes.find((t) => t.name.toLowerCase() === String(name).trim().toLowerCase());
-    if (theme && !chosen.includes(theme)) chosen.push(theme);
+    // a kids-only theme (e.g. Space: only "Kids - Space" exists) is kept for a kids painting only
+    if (theme && !chosen.includes(theme) && (!theme.kidsOnly || out.kids === true)) chosen.push(theme);
 }
-const collections = chosen.map((t) => t.collections.find((c) => c.title === t.name)).filter(Boolean);
+// one collection per painting: keep the first valid theme only
+chosen.splice(1);
+// a kids painting goes in each theme's "<theme> - Kids Kits" collection instead of the main one (the main one when the
+// theme has no Kids Kits collection); an automated Kids Kits collection picks it up by its tags (kids-kits + the theme)
+const kids = out.kids === true;
+const categoryChoices = $('Themes').first().json.categoryChoices || [];
+const difficultyChoices = $('Themes').first().json.difficultyChoices || [];
+// a kids painting is always "Beginner"; an answer outside the allowed values becomes "Intermediate"
+const pickDifficulty = (want) => difficultyChoices.find((d) => d.toLowerCase() === String(want || "").trim().toLowerCase()) || "";
+const difficulty = kids ? (pickDifficulty("Beginner") || "Beginner") : (pickDifficulty(out.difficulty) || pickDifficulty("Intermediate") || "");
+const collections = chosen.map((t) => {
+    const main = t.collections.find((c) => c.title === t.name);
+    const kidsKits = kids ? t.collections.find((c) => c.kids) : null;
+    return kidsKits || main;
+}).filter((c) => c && !c.smart);
 
 // plain text: any HTML the model adds anyway becomes paragraph breaks
 const description = String(out.description || "")
@@ -327,7 +359,7 @@ const description = String(out.description || "")
     .replace(/[ \\t]+/g, " ").replace(/\\s*\\n\\s*\\n\\s*/g, "\\n\\n").trim();
 
 const tags = [];
-for (const tag of [...String(settings.baseTags).split(","), ...chosen.map((t) => t.tag), ...(out.tags || [])]) {
+for (const tag of [...String(settings.baseTags).split(","), ...(kids ? ["kids-kits"] : []), ...chosen.map((t) => t.tag), ...(out.tags || [])]) {
     const clean = String(tag).toLowerCase().replace(/\\s+/g, " ").trim();
     if (clean && !tags.includes(clean)) tags.push(clean);
 }
@@ -339,6 +371,10 @@ const product = {
     productType: settings.productType,
     vendor: settings.vendor,
     themes: chosen.map((t) => t.name),
+    kids,
+    // the collection-page filters: Category = the product's themes (allowed values only), Difficulty level
+    category: chosen.map((t) => t.name).filter((n) => !categoryChoices.length || categoryChoices.includes(n)).slice(0, 5),
+    difficulty,
     collections: collections.map((c) => ({ id: c.id, title: c.title, handle: c.handle })),
     tags,
     needsReview: chosen.length === 0 ? "no theme from the store matched: choose the collection by hand" : "",

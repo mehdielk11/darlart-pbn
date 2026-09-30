@@ -494,13 +494,16 @@ const frame = orientation === "landscape"
 const imagePrompt = [
     "Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.",
     frame + " Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.",
-    "Paint only the artwork itself: ignore any white or grey background, wall, shadow, frame or canvas edge around it in the reference.",
+    "Paint only the artwork itself: ignore any white or grey background, wall, shadow, picture frame or canvas edge around it in the reference. A decorative border that is part of the design itself (a patterned zellij or rug border, an ornamental band) is kept.",
     "Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.",
+    // references with signs or posters were failing the checker 3 times out of 3: the painting leaves their writing out.
+    // License plates, vehicle emblems, badges and logos on objects stay as they are (the 48-color snap blurs them anyway)
+    "The one exception: leave out the writing in the scene. Every sign, shop name, poster, label, sticker, calligraphy, inscription, signature and watermark is painted without any letter or word: a sign becomes a blank board in its own color, calligraphy or an inscription a simple ornamental band with no letters. License plates, vehicle emblems, badges and logos on objects may stay as they are.",
     "Keep the original colors of the image.",
     "Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.",
     "Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.",
-    "Smooth high-resolution shapes, not pixel art, no blocks, no mosaic, no gradients, no blur, no texture, no grain, no brush strokes, no outlines.",
-    "The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no border, no margin.",
+    "Smooth high-resolution shapes, not pixel art, no pixelated blocks, no gradients, no blur, no texture, no grain, no brush strokes, no outlines. Geometric tile patterns (zellij, mosaics, star patterns) in the reference are kept as crisp flat shapes.",
+    "The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no added border, no margin.",
 ].join("\\n");
 return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.width, referenceHeight: size.height }, binary: $('Prepare').first().binary }];`);
     // the reference's real shape (the pbn API reads the phone's EXIF rotation too)
@@ -527,7 +530,8 @@ return [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.widt
         bodyParameters: {
             parameters: [
                 { name: "model", value: "={{ $('Settings').first().json.imageModel }}" },
-                { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt }}" },
+                // a new try is told what the checker found in the last painting, so it does not fail the same way again
+                { name: "prompt", value: "={{ $('Build image prompt').last().json.imagePrompt + ($('Count attempts').isExecuted && $('Count attempts').last().json.problems ? '\\n\\nThe previous painting was rejected for this, fix it: ' + $('Count attempts').last().json.problems : '') }}" },
                 { name: "size", value: "={{ $('Build image prompt').first().json.imageSize }}" },
                 { name: "quality", value: "={{ $('Settings').first().json.imageQuality }}" },
                 { name: "output_format", value: "png" },
@@ -590,7 +594,7 @@ return [{ json: { hasManifest: true }, binary: { manifest: { data: Buffer.from(J
 
     node("Check artwork", "@n8n/n8n-nodes-langchain.agent", 2.2, [X + 880, -120], {
         promptType: "define",
-        text: "Check the attached image.\nclean = false if it contains ANY of these:\n- a color palette, color swatches, color chips, a color bar or strip, or a legend;\n- any text, letters, numbers, labels, logo, signature or watermark;\n- a border, frame, white margin, mockup, canvas edge or paper around the painting;\n- a pixel-art, blocky or mosaic look (visible square pixels or blocks).\nOtherwise clean = true. \"problems\" lists what you found, or is empty.",
+        text: "Check the attached image.\nclean = false if it contains ANY of these:\n- a color palette, color swatches, color chips or a legend: flat squares or a strip of sample colors laid out along an edge, not part of the scene;\n- readable text: words you can actually read on a sign, a poster, a label or an inscription, or a signature or watermark;\n- a plain white or grey margin, a mat, a picture frame, a mockup, a canvas edge or paper around the whole painting;\n- a pixelated look: visible square pixels or a grid of equal square blocks, like a low-resolution image or pixel art.\nPart of the design is NOT a problem: a decorative patterned border that belongs to the artwork (a zellij, rug or ornamental band), geometric tile patterns, mosaics and star patterns (zellij), a window, doorway, arch or picture frame painted inside the scene, sun rays, stripes, rainbows or colorful patterns, blank signs, license plates (even with letters or numbers), vehicle emblems, badges and brand logos on objects, and small shapes or marks that cannot be read as words.\nOtherwise clean = true. \"problems\" lists what you found, or is empty.",
         hasOutputParser: true,
         options: {
             systemMessage: "You check artwork files before they go to a paint-by-numbers production tool. You look at the image and report problems. Be strict.",

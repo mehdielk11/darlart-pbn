@@ -144,7 +144,7 @@ Status and, when completed, `result`:
 ### `GET /v1/jobs/:id/files/:name`
 
 Downloads one file:
-- `template.pdf` (the website's **User PDF**): page 1 the finished painting (colors only, like `preview.png`), page 2 the painted template (colors, outlines and numbers, like `template.svg`), page 3+ the legend with numbers and colors only (no families, paint codes or hex values);
+- `template.pdf` (the website's **User PDF**): page 1 the finished painting (colors only, like `preview.png`), page 2 the painted template (colors, outlines and numbers, like `template.svg`), page 3 the blank template to paint on (grey outlines, every number as large as its region allows, a dot and a short line to the number for the regions too small to hold one), page 4+ the legend with numbers and colors only (no families, paint codes or hex values);
 - `painting.pdf`: the painting guide, page 1 the colored template with its numbers (white on the dark regions), page 2 the palette;
 - `template.svg`: colored template with numbers, written in white on the dark regions so they stay readable;
 - `blank.svg`: the website's **Blank SVG**: grey outlines and black numbers on white, no colors;

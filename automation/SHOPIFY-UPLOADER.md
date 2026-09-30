@@ -15,6 +15,7 @@ Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Dri
 ## The product
 
 - From `_product.json` (Titling Agent): title, description (paragraphs wrapped in `<p>`), tags, collections, product type, vendor. No Shopify category is set.
+- Collection-page filters: `custom.category` (plain text, read by the kit quiz and sections), `custom.theme_category` (the same categories as **Category** metaobject entries, looked up by the "Category entries" node; their names are translated in Translate & Adapt so the filter shows them in fr/ar) and `custom.difficulty_level`. A new category needs its Category entry (Content > Metaobjects > Category) or it is left out of `theme_category`.
 - Never added to a Mini Kits or Kids Kits collection (filled by hand later): those collections are dropped, and so are tags they match on (`mini-kit`, `kids-kits`...).
 - Handle: the product JSON's handle plus the folder number, e.g. `blue-iris-1003`. A rerun updates that same draft instead of creating a second one, and an existing product with the plain handle is never touched.
 - Images, in an enforced order: 1 the featured image, 2 the mockup, 3-5 the shared images (`sharedImages` order in Settings). The artwork itself is not uploaded: it is shown on the featured image. After creating the product, the workflow reorders its images and reads the order back every 3 seconds until it matches. If it still doesn't match after 30 seconds, the run stops and that folder gets no marker, so the next run tries it again.

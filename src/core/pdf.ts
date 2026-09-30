@@ -3,7 +3,7 @@
  * so the website and the API produce the same document.
  *
  * buildPdf (the customer's "User PDF"): page 1 the finished painting (colors only), page 2 the painted template
- * (colors, outlines and numbers), page 3+ the legend: numbers and colors only
+ * (colors, outlines and numbers), page 3 the blank template with callouts, page 4+ the legend: numbers and colors only
  * buildPaintingPdf: page 1 colored with numbers, page 2 palette
  *
  * jsPDF is passed in (window.jspdf.jsPDF in the browser, require("jspdf").jsPDF in Node).
@@ -12,6 +12,7 @@ import { RGB } from "../common";
 import { FacetResult } from "../facetmanagement";
 import { buildPaletteEntries, groupPaletteEntries, PaletteEntry, PaletteRow } from "./palette";
 import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
+import { computeLabelLayout, DIGIT_BASELINE_OFFSET } from "./callouts";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
 export const PAPER_SIZES: PaperSize[] = ["a2", "a3", "a4", "a5"];
@@ -123,6 +124,45 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         }
     };
 
+    /**
+     * The blank template to paint on: grey outlines and black numbers on white, every number as large as its region
+     * allows, and the regions too small for a readable number get a dot and a short line to it (see core/callouts.ts)
+     */
+    const drawCalloutTemplate = () => {
+        const layout = computeLabelLayout(facetResult);
+        const toPt = sizeMultiplier * scale; // image pixels → points
+        doc.setLineJoin("round");
+        doc.setLineWidth(lineWidth);
+        doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+        for (const f of drawableFacets) {
+            traceFacet(getFacetOutline(f!));
+            doc.stroke();
+        }
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        /** The digits centered on the point */
+        const drawNumber = (c: { x: number; y: number }, fontSize: number, value: number) => {
+            const size = fontSize * toPt;
+            const x = toPageX(c.x);
+            const y = toPageY(c.y + fontSize * DIGIT_BASELINE_OFFSET);
+            doc.setFontSize(size);
+            doc.text(String(value), x, y, { align: "center", baseline: "alphabetic" });
+        };
+        for (const label of layout.labels.values()) {
+            drawNumber(label.center, label.fontSize, facetResult.facets[label.facetId]!.color + 1);
+        }
+        doc.setFillColor(0, 0, 0);
+        for (const c of layout.callouts.values()) {
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(c.fontSize * 0.07 * toPt);
+            doc.setLineCap("round");
+            doc.line(toPageX(c.anchor.x), toPageY(c.anchor.y), toPageX(c.lineEnd.x), toPageY(c.lineEnd.y));
+            doc.circle(toPageX(c.anchor.x), toPageY(c.anchor.y), c.dotRadius * toPt, "F");
+            drawNumber(c.text, c.fontSize, facetResult.facets[c.facetId]!.color + 1);
+        }
+    };
+
     /** `simple`: numbers and colors only, in number order (no families, paint codes or hex values) */
     const addLegend = (simple = false) => {
         const entries = buildPaletteEntries(colorsByIndex, template.colorCodes);
@@ -133,14 +173,15 @@ function layoutTemplate(JsPDF: JsPdfConstructor, template: PdfTemplate, options:
         }
     };
 
-    return { doc, drawColoredTemplate, drawLabels, addLegend, outlineColor };
+    return { doc, drawColoredTemplate, drawLabels, drawCalloutTemplate, addLegend, outlineColor };
 }
 
 /**
  * The customer's "User PDF".
  * Page 1: the finished painting, colors only (the "PNG" image).
  * Page 2: the painted template, colors with outlines and numbers, white on the dark regions (the "SVG" image).
- * Page 3+: the legend, numbers and colors only, even with a paint palette (no families, codes or hex values).
+ * Page 3: the blank template to paint on, with callouts for the regions too small for a readable number.
+ * Page 4+: the legend, numbers and colors only, even with a paint palette (no families, codes or hex values).
  */
 export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options: PdfOptions = {}): any {
     const page = layoutTemplate(JsPDF, template, options);
@@ -148,6 +189,8 @@ export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options
     page.doc.addPage();
     page.drawColoredTemplate();
     page.drawLabels("contrast");
+    page.doc.addPage();
+    page.drawCalloutTemplate();
     page.addLegend(true);
     return page.doc;
 }

@@ -3134,7 +3134,525 @@ define("core/svg", ["require", "exports"], function (require, exports) {
         return buildSvgString(facetResult, fadeColors(colorsByIndex, strength), svgOptions);
     }
 });
-define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function (require, exports, palette_1, svg_1) {
+define("core/callouts", ["require", "exports", "core/svg"], function (require, exports, svg_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.DIGIT_BASELINE_OFFSET = void 0;
+    exports.computeLabelLayout = computeLabelLayout;
+    exports.buildCalloutSvgString = buildCalloutSvgString;
+    /**
+     * Share of the font size a digit takes in width, and the digits' height: Helvetica (the PDF font, digits 0.556 wide
+     * and 0.71 high) with a little slack. Tahoma is about the same; DejaVu Sans, wider, can come closer to the outlines.
+     */
+    const DIGIT_WIDTH = 0.57;
+    const DIGIT_HEIGHT = 0.72;
+    /** Baseline offset that centers the digits vertically on a point (half the digit height) */
+    exports.DIGIT_BASELINE_OFFSET = 0.36;
+    function labelCenter(f) {
+        return { x: f.labelBounds.minX + f.labelBounds.width / 2, y: f.labelBounds.minY + f.labelBounds.height / 2 };
+    }
+    function textRect(center, digits, fontSize, pad) {
+        const halfW = DIGIT_WIDTH * fontSize * digits / 2 + pad;
+        const halfH = DIGIT_HEIGHT * fontSize / 2 + pad;
+        return { minX: center.x - halfW, minY: center.y - halfH, maxX: center.x + halfW, maxY: center.y + halfH };
+    }
+    function rectsOverlap(a, b) {
+        return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
+    }
+    function segmentsCross(p, q) {
+        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        const d1 = cross(q.a, q.b, p.a);
+        const d2 = cross(q.a, q.b, p.b);
+        const d3 = cross(p.a, p.b, q.a);
+        const d4 = cross(p.a, p.b, q.b);
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    }
+    function segmentHitsRect(s, r) {
+        const inside = (p) => p.x > r.minX && p.x < r.maxX && p.y > r.minY && p.y < r.maxY;
+        if (inside(s.a) || inside(s.b)) {
+            return true;
+        }
+        const corners = [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }];
+        for (let i = 0; i < 4; i++) {
+            if (segmentsCross(s, { a: corners[i], b: corners[(i + 1) % 4] })) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /** Where the segment from the rect's center toward `from` leaves the rect */
+    function rectExitPoint(center, r, from) {
+        const dx = from.x - center.x;
+        const dy = from.y - center.y;
+        const halfW = (r.maxX - r.minX) / 2;
+        const halfH = (r.maxY - r.minY) / 2;
+        const t = Math.min(dx !== 0 ? halfW / Math.abs(dx) : Infinity, dy !== 0 ? halfH / Math.abs(dy) : Infinity, 1);
+        return { x: center.x + dx * t, y: center.y + dy * t };
+    }
+    /** Simple bucket grid so the collision checks only look at nearby rects and segments */
+    class Grid {
+        constructor(cellSize) {
+            this.cellSize = cellSize;
+            this.cells = new Map();
+        }
+        key(cx, cy) { return cy * 100003 + cx; }
+        add(r, item) {
+            for (let cy = Math.floor(r.minY / this.cellSize); cy <= Math.floor(r.maxY / this.cellSize); cy++) {
+                for (let cx = Math.floor(r.minX / this.cellSize); cx <= Math.floor(r.maxX / this.cellSize); cx++) {
+                    const k = this.key(cx, cy);
+                    const cell = this.cells.get(k);
+                    if (cell) {
+                        cell.push(item);
+                    }
+                    else {
+                        this.cells.set(k, [item]);
+                    }
+                }
+            }
+        }
+        /** Whether an item near r matches (items spanning several cells may be tested more than once) */
+        some(r, predicate) {
+            for (let cy = Math.floor(r.minY / this.cellSize); cy <= Math.floor(r.maxY / this.cellSize); cy++) {
+                for (let cx = Math.floor(r.minX / this.cellSize); cx <= Math.floor(r.maxX / this.cellSize); cx++) {
+                    const cell = this.cells.get(this.key(cx, cy));
+                    if (cell) {
+                        for (const item of cell) {
+                            if (predicate(item)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        query(r) {
+            const found = new Set();
+            for (let cy = Math.floor(r.minY / this.cellSize); cy <= Math.floor(r.maxY / this.cellSize); cy++) {
+                for (let cx = Math.floor(r.minX / this.cellSize); cx <= Math.floor(r.maxX / this.cellSize); cx++) {
+                    const cell = this.cells.get(this.key(cx, cy));
+                    if (cell) {
+                        for (const item of cell) {
+                            found.add(item);
+                        }
+                    }
+                }
+            }
+            return found;
+        }
+    }
+    function polygonArea(polygon) {
+        let area = 0;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            area += (polygon[j].x + polygon[i].x) * (polygon[j].y - polygon[i].y);
+        }
+        return Math.abs(area / 2);
+    }
+    /** Even-odd ray casting */
+    function pointInPolygon(p, polygon) {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            const a = polygon[i];
+            const b = polygon[j];
+            if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+    function pointSegmentDistance(p, s) {
+        const dx = s.b.x - s.a.x;
+        const dy = s.b.y - s.a.y;
+        const lengthSq = dx * dx + dy * dy;
+        const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / lengthSq));
+        return Math.hypot(p.x - (s.a.x + t * dx), p.y - (s.a.y + t * dy));
+    }
+    function segmentBounds(s) {
+        return { minX: Math.min(s.a.x, s.b.x), minY: Math.min(s.a.y, s.b.y), maxX: Math.max(s.a.x, s.b.x), maxY: Math.max(s.a.y, s.b.y) };
+    }
+    /**
+     * Largest number that fits in each region, measured against the outlines as they are drawn, then a callout for
+     * every region whose number would stay below the readable size. Numbers never touch or cross an outline.
+     *
+     * A callout number goes to the nearest spot around its region where it fits (measured from the region itself, the
+     * dot being put on the region's point nearest to the number), at the callout size or a little smaller, never
+     * further than a short reach. A neighbouring region's own number may move or shrink a little to make room for it.
+     */
+    function computeLabelLayout(facetResult, options = {}) {
+        const labels = new Map();
+        const callouts = new Map();
+        const longSide = Math.max(facetResult.width, facetResult.height);
+        const minFont = longSide * (options.minFontRatio !== undefined ? options.minFontRatio : 0.004);
+        const calloutFont = Math.max(minFont, longSide * (options.calloutFontRatio !== undefined ? options.calloutFontRatio : 0.0078));
+        const maxFont = Math.max(calloutFont, longSide * (options.maxFontRatio !== undefined ? options.maxFontRatio : 0.015));
+        const margin = options.borderMargin !== undefined ? options.borderMargin : 0.35;
+        const maxReach = calloutFont * (options.maxLeaderLength !== undefined ? options.maxLeaderLength : 2.5);
+        const { facetMap, width, height } = facetResult;
+        const facets = facetResult.facets.filter((f) => f != null && f.borderSegments.length > 0 && f.labelBounds != null);
+        // every outline as drawn (straight lines between the outline points), to measure the free room around a number
+        const outlines = new Grid(8);
+        const outlineOf = new Map();
+        const outlineArea = new Map();
+        for (const f of facets) {
+            const outline = (0, svg_1.getFacetOutline)(f);
+            outlineOf.set(f.id, outline);
+            outlineArea.set(f.id, polygonArea(outline));
+            for (let i = 1; i < outline.length; i++) {
+                const s = { a: outline[i - 1], b: outline[i] };
+                outlines.add(segmentBounds(s), s);
+            }
+        }
+        const crossesOutline = (r) => outlines.some(r, (s) => segmentHitsRect(s, r));
+        const insideImage = (r) => r.minX >= 0 && r.minY >= 0 && r.maxX <= width - 1 && r.maxY <= height - 1;
+        const regionAt = (c) => facetMap.get(Math.max(0, Math.min(width - 1, Math.round(c.x))), Math.max(0, Math.min(height - 1, Math.round(c.y))));
+        /**
+         * Whether p lies inside region f as it is drawn: inside its outline and not inside a smaller neighbouring
+         * region enclosed by it (an outline is the region's outer border, a region can enclose others). The pixel map
+         * alone isn't enough: near a border the drawn (smoothed) outline and the pixels can disagree by a pixel, which
+         * put dots just outside their region.
+         */
+        const insideRegion = (f, p) => {
+            if (!pointInPolygon(p, outlineOf.get(f.id))) {
+                return false;
+            }
+            const area = outlineArea.get(f.id);
+            for (const n of f.neighbourFacets || []) {
+                const g = facetResult.facets[n];
+                const outline = outlineOf.get(n);
+                if (g && outline && outlineArea.get(n) < area && p.x >= g.bbox.minX - 1 && p.x <= g.bbox.maxX + 1 && p.y >= g.bbox.minY - 1 && p.y <= g.bbox.maxY + 1 &&
+                    pointInPolygon(p, outline)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        /** The region p lies in, as drawn (-1 if none is found) */
+        const regionContaining = (p) => {
+            const f = facetResult.facets[regionAt(p)];
+            if (!f || !outlineOf.has(f.id)) {
+                return -1;
+            }
+            if (insideRegion(f, p)) {
+                return f.id;
+            }
+            for (const n of f.neighbourFacets || []) {
+                const g = facetResult.facets[n];
+                if (g && outlineOf.has(n) && insideRegion(g, p)) {
+                    return n;
+                }
+            }
+            return -1;
+        };
+        /**
+         * Largest number that fits in region f (its box, grown by the margin, inside the region without touching any
+         * outline nor anything `blocked` reports): best of the pole of inaccessibility and a coarse grid of points over
+         * the region, then a hill climb while a slightly larger number fits nearby.
+         */
+        const fitRegion = (f, blocked = null) => {
+            const digits = String(f.color + 1).length;
+            const fits = (c, fs) => {
+                const r = textRect(c, digits, fs, margin);
+                return insideImage(r) && !crossesOutline(r) && insideRegion(f, c) && !(blocked && blocked(r));
+            };
+            const largestAt = (c, lower) => {
+                if (lower === 0 && !fits(c, 0.05)) {
+                    return 0;
+                }
+                let lo = lower;
+                let hi = maxFont;
+                if (fits(c, hi)) {
+                    return hi;
+                }
+                while (hi - lo > 0.05) {
+                    const mid = (lo + hi) / 2;
+                    if (fits(c, mid)) {
+                        lo = mid;
+                    }
+                    else {
+                        hi = mid;
+                    }
+                }
+                return lo;
+            };
+            let center = labelCenter(f);
+            let size = largestAt(center, 0);
+            const b = f.bbox;
+            const step = Math.max(1, Math.min(b.maxX - b.minX, b.maxY - b.minY) / 6);
+            for (let y = b.minY + step / 2; y <= b.maxY; y += step) {
+                for (let x = b.minX + step / 2; x <= b.maxX; x += step) {
+                    const c = { x, y };
+                    if (fits(c, size + 0.05)) {
+                        center = c;
+                        size = largestAt(c, size + 0.05);
+                    }
+                }
+            }
+            let move = Math.max(1, size * 0.5);
+            while (move >= 0.2 && size < maxFont) {
+                let moved = false;
+                for (let d = 0; d < 8 && !moved; d++) {
+                    const angle = d * Math.PI / 4;
+                    const c = { x: center.x + Math.round(Math.cos(angle)) * move, y: center.y + Math.round(Math.sin(angle)) * move };
+                    if (fits(c, size + 0.05)) {
+                        center = c;
+                        size = largestAt(c, size + 0.05);
+                        moved = true;
+                    }
+                }
+                if (!moved) {
+                    move /= 2;
+                }
+            }
+            return { center, size };
+        };
+        /** Distance from p to the nearest outline, up to `limit` */
+        const clearance = (p, limit) => {
+            let best = limit;
+            outlines.some({ minX: p.x - limit, minY: p.y - limit, maxX: p.x + limit, maxY: p.y + limit }, (s) => {
+                best = Math.min(best, pointSegmentDistance(p, s));
+                return false;
+            });
+            return best;
+        };
+        const dotRadius = minFont * 0.22;
+        /**
+         * Where the dot can go in region f: points whose dot, plus the margin, stays clear of every outline. In a region
+         * too thin for that, the points with the most room, and a dot shrunk to fit them.
+         */
+        const dotSpots = (f) => {
+            const b = f.bbox;
+            const step = Math.max(0.25, Math.min(1, Math.max(b.maxX - b.minX, b.maxY - b.minY) / 40));
+            const scored = [];
+            for (let y = b.minY - 0.5; y <= b.maxY + 0.5; y += step) {
+                for (let x = b.minX - 0.5; x <= b.maxX + 0.5; x += step) {
+                    const p = { x, y };
+                    if (!insideRegion(f, p)) {
+                        continue;
+                    }
+                    scored.push({ p, room: clearance(p, dotRadius + margin) });
+                }
+            }
+            if (scored.length === 0) {
+                // a sliver thinner than the sampling step: sample it finely
+                for (let y = b.minY - 0.5; y <= b.maxY + 0.5; y += 0.1) {
+                    for (let x = b.minX - 0.5; x <= b.maxX + 0.5; x += 0.1) {
+                        const p = { x, y };
+                        if (insideRegion(f, p)) {
+                            scored.push({ p, room: clearance(p, dotRadius + margin) });
+                        }
+                    }
+                }
+            }
+            if (scored.length === 0) {
+                return { points: [labelCenter(f)], radius: 0 };
+            }
+            const roomy = scored.filter((s) => s.room >= dotRadius + margin);
+            // a few hundred spots are plenty to find the one nearest to the number
+            const thin = (list) => list.length <= 200 ? list : list.filter((_, i) => i % Math.ceil(list.length / 200) === 0);
+            if (roomy.length > 0) {
+                return { points: thin(roomy.map((s) => s.p)), radius: dotRadius };
+            }
+            const most = Math.max(...scored.map((s) => s.room));
+            return { points: thin(scored.filter((s) => s.room >= most * 0.95).map((s) => s.p)), radius: Math.max(most - margin, most * 0.5) };
+        };
+        const small = [];
+        const smallIds = new Set();
+        for (const f of facets) {
+            const fit = fitRegion(f);
+            labels.set(f.id, { facetId: f.id, center: fit.center, fontSize: fit.size });
+            if (fit.size < minFont) {
+                small.push(f);
+                smallIds.add(f.id);
+            }
+        }
+        if (small.length === 0) {
+            return { labels, callouts };
+        }
+        const texts = new Grid(calloutFont * 4);
+        const leaders = new Grid(calloutFont * 4);
+        const inlineText = new Map();
+        const addInline = (f) => {
+            const label = labels.get(f.id);
+            const placed = { rect: textRect(label.center, String(f.color + 1).length, label.fontSize, 0), owner: f.id, alive: true };
+            texts.add(placed.rect, placed);
+            inlineText.set(f.id, placed);
+        };
+        for (const f of facets) {
+            if (!smallIds.has(f.id)) {
+                addInline(f);
+            }
+        }
+        const aliveTexts = (r) => [...texts.query(r)].filter((o) => o.alive && rectsOverlap(o.rect, r));
+        // the smallest regions first: they have the fewest options
+        small.sort((a, b) => labels.get(a.id).fontSize - labels.get(b.id).fontSize);
+        const gridStep = calloutFont * 0.3;
+        /** Places the callout of region f at the nearest spot where one of `fonts` fits (the largest first) */
+        const placeRegion = (f, fonts) => {
+            const digits = String(f.color + 1).length;
+            const { points, radius: dotSize } = dotSpots(f);
+            const nearest = (c) => {
+                let best = points[0];
+                let bestDist = Infinity;
+                for (const p of points) {
+                    const d = (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        best = p;
+                    }
+                }
+                return { point: best, dist: Math.sqrt(bestDist) };
+            };
+            // candidate spots for the number around the region, nearest first
+            const b = f.bbox;
+            const candidates = [];
+            for (let y = b.minY - maxReach; y <= b.maxY + maxReach; y += gridStep) {
+                for (let x = b.minX - maxReach; x <= b.maxX + maxReach; x += gridStep) {
+                    const center = { x, y };
+                    const n = nearest(center);
+                    if (n.dist <= maxReach) {
+                        candidates.push({ center, dot: n.point, dist: n.dist });
+                    }
+                }
+            }
+            candidates.sort((p, q) => p.dist - q.dist);
+            let best = null;
+            // moving neighbouring numbers is costly: a limited number of tries per region
+            let refits = 30;
+            for (const cand of candidates) {
+                // the score only grows with the distance: nothing further can beat the best spot found
+                if (best != null && cand.dist >= best.score) {
+                    break;
+                }
+                for (const font of fonts) {
+                    const score = cand.dist + (calloutFont - font) * 1.5;
+                    if (best != null && score >= best.score) {
+                        break;
+                    }
+                    const center = cand.center;
+                    const rect = textRect(center, digits, font, font * 0.12 + margin);
+                    if (!insideImage(rect) || crossesOutline(rect)) {
+                        continue;
+                    }
+                    const host = regionContaining(center);
+                    if (host < 0) {
+                        continue;
+                    }
+                    if (smallIds.has(host)) {
+                        continue;
+                    }
+                    if (leaders.some(rect, (s) => segmentHitsRect(s, rect))) {
+                        continue;
+                    }
+                    const conflicts = aliveTexts(rect);
+                    if (conflicts.some((o) => o.owner < 0)) {
+                        continue;
+                    }
+                    const lineEnd = rectExitPoint(center, textRect(center, digits, font, font * 0.1), cand.dot);
+                    // a short line stays visible between the dot and the number
+                    if (Math.hypot(lineEnd.x - cand.dot.x, lineEnd.y - cand.dot.y) < dotSize + font * 0.45) {
+                        continue;
+                    }
+                    const leader = { a: cand.dot, b: lineEnd };
+                    const bounds = segmentBounds(leader);
+                    if (leaders.some(bounds, (s) => segmentsCross(s, leader))) {
+                        continue;
+                    }
+                    // the leader never runs through a callout number, and through a region's number only if it moves away
+                    const crossed = [...texts.query(bounds)].filter((o) => o.alive && segmentHitsRect(leader, o.rect));
+                    if (crossed.some((o) => o.owner < 0)) {
+                        continue;
+                    }
+                    // the numbers in the way move (or shrink a little) within their own region to make room
+                    const movers = new Set([...conflicts, ...crossed].map((o) => o.owner));
+                    if (movers.size > 0 && refits <= 0) {
+                        continue;
+                    }
+                    refits -= movers.size;
+                    const blocked = (r) => rectsOverlap(r, rect) || segmentHitsRect(leader, r) ||
+                        leaders.some(r, (s) => segmentHitsRect(s, r)) ||
+                        texts.some(r, (o) => o.alive && o.owner < 0 && rectsOverlap(o.rect, r));
+                    const moves = [];
+                    let penalty = 0;
+                    let possible = true;
+                    for (const owner of movers) {
+                        const g = facetResult.facets[owner];
+                        const old = labels.get(owner).fontSize;
+                        const fit = fitRegion(g, blocked);
+                        if (fit.size < Math.max(minFont, old * 0.6)) {
+                            possible = false;
+                            break;
+                        }
+                        penalty += (old - fit.size) / old * calloutFont * 2 + calloutFont * 0.3;
+                        moves.push({ facet: g, center: fit.center, size: fit.size });
+                    }
+                    if (!possible || (best != null && score + penalty >= best.score)) {
+                        continue;
+                    }
+                    best = {
+                        score: score + penalty, rect, leader, moves,
+                        callout: { facetId: f.id, anchor: cand.dot, dotRadius: dotSize, text: center, lineEnd, fontSize: font, hostFacetId: host },
+                    };
+                    break;
+                }
+            }
+            if (best != null) {
+                for (const move of best.moves) {
+                    inlineText.get(move.facet.id).alive = false;
+                    labels.set(move.facet.id, { facetId: move.facet.id, center: move.center, fontSize: move.size });
+                    addInline(move.facet);
+                }
+                callouts.set(f.id, best.callout);
+                labels.delete(f.id);
+                const placed = { rect: best.rect, owner: -1, alive: true };
+                texts.add(best.rect, placed);
+                leaders.add(segmentBounds(best.leader), best.leader);
+            }
+        };
+        for (const f of small) {
+            placeRegion(f, [0, 0.25, 0.5, 0.75, 1].map((t) => calloutFont - (calloutFont - minFont) * t));
+        }
+        // a region without a spot within reach keeps the largest number that fits in it
+        return { labels, callouts };
+    }
+    /**
+     * The blank template with callouts: grey outlines and black numbers on white (like buildBlankSvgString), every
+     * number as large as its region allows, and the regions too small for a readable number get a dot and a leader
+     * line to their number instead. Options are the SVG options (fill, colors, fonts...) plus the callout sizes;
+     * the label font size setting doesn't apply here (the numbers are sized to their regions).
+     */
+    function buildCalloutSvgString(facetResult, colorsByIndex, options = {}) {
+        const svgOptions = Object.assign({ strokeColor: "#6a6f77", fontColor: "#000000", background: "#ffffff", fill: false, stroke: true }, options);
+        const m = svgOptions.sizeMultiplier !== undefined ? svgOptions.sizeMultiplier : 3;
+        const fontColor = svgOptions.fontColor || "#000";
+        const fontFamily = (svgOptions.fontFamily || "Tahoma").replace(/"/g, "'");
+        const colorOn = (facetId) => {
+            const f = facetResult.facets[facetId];
+            return svgOptions.fill && svgOptions.labelContrast && f ? (0, svg_1.labelColorFor)(colorsByIndex[f.color], fontColor) : fontColor;
+        };
+        // the digits are centered on the point with an explicit baseline: renderers disagree on dominant-baseline
+        const text = (c, fontSize, fill, value) => `<text x="${c.x * m}" y="${(c.y + fontSize * exports.DIGIT_BASELINE_OFFSET) * m}" font-family="${fontFamily}" font-size="${fontSize * m}" text-anchor="middle" fill="${fill}">${value}</text>`;
+        // the regions and outlines exactly as the other SVGs draw them, the numbers are added below
+        const base = (0, svg_1.buildSvgString)(facetResult, colorsByIndex, Object.assign(Object.assign({}, svgOptions), { labels: false }));
+        const layout = computeLabelLayout(facetResult, options);
+        const parts = [base.substring(0, base.lastIndexOf("</svg>"))];
+        for (const label of layout.labels.values()) {
+            const f = facetResult.facets[label.facetId];
+            parts.push(`<g class="label">${text(label.center, label.fontSize, colorOn(f.id), f.color + 1)}</g>`);
+        }
+        for (const c of layout.callouts.values()) {
+            const f = facetResult.facets[c.facetId];
+            const textColor = colorOn(c.hostFacetId);
+            parts.push(`<g class="callout">` +
+                `<line x1="${c.anchor.x * m}" y1="${c.anchor.y * m}" x2="${c.lineEnd.x * m}" y2="${c.lineEnd.y * m}" stroke="${textColor}" stroke-width="${c.fontSize * 0.07 * m}" stroke-linecap="round"></line>` +
+                `<circle cx="${c.anchor.x * m}" cy="${c.anchor.y * m}" r="${c.dotRadius * m}" fill="${colorOn(c.facetId)}"></circle>` +
+                text(c.text, c.fontSize, textColor, f.color + 1) +
+                `</g>`);
+        }
+        parts.push("</svg>");
+        return parts.join("");
+    }
+});
+define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/callouts"], function (require, exports, palette_1, svg_2, callouts_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PAPER_SIZES = void 0;
@@ -3192,13 +3710,13 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
                 const bounds = f.labelBounds;
                 // the label is centered in its box and scaled like the SVG viewBox "-50 -50 100 100" (meet)
                 const boxScale = Math.min(bounds.width, bounds.height) * sizeMultiplier / 100;
-                const labelSize = (0, svg_1.getLabelFontSize)(f, fontSize) * boxScale * scale;
+                const labelSize = (0, svg_2.getLabelFontSize)(f, fontSize) * boxScale * scale;
                 if (labelSize < 0.5) {
                     continue;
                 }
                 if (color === "contrast") {
                     // white on a dark region, dark on a light one
-                    doc.setTextColor((0, svg_1.labelColorFor)(colorsByIndex[f.color], "#111111"));
+                    doc.setTextColor((0, svg_2.labelColorFor)(colorsByIndex[f.color], "#111111"));
                 }
                 doc.setFontSize(labelSize);
                 doc.text(String(f.color + 1), toPageX(bounds.minX + bounds.width / 2), toPageY(bounds.minY + bounds.height / 2), { align: "center", baseline: "middle" });
@@ -3220,8 +3738,45 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
                 if (!border) {
                     doc.setDrawColor(color[0], color[1], color[2]);
                 }
-                traceFacet((0, svg_1.getFacetOutline)(f));
+                traceFacet((0, svg_2.getFacetOutline)(f));
                 doc.fillStroke();
+            }
+        };
+        /**
+         * The blank template to paint on: grey outlines and black numbers on white, every number as large as its region
+         * allows, and the regions too small for a readable number get a dot and a short line to it (see core/callouts.ts)
+         */
+        const drawCalloutTemplate = () => {
+            const layout = (0, callouts_1.computeLabelLayout)(facetResult);
+            const toPt = sizeMultiplier * scale; // image pixels → points
+            doc.setLineJoin("round");
+            doc.setLineWidth(lineWidth);
+            doc.setDrawColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+            for (const f of drawableFacets) {
+                traceFacet((0, svg_2.getFacetOutline)(f));
+                doc.stroke();
+            }
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            /** The digits centered on the point */
+            const drawNumber = (c, fontSize, value) => {
+                const size = fontSize * toPt;
+                const x = toPageX(c.x);
+                const y = toPageY(c.y + fontSize * callouts_1.DIGIT_BASELINE_OFFSET);
+                doc.setFontSize(size);
+                doc.text(String(value), x, y, { align: "center", baseline: "alphabetic" });
+            };
+            for (const label of layout.labels.values()) {
+                drawNumber(label.center, label.fontSize, facetResult.facets[label.facetId].color + 1);
+            }
+            doc.setFillColor(0, 0, 0);
+            for (const c of layout.callouts.values()) {
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(c.fontSize * 0.07 * toPt);
+                doc.setLineCap("round");
+                doc.line(toPageX(c.anchor.x), toPageY(c.anchor.y), toPageX(c.lineEnd.x), toPageY(c.lineEnd.y));
+                doc.circle(toPageX(c.anchor.x), toPageY(c.anchor.y), c.dotRadius * toPt, "F");
+                drawNumber(c.text, c.fontSize, facetResult.facets[c.facetId].color + 1);
             }
         };
         /** `simple`: numbers and colors only, in number order (no families, paint codes or hex values) */
@@ -3234,13 +3789,14 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
                 addLegendPages(doc, (0, palette_1.groupPaletteEntries)(entries), options.legendTitle || "Legend & Palette");
             }
         };
-        return { doc, drawColoredTemplate, drawLabels, addLegend, outlineColor };
+        return { doc, drawColoredTemplate, drawLabels, drawCalloutTemplate, addLegend, outlineColor };
     }
     /**
      * The customer's "User PDF".
      * Page 1: the finished painting, colors only (the "PNG" image).
      * Page 2: the painted template, colors with outlines and numbers, white on the dark regions (the "SVG" image).
-     * Page 3+: the legend, numbers and colors only, even with a paint palette (no families, codes or hex values).
+     * Page 3: the blank template to paint on, with callouts for the regions too small for a readable number.
+     * Page 4+: the legend, numbers and colors only, even with a paint palette (no families, codes or hex values).
      */
     function buildPdf(JsPDF, template, options = {}) {
         const page = layoutTemplate(JsPDF, template, options);
@@ -3248,6 +3804,8 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg"], function 
         page.doc.addPage();
         page.drawColoredTemplate();
         page.drawLabels("contrast");
+        page.doc.addPage();
+        page.drawCalloutTemplate();
         page.addLegend(true);
         return page.doc;
     }
@@ -4059,7 +4617,7 @@ define("core/pipeline", ["require", "exports", "colorreductionmanagement", "face
  * Module that manages the GUI when processing: runs the shared pipeline (src/core/pipeline.ts)
  * and shows its progress and intermediate results
  */
-define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", "gui"], function (require, exports, pipeline_1, svg_2, gui_1) {
+define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", "gui"], function (require, exports, pipeline_1, svg_3, gui_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.GUIProcessManager = exports.ProcessResult = void 0;
@@ -4253,7 +4811,7 @@ define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", 
          */
         static createSVG(facetResult_1, colorsByIndex_1, sizeMultiplier_1, fill_2, stroke_1, addColorLabels_1) {
             return __awaiter(this, arguments, void 0, function* (facetResult, colorsByIndex, sizeMultiplier, fill, stroke, addColorLabels, fontSize = 50, fontColor = "black", onUpdate = null) {
-                const svgString = (0, svg_2.buildSvgString)(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor, labelContrast: true });
+                const svgString = (0, svg_3.buildSvgString)(facetResult, colorsByIndex, { sizeMultiplier, fill, stroke, labels: addColorLabels, fontSize, fontColor, labelContrast: true });
                 const parsed = new DOMParser().parseFromString(svgString, "image/svg+xml");
                 const svg = document.importNode(parsed.documentElement, true);
                 if (onUpdate != null) {
@@ -4268,7 +4826,7 @@ define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", 
 /**
  * Module that provides function the GUI uses and updates the DOM accordingly
  */
-define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/mockup", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, mockup_1, settings_3, svg_3, guiprocessmanager_1, palettefamilies_2) {
+define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/mockup", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, mockup_1, settings_3, svg_4, guiprocessmanager_1, palettefamilies_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.time = time;
@@ -4459,7 +5017,7 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         if (processResult == null) {
             return;
         }
-        const svgString = (0, svg_3.buildSvgString)(processResult.facetResult, processResult.colorsByIndex, { fill: true, stroke: false, labels: false });
+        const svgString = (0, svg_4.buildSvgString)(processResult.facetResult, processResult.colorsByIndex, { fill: true, stroke: false, labels: false });
         const svg = document.importNode(new DOMParser().parseFromString(svgString, "image/svg+xml").documentElement, true);
         const defaultName = (typeof window.getOutputFilename === "function")
             ? window.getOutputFilename("png")
@@ -4471,8 +5029,8 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         if (processResult == null) {
             return;
         }
-        const svgString = (0, svg_3.buildFadedSvgString)(processResult.facetResult, processResult.colorsByIndex, {
-            colorStrength: svg_3.FADED_CANVAS_STYLE.svgColorStrength,
+        const svgString = (0, svg_4.buildFadedSvgString)(processResult.facetResult, processResult.colorsByIndex, {
+            colorStrength: svg_4.FADED_CANVAS_STYLE.svgColorStrength,
             strokeWidth: 1.2,
             fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
         });
@@ -4486,7 +5044,7 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
         if (processResult == null) {
             return;
         }
-        const svgString = (0, svg_3.buildBlankSvgString)(processResult.facetResult, processResult.colorsByIndex, {
+        const svgString = (0, svg_4.buildBlankSvgString)(processResult.facetResult, processResult.colorsByIndex, {
             fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
         });
         const defaultName = (typeof window.getOutputFilename === "function")
@@ -4548,7 +5106,7 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
             }
             const facets = processResult.facetResult;
             const template = (0, mockup_1.pickMockupTemplate)(facets.width / facets.height);
-            const svgString = (0, svg_3.buildFadedSvgString)(facets, processResult.colorsByIndex, { sizeMultiplier: 2, strokeWidth: 1, background: "#ffffff" });
+            const svgString = (0, svg_4.buildFadedSvgString)(facets, processResult.colorsByIndex, { sizeMultiplier: 2, strokeWidth: 1, background: "#ffffff" });
             // a data URL, not a blob: URL, which would block the export when the page is opened as a file
             const svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
             const kit = yield loadMockupKit(template);

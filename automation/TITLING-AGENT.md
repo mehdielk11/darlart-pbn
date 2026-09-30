@@ -16,7 +16,7 @@ Result: `Artwork Agent/1xxx` = Artwork Ref + Artwork Gen + palette JSON + produc
 Shopify's own field names, so a later workflow can create the product as is:
 - `title`, `handle`, `descriptionHtml` (two paragraphs);
 - `productType` "Paint by Numbers Kit", `vendor` "Darl'Art";
-- `themes` and `collections`: 1 to 3 collections that genuinely fit the painting, best fit first, chosen from the store's live main collections (Animals, Flowers, Morocco...). A theme with only Mini Kits / Kids Kits collections (e.g. Nature, Cities) is not offered: create its main collection to make it available;
+- `themes` and `collections`: exactly 1 collection per painting (the one a shopper would look in first, by main subject), chosen from the store's live main collections (Animals, Flowers, Morocco...). A theme with only Mini Kits / Kids Kits collections (e.g. Nature, Cities) is not offered: create its main collection to make it available;
 - `tags`: `paint-by-numbers`, the theme tags (the Kids Kits smart collections match on them, e.g. `animals`) and the agent's keywords;
 - `needsReview`: set when no store theme matched;
 - `source`: the folder and its artwork, reference and palette files.
@@ -41,3 +41,12 @@ Each try on a folder leaves a small marker `_titling-try-<execution>` in it, del
 - **To try it again:** delete the files named `_titling-...` in the folder.
 - A run that failed because of the **OpenAI account or a service** (no credit, wrong key, missing permission, rate limit) does not count: the Error Handler deletes its try markers.
 - The AI call is tried twice before the run fails (a one-off glitch does not count as a try).
+
+## Kids Kits
+
+The AI also says whether the painting is made for children (a simple cartoon style with bold shapes and a cute subject). A kids painting:
+
+- goes in the **"<theme> - Kids Kits"** collection of the theme it picks (e.g. Kids - Nature) instead of the main one; a theme without a Kids Kits collection keeps its main one;
+- gets the tag **`kids-kits`**, so the automated Kids Kits collections (e.g. Animals - Kids Kits: tags `kids-kits` + `animals`) pick it up by themselves.
+
+Mini Kits collections are never used: a mini kit is a different product.

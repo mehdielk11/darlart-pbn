@@ -97,7 +97,7 @@
             {
               "id": "set6",
               "name": "compareAtMultiplier",
-              "value": 2,
+              "value": 0,
               "type": "number"
             },
             {
@@ -1159,11 +1159,38 @@
         300
       ],
       "parameters": {
-        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits and Kids Kits collections are filled by hand later: never a collection with \"mini kit\" or \"kids kit\" in\n// its title, and never a tag those collections match on (mini-kit, kids-kits...)\nconst kitCollection = (title) => /\b(mini|kids?)[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(\"x\", \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
+        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits collections are filled by hand later: never a collection with \"mini kit\" in its title, and never the tag\n// they match on (mini-kit). Kids Kits are chosen by the Titling Agent (its \"kids\" answer): their collections and the\n// kids-kits tag are kept.\nconst kitCollection = (title) => /\bmini[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// the collection-page filters (Search & Discovery): Category (the product's themes) and Difficulty level\nconst metafields = [];\nconst category = (product.category || []).map((c) => String(c).trim()).filter(Boolean).slice(0, 5);\nif (category.length) metafields.push({ namespace: \"custom\", key: \"category\", type: \"list.single_line_text_field\", value: JSON.stringify(category) });\n// the same categories as Category entries (translatable filter values), matched by name or handle\nconst entries = ((($('Category entries').first().json.data || {}).metaobjects || {}).nodes || []);\nconst entryIds = category.map((name) => {\n    const entry = entries.find((e) => String((e.field || {}).value || \"\").toLowerCase() === name.toLowerCase() || e.handle === slug(name));\n    return entry ? entry.id : null;\n}).filter(Boolean);\nif (entryIds.length) metafields.push({ namespace: \"custom\", key: \"theme_category\", type: \"list.metaobject_reference\", value: JSON.stringify(entryIds) });\nif (product.difficulty) metafields.push({ namespace: \"custom\", key: \"difficulty_level\", type: \"single_line_text_field\", value: String(product.difficulty) });\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(\"x\", \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n    ...(metafields.length ? { metafields } : {}),\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
       }
     },
     {
       "id": "cc000047-0000-4000-8000-000000000000",
+      "name": "Category entries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4950,
+        140
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: '{ metaobjects(type: \"category\", first: 250) { nodes { id handle field(key: \"name\") { value } } } }' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cc000048-0000-4000-8000-000000000000",
       "name": "Create draft product",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1188,7 +1215,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000048-0000-4000-8000-000000000000",
+      "id": "cc000049-0000-4000-8000-000000000000",
       "name": "Image order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1201,7 +1228,7 @@
       }
     },
     {
-      "id": "cc000049-0000-4000-8000-000000000000",
+      "id": "cc000050-0000-4000-8000-000000000000",
       "name": "Reorder images",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1226,7 +1253,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000050-0000-4000-8000-000000000000",
+      "id": "cc000051-0000-4000-8000-000000000000",
       "name": "Reorder sent",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1239,7 +1266,7 @@
       }
     },
     {
-      "id": "cc000051-0000-4000-8000-000000000000",
+      "id": "cc000052-0000-4000-8000-000000000000",
       "name": "Wait for reorder",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -1254,7 +1281,7 @@
       }
     },
     {
-      "id": "cc000052-0000-4000-8000-000000000000",
+      "id": "cc000053-0000-4000-8000-000000000000",
       "name": "Read image order",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1279,7 +1306,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000053-0000-4000-8000-000000000000",
+      "id": "cc000054-0000-4000-8000-000000000000",
       "name": "Order confirmed?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1292,7 +1319,7 @@
       }
     },
     {
-      "id": "cc000054-0000-4000-8000-000000000000",
+      "id": "cc000055-0000-4000-8000-000000000000",
       "name": "Images in order?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1325,7 +1352,7 @@
       }
     },
     {
-      "id": "cc000055-0000-4000-8000-000000000000",
+      "id": "cc000056-0000-4000-8000-000000000000",
       "name": "Check again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1358,7 +1385,7 @@
       }
     },
     {
-      "id": "cc000056-0000-4000-8000-000000000000",
+      "id": "cc000057-0000-4000-8000-000000000000",
       "name": "Images out of order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1371,7 +1398,7 @@
       }
     },
     {
-      "id": "cc000057-0000-4000-8000-000000000000",
+      "id": "cc000058-0000-4000-8000-000000000000",
       "name": "Shopify marker",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1384,7 +1411,7 @@
       }
     },
     {
-      "id": "cc000058-0000-4000-8000-000000000000",
+      "id": "cc000059-0000-4000-8000-000000000000",
       "name": "Publish to Online Store",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1410,7 +1437,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000059-0000-4000-8000-000000000000",
+      "id": "cc000060-0000-4000-8000-000000000000",
       "name": "Save marker",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
@@ -1435,7 +1462,7 @@
       }
     },
     {
-      "id": "cc000060-0000-4000-8000-000000000000",
+      "id": "cc000061-0000-4000-8000-000000000000",
       "name": "Uploaded",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1448,7 +1475,7 @@
       }
     },
     {
-      "id": "cc000061-0000-4000-8000-000000000000",
+      "id": "cc000062-0000-4000-8000-000000000000",
       "name": "Delete the try",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1468,7 +1495,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000062-0000-4000-8000-000000000000",
+      "id": "cc000063-0000-4000-8000-000000000000",
       "name": "Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1481,7 +1508,7 @@
       }
     },
     {
-      "id": "cc000063-0000-4000-8000-000000000000",
+      "id": "cc000064-0000-4000-8000-000000000000",
       "name": "Upload report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1494,7 +1521,7 @@
       }
     },
     {
-      "id": "cc000064-0000-4000-8000-000000000000",
+      "id": "cc000065-0000-4000-8000-000000000000",
       "name": "Telegram: upload report",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1514,7 +1541,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000065-0000-4000-8000-000000000000",
+      "id": "cc000066-0000-4000-8000-000000000000",
       "name": "Batch messages on?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1548,7 +1575,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000066-0000-4000-8000-000000000000",
+      "id": "cc000067-0000-4000-8000-000000000000",
       "name": "Batch messages mode",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1562,7 +1589,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000067-0000-4000-8000-000000000000",
+      "id": "cc000068-0000-4000-8000-000000000000",
       "name": "Check batches",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1587,7 +1614,7 @@
       "alwaysOutputData": true
     },
     {
-      "id": "cc000068-0000-4000-8000-000000000000",
+      "id": "cc000069-0000-4000-8000-000000000000",
       "name": "Locks to delete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1601,7 +1628,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000069-0000-4000-8000-000000000000",
+      "id": "cc000070-0000-4000-8000-000000000000",
       "name": "Release lock",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1621,7 +1648,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000070-0000-4000-8000-000000000000",
+      "id": "cc000071-0000-4000-8000-000000000000",
       "name": "Start again?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -1655,7 +1682,7 @@
       "executeOnce": true
     },
     {
-      "id": "cc000071-0000-4000-8000-000000000000",
+      "id": "cc000072-0000-4000-8000-000000000000",
       "name": "Start next run",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
@@ -1679,7 +1706,7 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cc000072-0000-4000-8000-000000000000",
+      "id": "cc000073-0000-4000-8000-000000000000",
       "name": "List painted batches",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1729,7 +1756,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000073-0000-4000-8000-000000000000",
+      "id": "cc000074-0000-4000-8000-000000000000",
       "name": "Painted batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1742,7 +1769,7 @@
       }
     },
     {
-      "id": "cc000074-0000-4000-8000-000000000000",
+      "id": "cc000075-0000-4000-8000-000000000000",
       "name": "Download batch manifests",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1768,7 +1795,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000075-0000-4000-8000-000000000000",
+      "id": "cc000076-0000-4000-8000-000000000000",
       "name": "Batch folders",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1781,7 +1808,7 @@
       }
     },
     {
-      "id": "cc000076-0000-4000-8000-000000000000",
+      "id": "cc000077-0000-4000-8000-000000000000",
       "name": "List batch folder files",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1831,7 +1858,7 @@
       "waitBetweenTries": 5000
     },
     {
-      "id": "cc000077-0000-4000-8000-000000000000",
+      "id": "cc000078-0000-4000-8000-000000000000",
       "name": "Batch status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1844,7 +1871,7 @@
       }
     },
     {
-      "id": "cc000078-0000-4000-8000-000000000000",
+      "id": "cc000079-0000-4000-8000-000000000000",
       "name": "Markers to read",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1857,7 +1884,7 @@
       }
     },
     {
-      "id": "cc000079-0000-4000-8000-000000000000",
+      "id": "cc000080-0000-4000-8000-000000000000",
       "name": "Download markers",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1880,7 +1907,7 @@
       }
     },
     {
-      "id": "cc000080-0000-4000-8000-000000000000",
+      "id": "cc000081-0000-4000-8000-000000000000",
       "name": "Batch messages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1893,7 +1920,7 @@
       }
     },
     {
-      "id": "cc000081-0000-4000-8000-000000000000",
+      "id": "cc000082-0000-4000-8000-000000000000",
       "name": "Send batch message",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
@@ -1913,7 +1940,7 @@
       "onError": "continueErrorOutput"
     },
     {
-      "id": "cc000082-0000-4000-8000-000000000000",
+      "id": "cc000083-0000-4000-8000-000000000000",
       "name": "Sent batches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1926,7 +1953,7 @@
       }
     },
     {
-      "id": "cc000083-0000-4000-8000-000000000000",
+      "id": "cc000084-0000-4000-8000-000000000000",
       "name": "Save batch manifest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -1948,7 +1975,7 @@
       }
     },
     {
-      "id": "cc000084-0000-4000-8000-000000000000",
+      "id": "cc000085-0000-4000-8000-000000000000",
       "name": "Batches to rename",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1961,7 +1988,7 @@
       }
     },
     {
-      "id": "cc000085-0000-4000-8000-000000000000",
+      "id": "cc000086-0000-4000-8000-000000000000",
       "name": "Rename sent batch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -2489,6 +2516,17 @@
       ]
     },
     "Upload WebP to Shopify": {
+      "main": [
+        [
+          {
+            "node": "Category entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category entries": {
       "main": [
         [
           {
