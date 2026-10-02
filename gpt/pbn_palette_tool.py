@@ -2,7 +2,7 @@
 Darl'Art PBN palette tool: turns an artwork into a validated paint-by-numbers master.
 
 It remaps every pixel to exactly N distinct authorized palette colors (darlart_palette.json: the Darl'Art V2
-palette without 3801 and 3811), removes the regions too small to paint, then re-reads the saved PNG to validate it.
+palette, white 3801 and near black 3811 included), removes the regions too small to paint, then re-reads the saved PNG to validate it.
 
 In ChatGPT (Code Interpreter), with this file and darlart_palette.json in the GPT's knowledge:
 
@@ -20,7 +20,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-EXCLUDED_IDS = {"3801", "3811"}
+EXCLUDED_IDS = set()  # white 3801 and near black 3811 are allowed
 SUPPORTED_COUNTS = (12, 24, 36, 48)
 # Smallest region the PBN tool keeps, in pixels at 1024 px on the long side (src/core/settings.ts)
 MIN_REGION_AT_1024 = {"easy": 160, "medium": 110, "hard": 30}
@@ -38,7 +38,7 @@ def find_palette_file():
 
 
 def load_palette(path=None):
-    """Authorized colors: list of {id, hex, rgb}. Never includes 3801 / 3811."""
+    """Authorized colors: list of {id, hex, rgb}."""
     with open(path or find_palette_file(), encoding="utf-8") as f:
         data = json.load(f)
     colors = []

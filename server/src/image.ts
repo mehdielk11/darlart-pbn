@@ -78,6 +78,18 @@ export async function decodeImage(input: Buffer): Promise<{ data: Buffer; width:
     return { data, width: info.width, height: info.height };
 }
 
+/** Whether the image has at most `limit` distinct colors (a flat artwork rather than a photo) */
+export function hasFewColors(data: Buffer, channels: number, limit: number = 256): boolean {
+    const seen = new Set<number>();
+    for (let o = 0; o < data.length; o += channels) {
+        seen.add((data[o] << 16) | (data[o + 1] << 8) | data[o + 2]);
+        if (seen.size > limit) {
+            return false;
+        }
+    }
+    return true;
+}
+
 export async function prepareImage(input: Buffer, options: PrepareOptions): Promise<PreparedImage> {
     const decoded = await decodeImage(input);
     const canvas = resolveCanvasSize(options.canvasSize, options.orientation, decoded.width, decoded.height);
@@ -95,9 +107,12 @@ export async function prepareImage(input: Buffer, options: PrepareOptions): Prom
         cropMethod = "attention";
     }
 
+    // an artwork already painted with a few flat colors (the artwork agent's paints) is resized without blending:
+    // smooth resampling would invent in-between colors along every edge (a grey between black and white)
+    const flat = hasFewColors(decoded.data, 4);
     const { data, info } = await sharp(decoded.data, { raw: { width: decoded.width, height: decoded.height, channels: 4 } })
         .extract(crop)
-        .resize({ width: options.maxSide, height: options.maxSide, fit: "inside", withoutEnlargement: true })
+        .resize({ width: options.maxSide, height: options.maxSide, fit: "inside", withoutEnlargement: true, kernel: flat ? "nearest" : "lanczos3" })
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });

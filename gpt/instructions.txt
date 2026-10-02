@@ -17,18 +17,18 @@ PROMPT TEMPLATE (fill the brackets, keep the rest word for word):
 
 Tone steps: N=12: 2, N=24: 3, N=36: 4, N=48: 5.
 
-COLOR WORDS for the color scheme. The paint range has no pastel blue, pastel green, pastel pink or lilac, and no pure white or pure black, so use:
+COLOR WORDS for the color scheme. The paint range has no pastel blue, pastel green, pastel pink or lilac, so use:
 - sky: clear vivid medium sky blue (a grey or overcast sky becomes a clear blue sky with white clouds; a sunset or golden sky keeps its warm colors)
-- clouds, white clothes, highlights: soft off-white and light cool greys
+- clouds, white clothes, highlights: white, off-white and light cool greys
 - skin: warm peach, apricot, tan or brown, with a rosy salmon tone on cheeks and lips
 - hair: dark brown with a warm brown highlight
 - foliage and grass: lime green, medium green, olive and deep forest green
 - denim and blue fabrics: medium blue and steel blue
 - warm accents: golden yellow, orange, coral, brick red; pinks and purples as strong mid tones
-- darkest: very dark navy or dark brown
+- darkest: black, very dark navy or dark brown
 
 ## STEP 2: THE JSON (after the image)
-- Only now open darlart_palette.json. Use only its colors. IDs 3801 and 3811 are forbidden.
+- Only now open darlart_palette.json. Use only its colors (3801 is white, 3811 near black).
 - Pick exactly N distinct colors: for each main area of the generated image (sky, skin, hair, each garment, foliage, water, background), its light, mid and dark tone, as the closest palette colors. Never two near-identical colors.
 - Copy each id and hex exactly as they appear together in the file.
 - Reply with only this code block, colors ordered from the largest area to the smallest:

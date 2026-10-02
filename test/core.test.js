@@ -451,3 +451,140 @@ test("callout layout: dots inside their region and clear of every outline, numbe
         if (l.fontSize > 0) assert.ok(inRegion(l.facetId, l.center), `the number of region ${l.facetId} is outside it`);
     }
 });
+
+test("palette matching: an image already painted with N paints keeps every pixel's paint", () => {
+    const { matchToPalette } = require(path.join(dist, "src/core/palettematch"));
+    const palette = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8")).restrictions;
+    const paints = [0, 40, 120, 250, 333, 401, 480, 565].map((i) => palette[i]);
+    const W = 64, H = 40;
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let p = 0; p < W * H; p++) {
+        const c = paints[Math.floor((p % W) / 8)];
+        data.set([c[0], c[1], c[2], 255], p * 4);
+    }
+    const match = matchToPalette(data, 4, paints.length, palette);
+    for (let p = 0; p < W * H; p++) {
+        assert.deepEqual(palette[match.paintOfPixel[p]], paints[Math.floor((p % W) / 8)]);
+    }
+});
+
+test("palette matching: white and black areas keep the white and black paints, never a grey average", () => {
+    const { matchToPalette } = require(path.join(dist, "src/core/palettematch"));
+    const parsed = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8"));
+    const byCode = (code) => parsed.restrictions.find((c) => parsed.codes[c.join()] === code);
+    // large white and black areas, with lighter / darker neighbours that the old k-means averaged into greys
+    const areas = [["3801", 30], ["3802", 6], ["3803", 6], ["3811", 30], ["3715", 6], ["3714", 6], ["0810", 8], ["2106", 8]];
+    const W = areas.reduce((s, a) => s + a[1], 0), H = 20;
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) {
+        let x = 0;
+        for (const [code, width] of areas) {
+            const c = byCode(code);
+            for (let i = 0; i < width; i++, x++) data.set([c[0], c[1], c[2], 255], (y * W + x) * 4);
+        }
+    }
+    const match = matchToPalette(data, 4, 5, parsed.restrictions);
+    const codeAt = (x) => parsed.codes[parsed.restrictions[match.paintOfPixel[x]].join()];
+    assert.equal(codeAt(0), "3801", "the white area stays white");
+    assert.equal(codeAt(30 + 6 + 6), "3811", "the black area stays black");
+    assert.equal(new Set(Array.from(match.paintOfPixel)).size, 5);
+});
+
+test("tone correction: a photo's warm off-white becomes white, a colored highlight and the mid-tones are left alone", () => {
+    const { correctTones } = require(path.join(dist, "src/core/palettematch"));
+    const image = (colors) => {
+        const data = new Uint8ClampedArray(colors.length * 100 * 3);
+        colors.forEach((c, i) => { for (let k = 0; k < 100; k++) data.set(c, (i * 100 + k) * 3); });
+        return data;
+    };
+    // a white wall with a slight warm cast, mid-tones and a near-black
+    const wall = image([[242, 237, 231], [128, 100, 80], [60, 90, 140], [12, 12, 14]]);
+    const result = correctTones(wall, 3);
+    assert.ok(result.applied && result.neutralised);
+    assert.ok(wall[0] >= 250 && wall[2] >= 250 && Math.abs(wall[0] - wall[2]) <= 3, `white: ${wall.slice(0, 3)}`);
+    assert.ok(wall[300 * 3] <= 3, "the near-black becomes black");
+    const mid = wall.slice(100 * 3, 100 * 3 + 3);
+    assert.ok(Math.abs(mid[0] - 128) <= 6 && Math.abs(mid[1] - 100) <= 6, `mid-tones barely move: ${mid}`);
+    // a yellow fire as the brightest area: not neutralised, and dark-grey smoke is not pushed to black
+    const fire = image([[253, 240, 170], [90, 70, 60], [45, 40, 38]]);
+    const fireResult = correctTones(fire, 3);
+    assert.ok(!fireResult.neutralised);
+    assert.ok(fire[2] < 200, "the fire stays yellow");
+    assert.deepEqual(Array.from(fire.slice(200 * 3, 200 * 3 + 3)), [45, 40, 38]);
+});
+
+test("generation: the legend only lists paints that are painted, and white / black areas keep their paints", { timeout: 120000 }, async () => {
+    const sharp = require("sharp");
+    const { runPipeline } = require(path.join(dist, "src/core/pipeline"));
+    const { prepareImage } = require(path.join(dist, "server/src/image"));
+    const v3Text = fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8");
+    // an artwork painted with paints (white, black, greys, a gold and a blue) at 1024x1280, resized like the print agent's
+    const W = 1024, H = 1280, raw = Buffer.alloc(W * H * 3);
+    const paints = { "3801": [255, 255, 255], "3803": [231, 231, 231], "3811": [10, 10, 12], "3714": [30, 31, 28], "0810": [255, 182, 54], "2106": [0, 100, 176] };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const code = y < 500 ? (x < 700 ? "3801" : "3803") : y < 1000 ? (x < 700 ? "3811" : "3714") : (x < 512 ? "0810" : "2106");
+        raw.set(paints[code], (y * W + x) * 3);
+    }
+    const input = await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+    const prepared = await prepareImage(input, { canvasSize: "60x75", orientation: "portrait", crop: null, cropMode: "center", maxSide: 1024 });
+    // resized without blending: no in-between colors along the edges
+    const seen = new Set();
+    for (let o = 0; o < prepared.image.data.length; o += 4) seen.add(prepared.image.data.slice(o, o + 3).join());
+    assert.equal(seen.size, 6);
+    const settings = buildSettings({ colors: 24, difficulty: "hard", customColors: v3Text });
+    const log = console.log;
+    console.log = () => undefined;
+    let result;
+    try { result = await runPipeline(prepared.image, settings); } finally { console.log = log; }
+    const used = new Set(result.facetResult.facets.filter((f) => f).map((f) => f.color));
+    assert.equal(result.colorsByIndex.length, used.size, "no unused paint in the legend");
+    const hexes = result.colorsByIndex.map((c) => c.join());
+    for (const rgb of Object.values(paints)) assert.ok(hexes.includes(rgb.join()), `paint ${rgb} kept`);
+    assert.equal(result.colorsByIndex.length, 6);
+});
+
+test("recolorToPalette uses white and near black when they are not excluded", { timeout: 60000 }, async () => {
+    const sharp = require("sharp");
+    const v3Text = fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8");
+    // a slightly warm white wall, a near-black block and a few colors
+    const W = 200, H = 200, raw = Buffer.alloc(W * H * 3);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const c = x < 100 ? [240, 236, 229] : y < 100 ? [18, 18, 20] : x < 150 ? [200, 60, 40] : [40, 120, 200];
+        raw.set(c, (y * W + x) * 3);
+    }
+    const image = await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
+    const result = await recolorToPalette(image, { colors: 4, palette: v3Text, exclude: [], maxSide: 1024, smooth: 0 });
+    const codes = result.colors.map((c) => c.code);
+    assert.equal(result.colors.length, 4); // the image has 4 distinct colors
+    assert.ok(codes.includes("3801"), `white used: ${codes}`);
+    assert.ok(codes.includes("3811"), `near black used: ${codes}`);
+    // the white wall is painted white, not a tinted off-white
+    assert.equal(result.colors[0].code === "3801" || result.colors[1].code === "3801", true);
+});
+
+test("an artwork painted with paints is recognised even after a JPEG re-encode (the website's crop), a photo is not", { timeout: 60000 }, async () => {
+    const sharp = require("sharp");
+    const { isPaintedWithPalette } = require(path.join(dist, "src/core/palettematch"));
+    const palette = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8")).restrictions;
+    // flat areas of paints with soft blobs, like an artwork, re-encoded as JPEG
+    const W = 400, H = 500, raw = Buffer.alloc(W * H * 3);
+    const paints = [12, 100, 222, 301, 444, 520, 560].map((i) => palette[i]);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        raw.set(paints[(Math.floor(x / 57) + Math.floor(y / 71) * 3 + (Math.hypot(x - 200, y - 250) < 90 ? 4 : 0)) % paints.length], (y * W + x) * 3);
+    }
+    const art = await sharp(await sharp(raw, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92 }).toBuffer()).raw().toBuffer();
+    assert.ok(isPaintedWithPalette(art, 3, palette));
+    const photo = await sharp(fs.readFileSync(photoImage)).resize(600).removeAlpha().raw().toBuffer();
+    assert.ok(!isPaintedWithPalette(photo, 3, palette));
+});
+
+test("tone correction never changes a bright color's hue (a peach stays peach, it doesn't turn cream)", () => {
+    const { correctTones } = require(path.join(dist, "src/core/palettematch"));
+    // a picture whose brightest area is a warm beige (white point and neutralisation apply), with a peach
+    const data = new Uint8ClampedArray(400 * 3);
+    for (let i = 0; i < 400; i++) data.set(i < 200 ? [236, 220, 207] : i < 300 ? [255, 226, 192] : [20, 20, 22], i * 3);
+    correctTones(data, 3);
+    const peach = data.slice(250 * 3, 250 * 3 + 3);
+    // the peach keeps its channel ratios (green/red and blue/red as before, within rounding)
+    assert.ok(Math.abs(peach[1] / peach[0] - 226 / 255) < 0.03 && Math.abs(peach[2] / peach[0] - 192 / 255) < 0.05, `peach: ${peach}`);
+});

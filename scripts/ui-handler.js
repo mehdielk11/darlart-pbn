@@ -790,7 +790,9 @@
                     imageSmoothingQuality: 'high'
                 });
                 if (!croppedCanvas) return hideCropModal();
-                const dataUrl = croppedCanvas.toDataURL('image/jpeg', 0.95);
+                // PNG, lossless: a JPEG would shift every color slightly, and an artwork painted with paints would no longer
+                // match them exactly
+                const dataUrl = croppedCanvas.toDataURL('image/png');
                 // Apply result to preview and app
                 previewImg.src = dataUrl;
                 uploadContent.style.display = 'none';

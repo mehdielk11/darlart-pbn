@@ -3,7 +3,7 @@
  */
 import { delay, IMap, RGB } from "./common";
 import { KMeans, Vector } from "./lib/clustering";
-import { hslToRgb, lab2rgb, rgb2lab, rgbToHsl } from "./lib/colorconversion";
+import { deltaE2000, hslToRgb, lab2rgb, rgb2lab, rgbToHsl } from "./lib/colorconversion";
 import { ClusteringColorSpace, Settings } from "./settings";
 import { Uint8Array2D } from "./structs/typedarrays";
 import { Random } from "./random";
@@ -342,20 +342,17 @@ export class ColorReducer {
     }
 
     /**
-     *  Builds a distance matrix for each color to each other
+     *  Builds a distance matrix for each color to each other (CIEDE2000: how different they look)
      */
     public static buildColorDistanceMatrix(colorsByIndex: RGB[]) {
         const colorDistances: number[][] = new Array(colorsByIndex.length);
         for (let j: number = 0; j < colorsByIndex.length; j++) {
             colorDistances[j] = new Array(colorDistances.length);
         }
+        const labs = colorsByIndex.map((c) => rgb2lab(c));
         for (let j: number = 0; j < colorsByIndex.length; j++) {
             for (let i: number = j; i < colorsByIndex.length; i++) {
-                const c1 = colorsByIndex[j];
-                const c2 = colorsByIndex[i];
-                const distance = Math.sqrt((c1[0] - c2[0]) * (c1[0] - c2[0]) +
-                    (c1[1] - c2[1]) * (c1[1] - c2[1]) +
-                    (c1[2] - c2[2]) * (c1[2] - c2[2]));
+                const distance = deltaE2000(labs[j], labs[i]);
                 colorDistances[i][j] = distance;
                 colorDistances[j][i] = distance;
             }

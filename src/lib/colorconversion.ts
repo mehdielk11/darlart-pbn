@@ -115,3 +115,54 @@ export function rgb2lab(rgb: number[]) {
 
     return [(116 * y) - 16, 500 * (x - y), 200 * (y - z)];
 }
+
+/**
+ * CIEDE2000 colour difference between two Lab colours: the perceptual distance used to match paints
+ * (about 1 = just noticeable, above 10 = clearly a different colour)
+ */
+export function deltaE2000(lab1: number[], lab2: number[]): number {
+    const L1 = lab1[0], a1 = lab1[1], b1 = lab1[2];
+    const L2 = lab2[0], a2 = lab2[1], b2 = lab2[2];
+    const rad = Math.PI / 180;
+    const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+    const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+    const Cb7 = Math.pow((C1 + C2) / 2, 7);
+    const G = 0.5 * (1 - Math.sqrt(Cb7 / (Cb7 + 6103515625))); // 25^7
+    const a1p = (1 + G) * a1;
+    const a2p = (1 + G) * a2;
+    const C1p = Math.sqrt(a1p * a1p + b1 * b1);
+    const C2p = Math.sqrt(a2p * a2p + b2 * b2);
+    const hue = (b: number, a: number) => {
+        if (a === 0 && b === 0) { return 0; }
+        const h = Math.atan2(b, a) / rad;
+        return h < 0 ? h + 360 : h;
+    };
+    const h1p = hue(b1, a1p);
+    const h2p = hue(b2, a2p);
+    const dLp = L2 - L1;
+    const dCp = C2p - C1p;
+    let dhp = 0;
+    if (C1p * C2p !== 0) {
+        dhp = h2p - h1p;
+        if (dhp > 180) { dhp -= 360; } else if (dhp < -180) { dhp += 360; }
+    }
+    const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dhp * rad / 2);
+    const Lbp = (L1 + L2) / 2;
+    const Cbp = (C1p + C2p) / 2;
+    let hbp = h1p + h2p;
+    if (C1p * C2p !== 0) {
+        hbp = Math.abs(h1p - h2p) > 180 ? (h1p + h2p + (h1p + h2p < 360 ? 360 : -360)) / 2 : (h1p + h2p) / 2;
+    }
+    const T = 1 - 0.17 * Math.cos((hbp - 30) * rad) + 0.24 * Math.cos(2 * hbp * rad) + 0.32 * Math.cos((3 * hbp + 6) * rad) - 0.2 * Math.cos((4 * hbp - 63) * rad);
+    const dTheta = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+    const Cbp7 = Math.pow(Cbp, 7);
+    const Rc = 2 * Math.sqrt(Cbp7 / (Cbp7 + 6103515625));
+    const Sl = 1 + 0.015 * (Lbp - 50) * (Lbp - 50) / Math.sqrt(20 + (Lbp - 50) * (Lbp - 50));
+    const Sc = 1 + 0.045 * Cbp;
+    const Sh = 1 + 0.015 * Cbp * T;
+    const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+    const l = dLp / Sl;
+    const c = dCp / Sc;
+    const h = dHp / Sh;
+    return Math.sqrt(l * l + c * c + h * h + Rt * c * h);
+}

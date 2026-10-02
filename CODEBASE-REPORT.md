@@ -29,7 +29,7 @@ A fork of drake7707's open-source **paint-by-numbers generator**, grown into the
 ```
 
 ### 2.1 Processing core (`src/`)
-- Classic pipeline (from upstream): k-means color reduction (`colorreductionmanagement.ts`, `lib/clustering.ts`) → facet building (`facetCreator.ts`) → small-facet reduction (`facetReducer.ts`) → border tracing and segmentation with Haar-wavelet smoothing (`facetBorderTracer.ts`, `facetBorderSegmenter.ts`) → label placement via polylabel (`facetLabelPlacer.ts`).
+- Classic pipeline (from upstream): color reduction (with a palette: `core/palettematch.ts`, paints chosen to minimise the pixels' CIEDE2000 error; without one: k-means in `colorreductionmanagement.ts`, `lib/clustering.ts`) → facet building (`facetCreator.ts`) → small-facet reduction (`facetReducer.ts`) → border tracing and segmentation with Haar-wavelet smoothing (`facetBorderTracer.ts`, `facetBorderSegmenter.ts`) → label placement via polylabel (`facetLabelPlacer.ts`).
 - `src/core/` is the Darl'Art layer, with no DOM dependency so it runs in browser, API and tests:
   - `pipeline.ts` — `runPipeline` with progress/cancel callbacks.
   - `settings.ts` — `easy/medium/hard` difficulty presets, palette parsing (`parseCustomColors` handles the Darl'Art JSON, hex and rgb lines).
@@ -46,7 +46,7 @@ Fastify 5 app (`app.ts`):
 | `POST /v1/jobs` | Create a generation job (multipart `image` or JSON `imageUrl`, optional `callbackUrl`) |
 | `GET /v1/jobs/:id` / `…/files/:name` | Status and downloads (template.pdf, svg, preview.png, palette.json, …) |
 | `POST /v1/analyze` | Complexity, suggested difficulty, crop suggestion |
-| `POST /v1/recolor` | Repaint an image with exactly N palette colors (histogram → weighted Lab k-means → palette snapping and refinement) |
+| `POST /v1/recolor` | Repaint an image with exactly N palette colors (white/black point → error-minimising paint selection, `src/core/palettematch.ts`) |
 | `GET /v1/palettes`, `GET /health` | Palettes list and liveness |
 
 - `jobs.ts`: on-disk job persistence under `DATA_DIR`, worker-thread execution (`worker.ts`) with concurrency limit and timeout, callback with retries and `x-callback-secret`, retention cleanup; jobs interrupted by a restart are marked failed.

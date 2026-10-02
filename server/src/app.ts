@@ -353,6 +353,10 @@ export async function buildApp(jobs: JobManager) {
             if (![0, 1, 3, 5].includes(smooth)) {
                 errors.push("smooth must be 0, 1, 3 or 5");
             }
+            const tones = (asString(fields.tones) || "auto").toLowerCase();
+            if (!["auto", "off"].includes(tones)) {
+                errors.push("tones must be auto or off");
+            }
             const paletteId = asString(fields.palette) || config.defaultPalette;
             if (paletteId === NO_PALETTE || !isValidPaletteId(paletteId)) {
                 errors.push("palette must name a palette from /v1/palettes");
@@ -378,7 +382,7 @@ export async function buildApp(jobs: JobManager) {
             const resolved = await resolveImage(fields, image);
             let result;
             try {
-                result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth, canvasSize, orientation });
+                result = await recolorToPalette(resolved.image, { colors, palette, exclude, maxSide, smooth, canvasSize, orientation, toneCorrection: tones !== "off" });
             } catch (e) {
                 throw new HttpError(422, e instanceof Error ? e.message : String(e));
             }

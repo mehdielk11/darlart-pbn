@@ -14,6 +14,8 @@ export class Settings {
     public kMeansClusteringColorSpace: ClusteringColorSpace = ClusteringColorSpace.RGB;
 
     public kMeansColorRestrictions: Array<RGB | string> = [];
+    /** With a palette: a photo's whites and blacks are set to white and black before the paints are matched (src/core/palettematch.ts) */
+    public paletteToneCorrection: boolean = true;
 
     public colorAliases: { [key: string]: RGB } = {};
     public colorCodes: { [key: string]: string } = {};

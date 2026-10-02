@@ -159,6 +159,7 @@ define("lib/colorconversion", ["require", "exports"], function (require, exports
     exports.hslToRgb = hslToRgb;
     exports.lab2rgb = lab2rgb;
     exports.rgb2lab = rgb2lab;
+    exports.deltaE2000 = deltaE2000;
     /**
       * Converts an RGB color value to HSL. Conversion formula
       * adapted from http://en.wikipedia.org/wiki/HSL_color_space.
@@ -269,6 +270,63 @@ define("lib/colorconversion", ["require", "exports"], function (require, exports
         z = (z > 0.008856) ? Math.pow(z, 1 / 3) : (7.787 * z) + 16 / 116;
         return [(116 * y) - 16, 500 * (x - y), 200 * (y - z)];
     }
+    /**
+     * CIEDE2000 colour difference between two Lab colours: the perceptual distance used to match paints
+     * (about 1 = just noticeable, above 10 = clearly a different colour)
+     */
+    function deltaE2000(lab1, lab2) {
+        const L1 = lab1[0], a1 = lab1[1], b1 = lab1[2];
+        const L2 = lab2[0], a2 = lab2[1], b2 = lab2[2];
+        const rad = Math.PI / 180;
+        const C1 = Math.sqrt(a1 * a1 + b1 * b1);
+        const C2 = Math.sqrt(a2 * a2 + b2 * b2);
+        const Cb7 = Math.pow((C1 + C2) / 2, 7);
+        const G = 0.5 * (1 - Math.sqrt(Cb7 / (Cb7 + 6103515625))); // 25^7
+        const a1p = (1 + G) * a1;
+        const a2p = (1 + G) * a2;
+        const C1p = Math.sqrt(a1p * a1p + b1 * b1);
+        const C2p = Math.sqrt(a2p * a2p + b2 * b2);
+        const hue = (b, a) => {
+            if (a === 0 && b === 0) {
+                return 0;
+            }
+            const h = Math.atan2(b, a) / rad;
+            return h < 0 ? h + 360 : h;
+        };
+        const h1p = hue(b1, a1p);
+        const h2p = hue(b2, a2p);
+        const dLp = L2 - L1;
+        const dCp = C2p - C1p;
+        let dhp = 0;
+        if (C1p * C2p !== 0) {
+            dhp = h2p - h1p;
+            if (dhp > 180) {
+                dhp -= 360;
+            }
+            else if (dhp < -180) {
+                dhp += 360;
+            }
+        }
+        const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dhp * rad / 2);
+        const Lbp = (L1 + L2) / 2;
+        const Cbp = (C1p + C2p) / 2;
+        let hbp = h1p + h2p;
+        if (C1p * C2p !== 0) {
+            hbp = Math.abs(h1p - h2p) > 180 ? (h1p + h2p + (h1p + h2p < 360 ? 360 : -360)) / 2 : (h1p + h2p) / 2;
+        }
+        const T = 1 - 0.17 * Math.cos((hbp - 30) * rad) + 0.24 * Math.cos(2 * hbp * rad) + 0.32 * Math.cos((3 * hbp + 6) * rad) - 0.2 * Math.cos((4 * hbp - 63) * rad);
+        const dTheta = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+        const Cbp7 = Math.pow(Cbp, 7);
+        const Rc = 2 * Math.sqrt(Cbp7 / (Cbp7 + 6103515625));
+        const Sl = 1 + 0.015 * (Lbp - 50) * (Lbp - 50) / Math.sqrt(20 + (Lbp - 50) * (Lbp - 50));
+        const Sc = 1 + 0.045 * Cbp;
+        const Sh = 1 + 0.015 * Cbp * T;
+        const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+        const l = dLp / Sl;
+        const c = dCp / Sc;
+        const h = dHp / Sh;
+        return Math.sqrt(l * l + c * c + h * h + Rt * c * h);
+    }
 });
 define("settings", ["require", "exports"], function (require, exports) {
     "use strict";
@@ -288,6 +346,8 @@ define("settings", ["require", "exports"], function (require, exports) {
             this.kMeansMinDeltaDifference = 1;
             this.kMeansClusteringColorSpace = ClusteringColorSpace.RGB;
             this.kMeansColorRestrictions = [];
+            /** With a palette: a photo's whites and blacks are set to white and black before the paints are matched (src/core/palettematch.ts) */
+            this.paletteToneCorrection = true;
             this.colorAliases = {};
             this.colorCodes = {};
             this.narrowPixelStripCleanupRuns = 3; // 3 seems like a good compromise between removing enough narrow pixel strips to convergence. This fixes e.g. https://i.imgur.com/dz4ANz1.png
@@ -663,20 +723,17 @@ define("colorreductionmanagement", ["require", "exports", "common", "lib/cluster
             }
         }
         /**
-         *  Builds a distance matrix for each color to each other
+         *  Builds a distance matrix for each color to each other (CIEDE2000: how different they look)
          */
         static buildColorDistanceMatrix(colorsByIndex) {
             const colorDistances = new Array(colorsByIndex.length);
             for (let j = 0; j < colorsByIndex.length; j++) {
                 colorDistances[j] = new Array(colorDistances.length);
             }
+            const labs = colorsByIndex.map((c) => (0, colorconversion_1.rgb2lab)(c));
             for (let j = 0; j < colorsByIndex.length; j++) {
                 for (let i = j; i < colorsByIndex.length; i++) {
-                    const c1 = colorsByIndex[j];
-                    const c2 = colorsByIndex[i];
-                    const distance = Math.sqrt((c1[0] - c2[0]) * (c1[0] - c2[0]) +
-                        (c1[1] - c2[1]) * (c1[1] - c2[1]) +
-                        (c1[2] - c2[2]) * (c1[2] - c2[2]));
+                    const distance = (0, colorconversion_1.deltaE2000)(labs[j], labs[i]);
                     colorDistances[i][j] = distance;
                     colorDistances[j][i] = distance;
                 }
@@ -4501,7 +4558,457 @@ define("core/despeckle", ["require", "exports"], function (require, exports) {
         return result;
     }
 });
-define("core/pipeline", ["require", "exports", "colorreductionmanagement", "facetBorderSegmenter", "facetBorderTracer", "facetCreator", "facetLabelPlacer", "facetmanagement", "facetReducer", "core/despeckle", "core/palette"], function (require, exports, colorreductionmanagement_2, facetBorderSegmenter_1, facetBorderTracer_1, facetCreator_3, facetLabelPlacer_1, facetmanagement_4, facetReducer_1, despeckle_1, palette_2) {
+define("core/palettematch", ["require", "exports", "lib/colorconversion"], function (require, exports, colorconversion_2) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.matchToPalette = matchToPalette;
+    exports.isPaintedWithPalette = isPaintedWithPalette;
+    exports.correctTones = correctTones;
+    /** Above this many distinct colors, the histogram uses 6-bit bins */
+    const EXACT_COLOR_LIMIT = 4096;
+    const HISTOGRAM_BITS = 6;
+    function matchToPalette(data, channels, n, palette, options = {}) {
+        const P = palette.length;
+        if (P === 0) {
+            throw new Error("The palette is empty");
+        }
+        const paletteLab = palette.map((rgb) => (0, colorconversion_2.rgb2lab)(rgb));
+        const pixels = Math.floor(data.length / channels);
+        n = Math.max(1, Math.min(n, P));
+        // 1. histogram
+        const exactColors = new Set();
+        for (let o = 0; o < pixels * channels && exactColors.size <= EXACT_COLOR_LIMIT; o += channels) {
+            exactColors.add((data[o] << 16) | (data[o + 1] << 8) | data[o + 2]);
+        }
+        const exact = exactColors.size <= EXACT_COLOR_LIMIT;
+        const shift = 8 - HISTOGRAM_BITS;
+        const keyAt = exact
+            ? (o) => (data[o] << 16) | (data[o + 1] << 8) | data[o + 2]
+            : (o) => ((data[o] >> shift) << (2 * HISTOGRAM_BITS)) | ((data[o + 1] >> shift) << HISTOGRAM_BITS) | (data[o + 2] >> shift);
+        const binOfKey = new Map();
+        const binOfPixel = new Int32Array(pixels);
+        const sums = [];
+        for (let p = 0, o = 0; p < pixels; p++, o += channels) {
+            const key = keyAt(o);
+            let bin = binOfKey.get(key);
+            if (bin === undefined) {
+                bin = binOfKey.size;
+                binOfKey.set(key, bin);
+                sums.push(0, 0, 0, 0);
+            }
+            binOfPixel[p] = bin;
+            sums[bin * 4] += data[o];
+            sums[bin * 4 + 1] += data[o + 1];
+            sums[bin * 4 + 2] += data[o + 2];
+            sums[bin * 4 + 3]++;
+        }
+        const B = binOfKey.size;
+        const weight = new Float64Array(B);
+        const labs = new Array(B);
+        for (let i = 0; i < B; i++) {
+            const count = sums[i * 4 + 3];
+            weight[i] = count;
+            labs[i] = (0, colorconversion_2.rgb2lab)([sums[i * 4] / count, sums[i * 4 + 1] / count, sums[i * 4 + 2] / count]);
+        }
+        // 2. each bin's K nearest paints (prefiltered by plain Lab distance), sorted by CIEDE2000
+        const K = Math.min(P, options.candidates || 32);
+        const cand = new Array(B);
+        const candD = new Array(B);
+        const top = [];
+        const topD = [];
+        for (let i = 0; i < B; i++) {
+            const l = labs[i];
+            top.length = 0;
+            topD.length = 0;
+            for (let j = 0; j < P; j++) {
+                const q = paletteLab[j];
+                const e = (l[0] - q[0]) * (l[0] - q[0]) + (l[1] - q[1]) * (l[1] - q[1]) + (l[2] - q[2]) * (l[2] - q[2]);
+                if (top.length === K && e >= topD[K - 1]) {
+                    continue;
+                }
+                let at = top.length;
+                while (at > 0 && topD[at - 1] > e) {
+                    at--;
+                }
+                top.splice(at, 0, j);
+                topD.splice(at, 0, e);
+                if (top.length > K) {
+                    top.pop();
+                    topD.pop();
+                }
+            }
+            const d = top.map((j) => (0, colorconversion_2.deltaE2000)(l, paletteLab[j]));
+            const order = top.map((_, k) => k).sort((a, b) => (d[a] - d[b]) || (top[a] - top[b]));
+            cand[i] = Int32Array.from(order.map((k) => top[k]));
+            candD[i] = Float64Array.from(order.map((k) => d[k]));
+        }
+        // for each paint, the bins that list it (to find who gains when it is chosen)
+        const listedBins = Array.from({ length: P }, () => []);
+        const listedD = Array.from({ length: P }, () => []);
+        for (let i = 0; i < B; i++) {
+            for (let k = 0; k < cand[i].length; k++) {
+                listedBins[cand[i][k]].push(i);
+                listedD[cand[i][k]].push(candD[i][k]);
+            }
+        }
+        // the ideal set: every bin's nearest paint
+        const chosen = new Uint8Array(P);
+        let chosenCount = 0;
+        for (let i = 0; i < B; i++) {
+            if (!chosen[cand[i][0]]) {
+                chosen[cand[i][0]] = 1;
+                chosenCount++;
+            }
+        }
+        // best and second-best chosen paint of each bin
+        const best = new Int32Array(B);
+        const bestD = new Float64Array(B);
+        const second = new Int32Array(B);
+        const secondD = new Float64Array(B);
+        /** Nearest chosen paint over the whole palette, when none of the bin's candidates is chosen any more (rare) */
+        const nearestChosen = (i, skip) => {
+            const l = labs[i];
+            const near = [];
+            for (let c = 0; c < P; c++) {
+                if (!chosen[c] || c === skip) {
+                    continue;
+                }
+                const q = paletteLab[c];
+                near.push([(l[0] - q[0]) * (l[0] - q[0]) + (l[1] - q[1]) * (l[1] - q[1]) + (l[2] - q[2]) * (l[2] - q[2]), c]);
+            }
+            near.sort((a, b) => a[0] - b[0]);
+            let j = -1;
+            let d = Infinity;
+            for (const [, c] of near.slice(0, 6)) {
+                const e = (0, colorconversion_2.deltaE2000)(l, paletteLab[c]);
+                if (e < d) {
+                    d = e;
+                    j = c;
+                }
+            }
+            return [j, d];
+        };
+        const refresh = (i) => {
+            let k1 = -1;
+            let k2 = -1;
+            for (let k = 0; k < cand[i].length; k++) {
+                if (chosen[cand[i][k]]) {
+                    if (k1 < 0) {
+                        k1 = k;
+                    }
+                    else {
+                        k2 = k;
+                        break;
+                    }
+                }
+            }
+            if (k1 >= 0) {
+                best[i] = cand[i][k1];
+                bestD[i] = candD[i][k1];
+            }
+            else {
+                [best[i], bestD[i]] = nearestChosen(i, -1);
+            }
+            if (k2 >= 0) {
+                second[i] = cand[i][k2];
+                secondD[i] = candD[i][k2];
+            }
+            else {
+                [second[i], secondD[i]] = chosenCount > 1 ? nearestChosen(i, best[i]) : [-1, 1e6];
+            }
+        };
+        for (let i = 0; i < B; i++) {
+            refresh(i);
+        }
+        // 3. greedy elimination: removing paint j moves its bins to their second-best paint
+        const removal = new Float64Array(P);
+        const byBest = Array.from({ length: P }, () => []);
+        const bySecond = Array.from({ length: P }, () => []);
+        const rebuild = () => {
+            removal.fill(0);
+            for (let j = 0; j < P; j++) {
+                byBest[j].length = 0;
+                bySecond[j].length = 0;
+            }
+            for (let i = 0; i < B; i++) {
+                removal[best[i]] += weight[i] * (secondD[i] - bestD[i]);
+                byBest[best[i]].push(i);
+                if (second[i] >= 0) {
+                    bySecond[second[i]].push(i);
+                }
+            }
+        };
+        rebuild();
+        while (chosenCount > n) {
+            let drop = -1;
+            let dropCost = Infinity;
+            for (let j = 0; j < P; j++) {
+                if (chosen[j] && removal[j] < dropCost) {
+                    dropCost = removal[j];
+                    drop = j;
+                }
+            }
+            chosen[drop] = 0;
+            chosenCount--;
+            const touched = new Set(byBest[drop].concat(bySecond[drop]));
+            touched.forEach((i) => {
+                removal[best[i]] -= weight[i] * (secondD[i] - bestD[i]);
+                refresh(i);
+                removal[best[i]] += weight[i] * (secondD[i] - bestD[i]);
+                byBest[best[i]].push(i);
+                if (second[i] >= 0) {
+                    bySecond[second[i]].push(i);
+                }
+            });
+            // the lists keep stale entries (refresh is idempotent): prune them now and then
+            if (chosenCount % 16 === 0) {
+                rebuild();
+            }
+        }
+        // 4. swap refinement: try the unchosen paints that are the nearest paint of a chosen paint's own colors
+        for (let round = 0; round < 2; round++) {
+            let improved = false;
+            rebuild();
+            for (let j = 0; j < P; j++) {
+                if (!chosen[j]) {
+                    continue;
+                }
+                const own = byBest[j].filter((i) => best[i] === j);
+                const optionWeight = new Map();
+                for (const i of own) {
+                    const c = cand[i][0];
+                    if (!chosen[c]) {
+                        optionWeight.set(c, (optionWeight.get(c) || 0) + weight[i]);
+                    }
+                }
+                const options = Array.from(optionWeight.entries()).sort((a, b) => (b[1] - a[1]) || (a[0] - b[0])).slice(0, 6).map((e) => e[0]);
+                for (const o of options) {
+                    chosen[j] = 0;
+                    chosen[o] = 1;
+                    const affected = new Set(own);
+                    const lb = listedBins[o];
+                    const ld = listedD[o];
+                    for (let q = 0; q < lb.length; q++) {
+                        if (ld[q] < bestD[lb[q]]) {
+                            affected.add(lb[q]);
+                        }
+                    }
+                    const saved = [];
+                    let delta = 0;
+                    affected.forEach((i) => {
+                        saved.push([i, best[i], bestD[i], second[i], secondD[i]]);
+                        const before = bestD[i];
+                        refresh(i);
+                        delta += weight[i] * (bestD[i] - before);
+                    });
+                    if (delta < -1e-6) {
+                        improved = true;
+                        break;
+                    }
+                    chosen[o] = 0;
+                    chosen[j] = 1;
+                    for (const [i, b1, d1, b2, d2] of saved) {
+                        best[i] = b1;
+                        bestD[i] = d1;
+                        second[i] = b2;
+                        secondD[i] = d2;
+                    }
+                }
+            }
+            if (!improved) {
+                break;
+            }
+        }
+        // exact count: with fewer paints than asked (a simple image needs fewer paints), the extra paints go where they
+        // change the picture least: each one to the color (among paints that keep other colors) whose move to its
+        // nearest unused paint adds the least error, i.e. small, rare colors, never a large area
+        if (options.exactCount) {
+            const binsOf = new Map();
+            for (let i = 0; i < B; i++) {
+                binsOf.set(best[i], (binsOf.get(best[i]) || 0) + 1);
+            }
+            let used = binsOf.size;
+            while (used < n) {
+                let pick = -1;
+                let pickPaint = -1;
+                let pickD = 0;
+                let pickCost = Infinity;
+                for (let i = 0; i < B; i++) {
+                    if ((binsOf.get(best[i]) || 0) < 2) {
+                        continue;
+                    }
+                    let k = 0;
+                    while (k < cand[i].length && binsOf.has(cand[i][k])) {
+                        k++;
+                    }
+                    if (k === cand[i].length) {
+                        continue;
+                    }
+                    const added = weight[i] * (candD[i][k] - bestD[i]);
+                    if (added < pickCost) {
+                        pickCost = added;
+                        pick = i;
+                        pickPaint = cand[i][k];
+                        pickD = candD[i][k];
+                    }
+                }
+                if (pick < 0) {
+                    break;
+                } // fewer distinct colors than paints asked
+                binsOf.set(best[pick], binsOf.get(best[pick]) - 1);
+                best[pick] = pickPaint;
+                bestD[pick] = pickD;
+                binsOf.set(pickPaint, 1);
+                used++;
+            }
+        }
+        // 5. every pixel takes its bin's paint
+        const paintOfPixel = new Int32Array(pixels);
+        const pixelsPerPaint = new Map();
+        for (let p = 0; p < pixels; p++) {
+            const paint = best[binOfPixel[p]];
+            paintOfPixel[p] = paint;
+            pixelsPerPaint.set(paint, (pixelsPerPaint.get(paint) || 0) + 1);
+        }
+        const paints = Array.from(pixelsPerPaint.keys()).sort((a, b) => (pixelsPerPaint.get(b) - pixelsPerPaint.get(a)) || (a - b));
+        return { paintOfPixel, paints, pixelsPerPaint };
+    }
+    /**
+     * Whether the image is an artwork already painted with the palette's paints (it is then matched as is, without
+     * tone correction): most of its pixels are within a small distance of a paint. Near rather than exact, because the
+     * website's crop re-encodes the image as JPEG, which shifts every color slightly. Photos stay far below.
+     */
+    function isPaintedWithPalette(data, channels, palette, share = 0.55, tolerance = 3) {
+        const labs = palette.map((c) => (0, colorconversion_2.rgb2lab)(c));
+        const pixels = Math.floor(data.length / channels);
+        const step = Math.max(1, Math.floor(pixels / 20000));
+        const limit = tolerance * tolerance;
+        let total = 0;
+        let painted = 0;
+        for (let p = 0; p < pixels; p += step) {
+            const o = p * channels;
+            const l = (0, colorconversion_2.rgb2lab)([data[o], data[o + 1], data[o + 2]]);
+            total++;
+            for (const q of labs) {
+                const d = (l[0] - q[0]) * (l[0] - q[0]) + (l[1] - q[1]) * (l[1] - q[1]) + (l[2] - q[2]) * (l[2] - q[2]);
+                if (d < limit) {
+                    painted++;
+                    break;
+                }
+            }
+        }
+        return total > 0 && painted / total >= share;
+    }
+    /**
+     * White and black point of a photo: the photo's whites are rarely paint-white (a white wall or marble sits around
+     * 90-95% lightness, nearer to a light grey paint) and its blacks rarely paint-black.
+     * - the brightest 0.5% become white when they are light enough to be meant as white
+     * - the darkest 0.5% become black only when they already are nearly black (a dark grey smoke keeps its tone)
+     * - only the highlights and the shadows move: the mid-tones are left as they are
+     * - a slight color cast of the whites is neutralised only when they are near-neutral (a yellow fire or a blue sky
+     *   stays as it is)
+     * Works in place on RGB or RGBA data.
+     */
+    function correctTones(data, channels) {
+        const pixels = Math.floor(data.length / channels);
+        const result = { applied: false, blackPoint: 0, whitePoint: 255, neutralised: false };
+        if (pixels === 0) {
+            return result;
+        }
+        const lum = new Uint8Array(pixels);
+        const hist = new Uint32Array(256);
+        for (let p = 0, o = 0; p < pixels; p++, o += channels) {
+            const v = Math.round(0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]);
+            lum[p] = v;
+            hist[v]++;
+        }
+        const tail = pixels * 0.005;
+        let acc = 0;
+        let low = 0;
+        for (let v = 0; v < 256; v++) {
+            acc += hist[v];
+            if (acc >= tail) {
+                low = v;
+                break;
+            }
+        }
+        acc = 0;
+        let high = 255;
+        for (let v = 255; v >= 0; v--) {
+            acc += hist[v];
+            if (acc >= tail) {
+                high = v;
+                break;
+            }
+        }
+        // only stretch what is meant as white / black: a dim or a hazy picture keeps its tones
+        const blackPoint = low <= 20 ? low : 0;
+        const whitePoint = high >= 190 ? high : 255;
+        // the whites' color: neutralised when it is only a slight cast
+        let wr = 0;
+        let wg = 0;
+        let wb = 0;
+        let wn = 0;
+        for (let p = 0, o = 0; p < pixels; p++, o += channels) {
+            if (lum[p] >= high) {
+                wr += data[o];
+                wg += data[o + 1];
+                wb += data[o + 2];
+                wn++;
+            }
+        }
+        const gains = [1, 1, 1];
+        if (wn > 0 && high >= 190) {
+            const white = [wr / wn, wg / wn, wb / wn];
+            const lab = (0, colorconversion_2.rgb2lab)(white);
+            const chroma = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+            if (chroma > 0.5 && chroma < 12) {
+                const mean = (white[0] + white[1] + white[2]) / 3;
+                for (let c = 0; c < 3; c++) {
+                    gains[c] = mean / Math.max(1, white[c]);
+                }
+                result.neutralised = true;
+            }
+        }
+        if (blackPoint === 0 && whitePoint === 255 && !result.neutralised) {
+            return result;
+        }
+        // the curve only moves the tones above the high knee (toward white) and below the low knee (toward black)
+        const kneeHigh = Math.max(128, whitePoint - 48);
+        const kneeLow = Math.min(100, blackPoint + 40);
+        const curve = (v) => {
+            if (whitePoint < 255 && v > kneeHigh) {
+                return kneeHigh + (v - kneeHigh) * (255 - kneeHigh) / Math.max(1, whitePoint - kneeHigh);
+            }
+            if (blackPoint > 0 && v < kneeLow) {
+                return v <= blackPoint ? 0 : (v - blackPoint) * kneeLow / (kneeLow - blackPoint);
+            }
+            return v;
+        };
+        // the curve applies to the pixel's luminance and its channels are scaled together, never past 255: a bright
+        // saturated color keeps its hue
+        const factor = new Float64Array(256);
+        for (let v = 1; v < 256; v++) {
+            factor[v] = curve(v) / v;
+        }
+        for (let o = 0; o < pixels * channels; o += channels) {
+            const r = data[o] * gains[0];
+            const g = data[o + 1] * gains[1];
+            const b = data[o + 2] * gains[2];
+            const l = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+            // never past 255 on the brightest channel: a clipped channel would change the hue (a peach turning cream)
+            const f = l === 0 ? 0 : Math.min(factor[l], 255 / Math.max(1, r, g, b));
+            data[o] = Math.max(0, Math.min(255, Math.round(r * f)));
+            data[o + 1] = Math.max(0, Math.min(255, Math.round(g * f)));
+            data[o + 2] = Math.max(0, Math.min(255, Math.round(b * f)));
+        }
+        result.applied = true;
+        result.blackPoint = blackPoint;
+        result.whitePoint = whitePoint;
+        return result;
+    }
+});
+define("core/pipeline", ["require", "exports", "colorreductionmanagement", "facetBorderSegmenter", "facetBorderTracer", "facetCreator", "facetLabelPlacer", "facetmanagement", "facetReducer", "core/despeckle", "core/palette", "core/palettematch"], function (require, exports, colorreductionmanagement_2, facetBorderSegmenter_1, facetBorderTracer_1, facetCreator_3, facetLabelPlacer_1, facetmanagement_4, facetReducer_1, despeckle_1, palette_2, palettematch_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.DESPECKLE_MIN_AREAS = exports.PIPELINE_STEPS = void 0;
@@ -4509,6 +5016,53 @@ define("core/pipeline", ["require", "exports", "colorreductionmanagement", "face
     exports.PIPELINE_STEPS = ["kmeans", "facetBuilding", "facetReduction", "borderTracing", "borderSegmentation", "labelPlacement"];
     /** Above this many areas of one color, the tiny ones are merged at once before the facet reduction */
     exports.DESPECKLE_MIN_AREAS = 20000;
+    /** The palette's colors (custom colors and named aliases), without duplicates */
+    function paletteOf(settings) {
+        const seen = new Set();
+        const palette = [];
+        for (const col of settings.kMeansColorRestrictions) {
+            const rgb = typeof col === "string" ? settings.colorAliases[col] : col;
+            if (!rgb) {
+                continue;
+            }
+            const clean = [Math.floor(rgb[0]), Math.floor(rgb[1]), Math.floor(rgb[2])];
+            const key = clean.join(",");
+            if (!seen.has(key)) {
+                seen.add(key);
+                palette.push(clean);
+            }
+        }
+        return palette;
+    }
+    /**
+     * Drops the colors no region uses any more (the facet reduction can merge every area of a color away): the legend
+     * and the kit then only list paints that are actually painted
+     */
+    function keepUsedColors(colorsByIndex, facetResult) {
+        const used = new Set();
+        for (const f of facetResult.facets) {
+            if (f != null) {
+                used.add(f.color);
+            }
+        }
+        if (used.size === colorsByIndex.length) {
+            return colorsByIndex;
+        }
+        const newIndex = new Array(colorsByIndex.length);
+        const kept = [];
+        colorsByIndex.forEach((color, index) => {
+            if (used.has(index)) {
+                newIndex[index] = kept.length;
+                kept.push(color);
+            }
+        });
+        for (const f of facetResult.facets) {
+            if (f != null) {
+                f.color = newIndex[f.color];
+            }
+        }
+        return kept;
+    }
     function runPipeline(image_1, settings_3) {
         return __awaiter(this, arguments, void 0, function* (image, settings, callbacks = {}) {
             const state = {};
@@ -4520,42 +5074,40 @@ define("core/pipeline", ["require", "exports", "colorreductionmanagement", "face
                     callbacks.onProgress(step, progress, state);
                 }
             };
-            // k-means clustering
+            // color reduction: palette matching with a palette, k-means without one
             const kmeansImage = callbacks.createImage
                 ? callbacks.createImage(image.width, image.height)
                 : { width: image.width, height: image.height, data: new Uint8ClampedArray(image.width * image.height * 4) };
             kmeansImage.data.fill(255);
             state.kmeansImage = kmeansImage;
             report("kmeans", 0);
-            yield colorreductionmanagement_2.ColorReducer.applyKMeansClustering(image, kmeansImage, null, settings, (kmeans) => {
-                const delta = kmeans.currentDeltaDistanceDifference > 100 ? 100 : kmeans.currentDeltaDistanceDifference;
-                report("kmeans", (100 - delta) / 100);
-            });
+            const palette = paletteOf(settings);
+            if (palette.length > 0) {
+                // a photo first gets its white and black points; an artwork already painted with paints is matched as is
+                const source = new Uint8ClampedArray(image.data);
+                if (settings.paletteToneCorrection && !(0, palettematch_1.isPaintedWithPalette)(source, 4, palette)) {
+                    (0, palettematch_1.correctTones)(source, 4);
+                }
+                report("kmeans", 0.1);
+                const match = (0, palettematch_1.matchToPalette)(source, 4, settings.kMeansNrOfClusters, palette);
+                for (let p = 0, o = 0; p < match.paintOfPixel.length; p++, o += 4) {
+                    const rgb = palette[match.paintOfPixel[p]];
+                    kmeansImage.data[o] = rgb[0];
+                    kmeansImage.data[o + 1] = rgb[1];
+                    kmeansImage.data[o + 2] = rgb[2];
+                    kmeansImage.data[o + 3] = 255;
+                }
+            }
+            else {
+                yield colorreductionmanagement_2.ColorReducer.applyKMeansClustering(image, kmeansImage, null, settings, (kmeans) => {
+                    const delta = kmeans.currentDeltaDistanceDifference > 100 ? 100 : kmeans.currentDeltaDistanceDifference;
+                    report("kmeans", (100 - delta) / 100);
+                });
+            }
             report("kmeans", 1);
             // build color map
             const colormapResult = colorreductionmanagement_2.ColorReducer.createColorMap(kmeansImage);
             state.colormapResult = colormapResult;
-            // If custom color restrictions were specified, ensure the color map covers all custom colors up to the requested count
-            if (settings.kMeansColorRestrictions.length > 0) {
-                const targetCount = Math.min(settings.kMeansNrOfClusters, settings.kMeansColorRestrictions.length);
-                if (colormapResult.colorsByIndex.length < targetCount) {
-                    const presentKeys = new Set(colormapResult.colorsByIndex.map((c) => `${c[0]},${c[1]},${c[2]}`));
-                    for (const col of settings.kMeansColorRestrictions) {
-                        if (colormapResult.colorsByIndex.length >= targetCount) {
-                            break;
-                        }
-                        const rgb = typeof col === "string" ? settings.colorAliases[col] : col;
-                        if (rgb) {
-                            const cleanRgb = [Math.floor(rgb[0]), Math.floor(rgb[1]), Math.floor(rgb[2])];
-                            const key = `${cleanRgb[0]},${cleanRgb[1]},${cleanRgb[2]}`;
-                            if (!presentKeys.has(key)) {
-                                presentKeys.add(key);
-                                colormapResult.colorsByIndex.push(cleanRgb);
-                            }
-                        }
-                    }
-                }
-            }
             let facetResult = new facetmanagement_4.FacetResult();
             const buildAndReduceFacets = () => __awaiter(this, void 0, void 0, function* () {
                 // a very speckled image: its tiny areas are merged into their surroundings at once, before the facet reduction
@@ -4602,7 +5154,7 @@ define("core/pipeline", ["require", "exports", "colorreductionmanagement", "face
             });
             report("labelPlacement", 1);
             const colorCodes = settings.colorCodes || {};
-            const colorsByIndex = (0, palette_2.reorderColorsByFamily)(colormapResult.colorsByIndex, colorCodes, facetResult);
+            const colorsByIndex = (0, palette_2.reorderColorsByFamily)(keepUsedColors(colormapResult.colorsByIndex, facetResult), colorCodes, facetResult);
             return {
                 facetResult,
                 colorsByIndex,

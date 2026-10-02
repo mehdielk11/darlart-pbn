@@ -35,7 +35,7 @@ Artwork Worker (called by the form, or Run now), one reference per run:
 
 ## Why the palette is strict
 
-An image model cannot be forced to use exact HEX values (and palette lists in the prompt get painted into the image as swatches), so it paints the reference's own colors. The **Snap to palette** step then measures the painting and repaints every pixel with the 48 distinct Darl'Art colors that represent it best (k-means in Lab, snapped to the palette, refined). "Check palette" stops the run if the result has anything other than 48 valid Darl'Art colors, so a saved artwork is always compliant. Codes 3801 (white) and 3811 (near black) are excluded; change `exclude` in **Settings** to allow them.
+An image model cannot be forced to use exact HEX values (and palette lists in the prompt get painted into the image as swatches), so it paints the reference's own colors. The **Snap to palette** step then measures the painting and repaints every pixel with the 48 distinct Darl'Art colors that represent it best: the picture's whites and blacks are first set to white and black, then the 48 paints that minimise the pixels' color error (CIEDE2000) are chosen, without averaging colors (`src/core/palettematch.ts`). "Check palette" stops the run if the result has anything other than 48 valid Darl'Art colors, so a saved artwork is always compliant. White (3801) and near black (3811) are allowed; `exclude` in **Settings** lists codes never to use (empty by default).
 
 ## Canvas ratio
 

@@ -33,7 +33,7 @@ const palette = JSON.parse(fs.readFileSync(path.join(root, "server/palettes/darl
 // ===== Settings written into the workflows (all editable later in their "Settings" node) =====
 const SETTINGS = {
     colors: 48,
-    exclude: "3801,3811", // pure white and near black are never used in the artwork
+    exclude: "", // paint codes never used in the artwork (comma-separated); white 3801 and near black 3811 are allowed
     paletteId: "darlart-v3",
     pbnApiUrl: "http://127.0.0.1:3000",
     refFolderId: "1iGdgyIplbyQx52QOK1jUcwOuwuYTlWM-", // Drive "Artwork Ref"
@@ -67,7 +67,7 @@ const SETTINGS_WORKER_WORKFLOW_ID = "dO8EdyDM4ua2hRrA"; // "Darl'Art Artwork Wor
 const LOCK_PREFIX = "_artwork-worker.lock";
 const QUEUED_IMAGE = "^\\\\d{4}-\\\\d{2}-\\\\d{2}_\\\\d{2}-\\\\d{2}-\\\\d{2}_\\\\d{2}\\\\.(jpg|png|webp)$"; // <batchId>_<nn>.<ext>
 
-const excluded = new Set(SETTINGS.exclude.split(","));
+const excluded = new Set(SETTINGS.exclude.split(",").map((code) => code.trim()).filter((code) => code));
 const codeToHex = {};
 for (const [hex, value] of Object.entries(palette)) {
     if (!excluded.has(value.code)) {
