@@ -588,3 +588,18 @@ test("tone correction never changes a bright color's hue (a peach stays peach, i
     // the peach keeps its channel ratios (green/red and blue/red as before, within rounding)
     assert.ok(Math.abs(peach[1] / peach[0] - 226 / 255) < 0.03 && Math.abs(peach[2] / peach[0] - 192 / 255) < 0.05, `peach: ${peach}`);
 });
+
+test("palette matching never uses more paints than asked, and exactly N in exact mode (the artwork's Check palette)", { timeout: 120000 }, async () => {
+    const sharp = require("sharp");
+    const { matchToPalette, correctTones } = require(path.join(dist, "src/core/palettematch"));
+    const palette = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8")).restrictions;
+    // sizes and counts that gave one to three paints too many before the fix (a swap left colors on a dropped paint)
+    for (const side of [400, 700, 1024]) {
+        const { data } = await sharp(fs.readFileSync(photoImage)).resize(side, side, { fit: "inside" }).removeAlpha().median(3).raw().toBuffer({ resolveWithObject: true });
+        correctTones(data, 3);
+        for (const n of [12, 24, 36, 48]) {
+            assert.equal(matchToPalette(data, 3, n, palette, { exactCount: true }).paints.length, n, `exact, ${side}px, ${n} colors`);
+            assert.ok(matchToPalette(data, 3, n, palette).paints.length <= n, `template, ${side}px, ${n} colors`);
+        }
+    }
+});

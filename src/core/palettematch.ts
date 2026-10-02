@@ -237,6 +237,9 @@ export function matchToPalette(data: Pixels, channels: number, n: number, palett
                 });
                 if (delta < -1e-6) {
                     improved = true;
+                    // the swap moved colors to other paints: the per-paint lists must follow, or a later swap would
+                    // miss them and leave them on a paint that is no longer chosen (one paint too many)
+                    rebuild();
                     break;
                 }
                 chosen[o] = 0;
@@ -247,6 +250,10 @@ export function matchToPalette(data: Pixels, channels: number, n: number, palett
             }
         }
         if (!improved) { break; }
+    }
+    // never a color on a paint that is not chosen: at most N paints, whatever happened above
+    for (let i = 0; i < B; i++) {
+        if (!chosen[best[i]]) { refresh(i); }
     }
 
     // exact count: with fewer paints than asked (a simple image needs fewer paints), the extra paints go where they
