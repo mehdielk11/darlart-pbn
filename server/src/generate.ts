@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { jsPDF } from "jspdf";
 import { ComplexityMetrics, suggestDifficulty } from "../../src/core/complexity";
 import { PixelBox, printFormatForCanvas, RelativeBox, ResolvedCanvasSize } from "../../src/core/crop";
-import { PaintPot, PaintSettings, planPaints } from "../../src/core/paint";
+import { PaintPot, PaintSettings, planPaintsForSizes } from "../../src/core/paint";
 import { buildPaletteEntries, groupPaletteEntries } from "../../src/core/palette";
 import { buildPaintingPdf, buildPdf, JsPdfConstructor, PaperSize } from "../../src/core/pdf";
 import { PipelineStep, runPipeline } from "../../src/core/pipeline";
@@ -50,10 +50,19 @@ export interface PaletteColorInfo {
     /** Share of the painted area (0-1), useful to estimate paint quantities */
     areaPercentage: number;
     used: boolean;
-    /** Paint bill of materials (src/core/paint.ts): area on the canvas, regions, paint needed and pots to pack */
-    areaCm2: number;
+    /** Regions of this color (the same on every canvas size) */
     regions: number;
-    paintMl: number;
+    /** Paint bill of materials for each canvas size sold ("40x50": area, paint needed, pots to pack; src/core/paint.ts) */
+    paint: { [canvas: string]: { areaCm2: number; ml: number; pots: PaintPot[] } };
+}
+
+/** The kit of one canvas size sold */
+export interface PaintKit {
+    canvas: string;
+    /** False when the size's shape differs from the template's (cropped print, approximate estimate) */
+    sameShape: boolean;
+    totalMl: number;
+    totalPackedMl: number;
     pots: PaintPot[];
 }
 
@@ -70,8 +79,8 @@ export interface GenerateResult {
     colorsUsed: number;
     facets: number;
     palette: { family: string; colors: PaletteColorInfo[] }[];
-    /** The kit: paint needed and pots to pack, by size */
-    paints: { totalMl: number; totalPackedMl: number; pots: PaintPot[]; settings: PaintSettings };
+    /** The kit of each canvas size sold, and the settings of the estimate */
+    paints: { kits: PaintKit[]; settings: PaintSettings };
     files: OutputFile[];
     durationMs: number;
 }
@@ -156,9 +165,10 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     await writeOutput(OUTPUT_FILES.pdf, ".pdf", Buffer.from(doc.output("arraybuffer")));
     report("output", 0.4);
 
-    // Painting guide: colored page with its numbers, the palette, then the paints and pots to pack for this canvas
-    const paintPlan = planPaints(result.facetResult, result.colorsByIndex.length, prepared.canvas, config.paint);
-    const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, paintPlan });
+    // Painting guide: colored page with its numbers, the palette, then the paints and pots to pack for every canvas size
+    // sold (the template is printed at those sizes: same shape, so the same shares of the canvas)
+    const paintPlans = planPaintsForSizes(result.facetResult, result.colorsByIndex.length, prepared.canvas, config.paint);
+    const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, paintPlans });
     await writeOutput(OUTPUT_FILES.paintingPdf, "-painting.pdf", Buffer.from(paintingDoc.output("arraybuffer")));
     report("output", 0.5);
 
@@ -216,11 +226,19 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     }
     const totalPoints = pointsByColor.reduce((sum: number, v: number) => sum + v, 0) || 1;
     const rows = groupPaletteEntries(buildPaletteEntries(result.colorsByIndex, result.colorCodes));
-    const needs = new Map(paintPlan.colors.map((c) => [c.index, c]));
+    const needsBySize = paintPlans.map((plan) => ({ label: plan.label, needs: new Map(plan.colors.map((c) => [c.index, c])) }));
     const palette = rows.map((row) => ({
         family: row.label,
         colors: row.entries.map((entry) => {
-            const need = needs.get(entry.number - 1);
+            const paint: PaletteColorInfo["paint"] = {};
+            let regions = 0;
+            for (const { label, needs } of needsBySize) {
+                const need = needs.get(entry.number - 1);
+                if (need) {
+                    paint[label] = { areaCm2: need.areaCm2, ml: need.ml, pots: need.pots };
+                    regions = need.regions;
+                }
+            }
             return {
                 number: entry.number,
                 hex: entry.hex,
@@ -228,14 +246,15 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
                 rgb: entry.color.slice(0, 3),
                 areaPercentage: pointsByColor[entry.number - 1] / totalPoints,
                 used: pointsByColor[entry.number - 1] > 0,
-                areaCm2: need ? need.areaCm2 : 0,
-                regions: need ? need.regions : 0,
-                paintMl: need ? need.ml : 0,
-                pots: need ? need.pots : [],
+                regions,
+                paint,
             };
         }),
     }));
-    const paints = { totalMl: paintPlan.totalMl, totalPackedMl: paintPlan.totalPackedMl, pots: paintPlan.potsBySize, settings: paintPlan.settings };
+    const paints = {
+        kits: paintPlans.map((plan) => ({ canvas: plan.label, sameShape: plan.sameShape, totalMl: plan.totalMl, totalPackedMl: plan.totalPackedMl, pots: plan.potsBySize })),
+        settings: config.paint,
+    };
     const colorsUsed = pointsByColor.filter((points: number) => points > 0).length;
 
     const resultInfo: GenerateResult = {

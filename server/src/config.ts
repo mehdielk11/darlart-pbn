@@ -28,11 +28,12 @@ export const config = {
     maxImageBytes: int(process.env.MAX_IMAGE_BYTES, 30 * 1024 * 1024),
     /** Sent as the x-callback-secret header so the n8n webhook can check the call comes from this API */
     callbackSecret: process.env.CALLBACK_SECRET || "",
-    /** Paint bill of materials (src/core/paint.ts): coverage in cm² per ml, safety margin, ml per region, pot sizes in ml */
+    /** Paint bill of materials (src/core/paint.ts): coverage in cm² per ml, safety margin, ml per region, pot sizes in ml, canvas sizes sold */
     paint: parsePaintSettings({
         coverage: process.env.PAINT_COVERAGE_CM2_PER_ML,
         margin: process.env.PAINT_MARGIN,
         perRegion: process.env.PAINT_ML_PER_REGION,
         potSizes: process.env.PAINT_POT_SIZES_ML,
+        canvasSizes: process.env.PAINT_CANVAS_SIZES,
     }),
 };

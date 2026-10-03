@@ -348,11 +348,20 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         // numbers follow the family order
         assert.deepEqual(colors.map((c) => c.number), colors.map((_, i) => i + 1));
 
-        // the paint bill of materials: every color has its area, paint and pots, the areas cover the canvas
-        const canvasCm2 = result.canvas.widthCm * result.canvas.heightCm;
-        assert.ok(Math.abs(colors.reduce((sum, c) => sum + c.areaCm2, 0) - canvasCm2) < colors.length * 0.1);
-        assert.ok(colors.every((c) => c.paintMl > 0 && c.pots.length > 0 && c.pots.reduce((ml, p) => ml + p.sizeMl * p.count, 0) >= c.paintMl));
-        assert.ok(result.paints.totalMl > 0 && result.paints.totalPackedMl >= result.paints.totalMl);
+        // the paint bill of materials of every canvas size sold: each color's area, paint and pots, the areas cover
+        // that canvas, a smaller canvas never needs more paint
+        // the sold sizes, turned like the canvas (this photo is landscape: 50x40)
+        const turned = (size) => { const [a, b] = size.split("x").map(Number); return result.canvas.widthCm >= result.canvas.heightCm ? `${Math.max(a, b)}x${Math.min(a, b)}` : `${Math.min(a, b)}x${Math.max(a, b)}`; };
+        assert.deepEqual(result.paints.kits.map((k) => k.canvas), ["40x50", "32x40", "20x25"].map(turned));
+        for (const kit of result.paints.kits) {
+            const [w, h] = kit.canvas.split("x").map(Number);
+            assert.ok(Math.abs(colors.reduce((sum, c) => sum + c.paint[kit.canvas].areaCm2, 0) - w * h) < colors.length * 0.1, kit.canvas);
+            assert.ok(colors.every((c) => c.paint[kit.canvas].ml > 0 && c.paint[kit.canvas].pots.reduce((ml, p) => ml + p.sizeMl * p.count, 0) >= c.paint[kit.canvas].ml));
+            assert.ok(kit.totalMl > 0 && kit.totalPackedMl >= kit.totalMl);
+            // this job's canvas is 30x40 (3:4): the 4:5 sizes sold are flagged as another shape
+            assert.equal(kit.sameShape, false);
+        }
+        assert.ok(result.paints.kits[0].totalMl > result.paints.kits[1].totalMl && result.paints.kits[1].totalMl > result.paints.kits[2].totalMl);
         const saved = JSON.parse(fs.readFileSync(path.join(outputDir, "palette.json"), "utf8"));
         assert.deepEqual(saved.paints, result.paints);
     } finally {
@@ -636,4 +645,21 @@ test("paint plan: pots follow the need, a large color gets several pots, the are
     // 90 ml: four 20 ml pots and a 10 ml one, rather than a fifth 20 ml pot
     assert.deepEqual(plan.colors[0].pots, [{ sizeMl: 20, count: 4 }, { sizeMl: 10, count: 1 }]);
     assert.equal(plan.potsBySize.reduce((n, p) => n + p.count, 0), 5 + 3 + 1);
+});
+
+test("paint plan per canvas size sold: turned like the template, per-region paint scaled, other shapes flagged", () => {
+    const { planPaintsForSizes, planPaints, DEFAULT_PAINT_SETTINGS } = require(path.join(dist, "src/core/paint"));
+    const facetResult = { facets: [{ color: 0, pointCount: 80 }, { color: 1, pointCount: 20 }] };
+    const settings = { ...DEFAULT_PAINT_SETTINGS, canvasSizes: ["40x50", "20x25", "30x40"] };
+    // a portrait 60x75 template: every size is planned portrait
+    const plans = planPaintsForSizes(facetResult, 2, { widthCm: 60, heightCm: 75 }, settings);
+    assert.deepEqual(plans.map((p) => p.label), ["40x50", "20x25", "30x40"]);
+    assert.deepEqual(plans.map((p) => p.sameShape), [true, true, false]);
+    assert.deepEqual(plans[0].colors.map((c) => c.areaCm2), [1600, 400]);
+    // a landscape template turns the sizes too
+    assert.equal(planPaintsForSizes(facetResult, 2, { widthCm: 75, heightCm: 60 }, settings)[0].label, "50x40");
+    // the per-region extra is set for a 40x50 and shrinks with the canvas
+    const perRegion = { coverageCm2PerMl: 1e9, margin: 0, mlPerRegion: 0.5, potSizesMl: [3], canvasSizes: [] };
+    assert.equal(planPaints(facetResult, 2, { widthCm: 40, heightCm: 50 }, perRegion).colors[0].ml, 0.5);
+    assert.equal(planPaints(facetResult, 2, { widthCm: 20, heightCm: 25 }, perRegion).colors[0].ml, 0.1);
 });

@@ -100,7 +100,8 @@ n8n then reaches the API at `http://pbn-api:3000`. Set that address in **Normali
 | `DEFAULT_PALETTE` | `darlart-v3` | Palette used when a job doesn't name one. |
 | `PAINT_COVERAGE_CM2_PER_ML` | `100` | Paint plan (catalog PDF "Paints & pots" page, `palette.json`): cm² one ml of paint covers, all coats included. Calibrate it: paint a 10x10 cm square (100 cm²) the way a customer would and divide 100 by the ml used. |
 | `PAINT_MARGIN` | `0.1` | Safety share added to each color's need (0.1 = +10%). |
-| `PAINT_ML_PER_REGION` | `0.002` | Extra paint per region (brush loading, edges): many small regions use more than one large area of the same size. |
+| `PAINT_ML_PER_REGION` | `0.002` | Extra paint per region on a 40x50 canvas (brush loading, edges), scaled with the canvas area: the regions are the same on every size but smaller on a small canvas. |
+| `PAINT_CANVAS_SIZES` | `40x50,32x40,20x25` | Canvas sizes sold. The template is generated once (60x75) and printed at these sizes; the catalog's "Paints & pots" page and `palette.json` give each size its own paint and pots. A size with another shape than the template (e.g. 30x40) is marked: its print is cropped, the estimate approximate. |
 | `PAINT_POT_SIZES_ML` | `3` | Pot sizes you can pack, in ml (Darl'Art uses 3 ml pots only). With one size, each color gets as many pots as its need takes; with several sizes, the smallest pot that holds the need, and several pots with the same number above the largest. |
 
 Palettes live in `server/palettes/<id>.json` (same format as the website's custom colors). `darlart-v3` is the current paint range (566 colors, 38 families of 15 shades); `darlart-v2` is the previous one (409 colors). Use `"palette": "none"` to take the colors from the photo.

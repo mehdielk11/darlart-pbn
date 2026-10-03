@@ -5,8 +5,7 @@
 import { CancellationToken, IMap, RGB } from "./common";
 import { getColorCode } from "./core/palette";
 import { buildPaintingPdf, buildPdf, JsPdfConstructor, PAPER_SIZES, PaperSize } from "./core/pdf";
-import { PaintPlan, planPaints } from "./core/paint";
-import { parseCanvasSize, resolveCanvasSize } from "./core/crop";
+import { planPaintsForSizes } from "./core/paint";
 import { containBox, coverSource, darkenForSheet, insetBox, MOCKUP_KITS_GLOBAL, MOCKUP_STYLE, MockupBox, MockupTemplate, pickMockupTemplate, sheetGeometry } from "./core/mockup";
 import { buildSettings, Difficulty } from "./core/settings";
 import { buildBlankSvgString, buildFadedSvgString, buildSvgString, FADED_CANVAS_STYLE } from "./core/svg";
@@ -444,14 +443,10 @@ export function buildPaintingPdfDoc(paperSize: string = "a4") {
         return null;
     }
     const size = (PAPER_SIZES.indexOf(paperSize as PaperSize) >= 0 ? paperSize : "a4") as PaperSize;
-    // the paints and pots page, for the canvas size chosen in the crop step ("60x75")
-    let paintPlan: PaintPlan | undefined;
-    const canvasSize = String((window as any).confirmedCanvasSize || "");
-    if (parseCanvasSize(canvasSize)) {
-        const fr = processResult.facetResult;
-        paintPlan = planPaints(fr, processResult.colorsByIndex.length, resolveCanvasSize(canvasSize, "auto", fr.width, fr.height));
-    }
-    return buildPaintingPdf(jspdf.jsPDF as JsPdfConstructor, processResult, { paperSize: size, paintPlan });
+    // the paints and pots page, for every canvas size sold, turned like the image (its pixels give the shape)
+    const fr = processResult.facetResult;
+    const paintPlans = planPaintsForSizes(fr, processResult.colorsByIndex.length, { widthCm: fr.width, heightCm: fr.height });
+    return buildPaintingPdf(jspdf.jsPDF as JsPdfConstructor, processResult, { paperSize: size, paintPlans });
 }
 
 try {
