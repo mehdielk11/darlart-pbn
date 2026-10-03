@@ -337,16 +337,24 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         assert.ok(canvasBrightness > templateBrightness, `canvas.svg (${canvasBrightness}) should be paler than the template (${templateBrightness})`);
         assert.ok(canvasBrightness < 255, "canvas.svg should still be colored");
 
-        // the painting guide: colored template with numbers, then the palette
+        // the painting guide: colored template with numbers, the palette, then the paints and pots to pack
         const painting = fs.readFileSync(path.join(outputDir, "painting.pdf"), "latin1");
         assert.ok(painting.startsWith("%PDF"));
-        assert.equal((painting.match(/\/Type \/Page\b/g) || []).length, 2);
+        assert.equal((painting.match(/\/Type \/Page\b/g) || []).length, 3);
 
         const colors = result.palette.flatMap((row) => row.colors);
         assert.ok(colors.every((c) => /^\d{4}$/.test(c.code)), "every color should have a Darl'Art code");
         assert.ok(result.palette.every((row) => row.family.startsWith("Famille")));
         // numbers follow the family order
         assert.deepEqual(colors.map((c) => c.number), colors.map((_, i) => i + 1));
+
+        // the paint bill of materials: every color has its area, paint and pots, the areas cover the canvas
+        const canvasCm2 = result.canvas.widthCm * result.canvas.heightCm;
+        assert.ok(Math.abs(colors.reduce((sum, c) => sum + c.areaCm2, 0) - canvasCm2) < colors.length * 0.1);
+        assert.ok(colors.every((c) => c.paintMl > 0 && c.pots.length > 0 && c.pots.reduce((ml, p) => ml + p.sizeMl * p.count, 0) >= c.paintMl));
+        assert.ok(result.paints.totalMl > 0 && result.paints.totalPackedMl >= result.paints.totalMl);
+        const saved = JSON.parse(fs.readFileSync(path.join(outputDir, "palette.json"), "utf8"));
+        assert.deepEqual(saved.paints, result.paints);
     } finally {
         fs.rmSync(outputDir, { recursive: true, force: true });
     }
@@ -602,4 +610,30 @@ test("palette matching never uses more paints than asked, and exactly N in exact
             assert.ok(matchToPalette(data, 3, n, palette).paints.length <= n, `template, ${side}px, ${n} colors`);
         }
     }
+});
+
+test("paint plan: pots follow the need, a large color gets several pots, the areas add up to the canvas", () => {
+    const { potsFor, describePots, planPaints, parsePaintSettings, DEFAULT_PAINT_SETTINGS } = require(path.join(dist, "src/core/paint"));
+    const sizes = [3, 5, 10, 20];
+    assert.deepEqual(potsFor(0.4, sizes), [{ sizeMl: 3, count: 1 }]);
+    assert.deepEqual(potsFor(9.5, sizes), [{ sizeMl: 10, count: 1 }]);
+    assert.deepEqual(potsFor(25.1, sizes), [{ sizeMl: 20, count: 1 }, { sizeMl: 10, count: 1 }]);
+    assert.deepEqual(potsFor(39.5, sizes), [{ sizeMl: 20, count: 2 }]);
+    assert.equal(describePots(potsFor(45, sizes)), "2 × 20 ml + 5 ml");
+    // settings from the environment: invalid values keep the defaults
+    const parsed = parsePaintSettings({ coverage: "40", margin: "abc", potSizes: "5, 15,30" });
+    assert.equal(parsed.coverageCm2PerMl, 40);
+    assert.equal(parsed.margin, DEFAULT_PAINT_SETTINGS.margin);
+    assert.deepEqual(parsed.potSizesMl, [5, 15, 30]);
+    // three colors on a 10x10 grid: 60 / 30 / 10 pixels on a 60x75 canvas
+    const facet = (color, pointCount) => ({ color, pointCount });
+    const facetResult = { facets: [facet(0, 50), facet(0, 10), facet(1, 30), facet(2, 10), null] };
+    const plan = planPaints(facetResult, 3, { widthCm: 60, heightCm: 75 }, { coverageCm2PerMl: 30, margin: 0, mlPerRegion: 0, potSizesMl: sizes });
+    assert.deepEqual(plan.colors.map((c) => c.areaCm2), [2700, 1350, 450]);
+    assert.deepEqual(plan.colors.map((c) => c.regions), [2, 1, 1]);
+    assert.deepEqual(plan.colors.map((c) => c.ml), [90, 45, 15]);
+    assert.equal(plan.totalMl, 150);
+    // 90 ml: four 20 ml pots and a 10 ml one, rather than a fifth 20 ml pot
+    assert.deepEqual(plan.colors[0].pots, [{ sizeMl: 20, count: 4 }, { sizeMl: 10, count: 1 }]);
+    assert.equal(plan.potsBySize.reduce((n, p) => n + p.count, 0), 5 + 3 + 1);
 });

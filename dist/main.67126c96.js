@@ -3709,7 +3709,105 @@ define("core/callouts", ["require", "exports", "core/svg"], function (require, e
         return parts.join("");
     }
 });
-define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/callouts"], function (require, exports, palette_1, svg_2, callouts_1) {
+define("core/paint", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.DEFAULT_PAINT_SETTINGS = void 0;
+    exports.parsePaintSettings = parsePaintSettings;
+    exports.potsFor = potsFor;
+    exports.describePots = describePots;
+    exports.planPaints = planPaints;
+    exports.DEFAULT_PAINT_SETTINGS = {
+        coverageCm2PerMl: 35,
+        margin: 0.2,
+        mlPerRegion: 0.01,
+        potSizesMl: [3, 5, 10, 20],
+    };
+    /** Reads the settings from text values (environment variables, request fields); a missing or invalid value keeps the default */
+    function parsePaintSettings(values) {
+        const num = (value, fallback, min) => {
+            const n = Number(value);
+            return value !== undefined && value !== "" && isFinite(n) && n >= min ? n : fallback;
+        };
+        const sizes = (values.potSizes || "").split(/[\s,;]+/).map(Number).filter((n) => isFinite(n) && n > 0);
+        return {
+            coverageCm2PerMl: num(values.coverage, exports.DEFAULT_PAINT_SETTINGS.coverageCm2PerMl, 1),
+            margin: num(values.margin, exports.DEFAULT_PAINT_SETTINGS.margin, 0),
+            mlPerRegion: num(values.perRegion, exports.DEFAULT_PAINT_SETTINGS.mlPerRegion, 0),
+            potSizesMl: sizes.length ? sizes : exports.DEFAULT_PAINT_SETTINGS.potSizesMl.slice(),
+        };
+    }
+    /** The pots for a need: the largest size as many times as needed, then the smallest size that holds the rest */
+    function potsFor(ml, potSizesMl) {
+        const sizes = potSizesMl.filter((s) => s > 0).sort((a, b) => a - b);
+        if (!sizes.length) {
+            return [];
+        }
+        const largest = sizes[sizes.length - 1];
+        const pots = new Map();
+        let rest = ml;
+        while (rest > largest) {
+            pots.set(largest, (pots.get(largest) || 0) + 1);
+            rest -= largest;
+        }
+        const last = sizes.find((s) => s >= rest) || largest;
+        pots.set(last, (pots.get(last) || 0) + 1);
+        return Array.from(pots.entries()).sort((a, b) => b[0] - a[0]).map(([sizeMl, count]) => ({ sizeMl, count }));
+    }
+    /** "20 ml + 10 ml", "2 × 20 ml" */
+    function describePots(pots) {
+        return pots.map((p) => (p.count > 1 ? `${p.count} × ${p.sizeMl} ml` : `${p.sizeMl} ml`)).join(" + ");
+    }
+    function planPaints(facetResult, colorCount, canvas, settings = exports.DEFAULT_PAINT_SETTINGS) {
+        const pixels = new Array(colorCount).fill(0);
+        const regions = new Array(colorCount).fill(0);
+        let total = 0;
+        for (const f of facetResult.facets) {
+            if (f == null || f.color >= colorCount) {
+                continue;
+            }
+            pixels[f.color] += f.pointCount;
+            regions[f.color]++;
+            total += f.pointCount;
+        }
+        const canvasCm2 = canvas.widthCm * canvas.heightCm;
+        // rounded through an integer, so the JSON holds 657.9 and not 657.9000000000001
+        const round = (v, step) => Math.round(v / step) / Math.round(1 / step);
+        const colors = [];
+        for (let index = 0; index < colorCount; index++) {
+            if (pixels[index] === 0) {
+                continue;
+            }
+            const areaCm2 = total > 0 ? canvasCm2 * pixels[index] / total : 0;
+            const ml = areaCm2 / settings.coverageCm2PerMl * (1 + settings.margin) + regions[index] * settings.mlPerRegion;
+            const pots = potsFor(ml, settings.potSizesMl);
+            colors.push({
+                index,
+                areaCm2: round(areaCm2, 0.1),
+                sharePercent: total > 0 ? round(100 * pixels[index] / total, 0.01) : 0,
+                regions: regions[index],
+                ml: round(ml, 0.1),
+                pots,
+                packedMl: pots.reduce((sum, p) => sum + p.sizeMl * p.count, 0),
+            });
+        }
+        const potsBySize = new Map();
+        for (const c of colors) {
+            for (const p of c.pots) {
+                potsBySize.set(p.sizeMl, (potsBySize.get(p.sizeMl) || 0) + p.count);
+            }
+        }
+        return {
+            canvas: { widthCm: canvas.widthCm, heightCm: canvas.heightCm },
+            settings,
+            colors,
+            totalMl: round(colors.reduce((sum, c) => sum + c.ml, 0), 0.1),
+            totalPackedMl: colors.reduce((sum, c) => sum + c.packedMl, 0),
+            potsBySize: Array.from(potsBySize.entries()).sort((a, b) => b[0] - a[0]).map(([sizeMl, count]) => ({ sizeMl, count })),
+        };
+    }
+});
+define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/callouts", "core/paint"], function (require, exports, palette_1, svg_2, callouts_1, paint_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.PAPER_SIZES = void 0;
@@ -3717,6 +3815,7 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
     exports.buildPaintingPdf = buildPaintingPdf;
     exports.addSimpleLegendPages = addSimpleLegendPages;
     exports.addLegendPages = addLegendPages;
+    exports.addPaintPages = addPaintPages;
     exports.PAPER_SIZES = ["a2", "a3", "a4", "a5"];
     const PAGE_MARGIN = 36; // 0.5 inch
     function hexToRgb(hex) {
@@ -3876,6 +3975,9 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
         page.drawColoredTemplate(page.outlineColor);
         page.drawLabels("contrast");
         page.addLegend();
+        if (options.paintPlan) {
+            addPaintPages(page.doc, (0, palette_1.buildPaletteEntries)(template.colorsByIndex, template.colorCodes), options.paintPlan);
+        }
         return page.doc;
     }
     /**
@@ -4052,6 +4154,217 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
             }
             y += line.height + cardGap;
         }
+    }
+    /**
+     * Production page of the paints: for each color its area on the canvas, its regions, the paint it needs and the pots
+     * to pack (src/core/paint.ts), with the kit totals at the top and the assumptions at the bottom.
+     */
+    function addPaintPages(doc, entries, plan) {
+        if (plan.colors.length === 0) {
+            return;
+        }
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const byIndex = new Map(plan.colors.map((c) => [c.index, c]));
+        const rows = entries.filter((e) => byIndex.has(e.number - 1));
+        const potCount = plan.potsBySize.reduce((sum, p) => sum + p.count, 0);
+        const summary = `${plan.canvas.widthCm}x${plan.canvas.heightCm} cm canvas · ${rows.length} colors · ${Math.round(plan.totalMl)} ml needed · ${potCount} pots`;
+        // columns: number, swatch, code, area, regions, need, pots
+        const x = {
+            number: PAGE_MARGIN + 14,
+            swatch: PAGE_MARGIN + 30,
+            code: PAGE_MARGIN + 52,
+            area: PAGE_MARGIN + 162,
+            regions: PAGE_MARGIN + 222,
+            need: PAGE_MARGIN + 275,
+            pots: PAGE_MARGIN + 300,
+        };
+        const rowHeight = 17;
+        const headerRow = (y) => {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor("#6b7280");
+            doc.text("#", x.number, y, { align: "right" });
+            doc.text("Paint", x.code, y);
+            doc.text("Area", x.area, y, { align: "right" });
+            doc.text("Regions", x.regions, y, { align: "right" });
+            doc.text("Need", x.need, y, { align: "right" });
+            doc.text("Pots to pack", x.pots, y);
+            return y + 8;
+        };
+        doc.addPage();
+        let y = drawLegendHeader(doc, "Paints & pots", summary);
+        // the kit at a glance: how many pots of each size
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor("#111827");
+        doc.text("Kit: " + (0, paint_1.describePots)(plan.potsBySize) + `  (${Math.round(plan.totalPackedMl)} ml packed)`, PAGE_MARGIN, y + 4);
+        y = headerRow(y + 24);
+        for (const entry of rows) {
+            if (y + rowHeight > pageHeight - PAGE_MARGIN - 30) {
+                doc.addPage();
+                y = headerRow(PAGE_MARGIN + 10);
+            }
+            const need = byIndex.get(entry.number - 1);
+            const several = need.pots.reduce((sum, p) => sum + p.count, 0) > 1;
+            if (several) {
+                // a color that needs several pots stands out: every one of them carries the same number
+                doc.setFillColor("#fef3c7");
+                doc.rect(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN * 2, rowHeight, "F");
+            }
+            const mid = y + rowHeight / 2;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor("#111827");
+            doc.text(String(entry.number), x.number, mid + 3.5, { align: "right" });
+            doc.setLineWidth(0.5);
+            doc.setDrawColor("#9ca3af");
+            doc.setFillColor(entry.color[0], entry.color[1], entry.color[2]);
+            doc.circle(x.swatch + 7, mid, 6.5, "FD");
+            doc.setFont("helvetica", "normal");
+            doc.text(entry.code || entry.hex, x.code, mid + 3.5);
+            doc.setFontSize(9);
+            doc.setTextColor("#374151");
+            doc.text(`${Math.round(need.areaCm2)} cm²  ${need.sharePercent.toFixed(1)}%`, x.area, mid + 3.5, { align: "right" });
+            doc.text(String(need.regions), x.regions, mid + 3.5, { align: "right" });
+            doc.text(`${need.ml.toFixed(1)} ml`, x.need, mid + 3.5, { align: "right" });
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor("#111827");
+            doc.text((0, paint_1.describePots)(need.pots) + (several ? "  (same number on each)" : ""), x.pots, mid + 3.5);
+            doc.setDrawColor("#f3f4f6");
+            doc.line(PAGE_MARGIN, y + rowHeight, pageWidth - PAGE_MARGIN, y + rowHeight);
+            y += rowHeight;
+        }
+        // the assumptions behind the estimates
+        const s = plan.settings;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor("#6b7280");
+        doc.text(`Estimate: ${s.coverageCm2PerMl} cm² per ml (all coats), +${Math.round(s.margin * 100)}% margin, +${s.mlPerRegion} ml per region. ` +
+            `Pot sizes: ${s.potSizesMl.slice().sort((a, b) => a - b).join(", ")} ml.`, PAGE_MARGIN, pageHeight - PAGE_MARGIN);
+    }
+});
+/**
+ * Canvas sizes and crop geometry shared by the website and the API
+ */
+define("core/crop", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.PRINT_FORMAT_IDS = exports.PRINT_FORMATS = exports.CANVAS_SIZES = void 0;
+    exports.parseCanvasSize = parseCanvasSize;
+    exports.parsePrintFormat = parsePrintFormat;
+    exports.printFormatForCanvas = printFormatForCanvas;
+    exports.resolveCanvasSize = resolveCanvasSize;
+    exports.fitCropToAspect = fitCropToAspect;
+    /** Canvas sizes in cm, as offered in the crop dialog (portrait form; landscape swaps them) */
+    exports.CANVAS_SIZES = ["30x40", "40x50", "50x50", "60x70"];
+    exports.PRINT_FORMATS = [
+        { id: "a4", label: "A4", canvasSize: "21x29.7", widthCm: 21, heightCm: 29.7 },
+        { id: "a3", label: "A3", canvasSize: "29.7x42", widthCm: 29.7, heightCm: 42 },
+        { id: "a2", label: "A2", canvasSize: "42x59.4", widthCm: 42, heightCm: 59.4 },
+    ];
+    exports.PRINT_FORMAT_IDS = exports.PRINT_FORMATS.map((format) => format.id);
+    function parseCanvasSize(size) {
+        const match = (size || "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)$/);
+        if (!match) {
+            return null;
+        }
+        const a = parseFloat(match[1]);
+        const b = parseFloat(match[2]);
+        if (!(a > 0) || !(b > 0)) {
+            return null;
+        }
+        return { a, b };
+    }
+    /** The print format named in a text, e.g. "A3", "Format A4 — 21 × 29,7 cm" */
+    function parsePrintFormat(text) {
+        const match = (text || "").match(/\ba\s*([234])\b/i);
+        if (!match) {
+            return null;
+        }
+        return exports.PRINT_FORMATS.find((format) => format.id === `a${match[1]}`) || null;
+    }
+    /** The print format of a canvas size in either orientation, e.g. "29.7x42" and "42x29.7" are both A3 */
+    function printFormatForCanvas(size) {
+        const parsed = parseCanvasSize(size);
+        if (!parsed) {
+            return null;
+        }
+        const short = Math.min(parsed.a, parsed.b);
+        const long = Math.max(parsed.a, parsed.b);
+        return exports.PRINT_FORMATS.find((format) => Math.abs(format.widthCm - short) < 0.05 && Math.abs(format.heightCm - long) < 0.05) || null;
+    }
+    /**
+     * Resolves the canvas dimensions for a size like "40x50" and an orientation.
+     * "auto" follows the photo: landscape when it's wider than it is tall, portrait otherwise, a square photo
+     * included (same rule as the crop dialog).
+     */
+    function resolveCanvasSize(size, orientation, imageWidth, imageHeight) {
+        const parsed = parseCanvasSize(size);
+        if (!parsed) {
+            throw new Error(`Invalid canvas size "${size}", expected e.g. "40x50"`);
+        }
+        const short = Math.min(parsed.a, parsed.b);
+        const long = Math.max(parsed.a, parsed.b);
+        let resolved;
+        if (short === long) {
+            resolved = "square";
+        }
+        else if (orientation === "auto") {
+            resolved = imageWidth > imageHeight ? "landscape" : "portrait";
+        }
+        else {
+            resolved = orientation;
+        }
+        const widthCm = resolved === "landscape" ? long : short;
+        const heightCm = resolved === "landscape" ? short : long;
+        return { widthCm, heightCm, orientation: resolved, aspect: widthCm / heightCm, label: `${widthCm}x${heightCm}` };
+    }
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    /**
+     * Turns a (possibly imprecise, e.g. AI-proposed) crop box into a valid pixel box with the exact aspect ratio:
+     * keeps the box center, grows the short side to match the aspect, shrinks when it doesn't fit the image and clamps inside the image.
+     * Without a box, the largest centered crop is returned.
+     */
+    function fitCropToAspect(box, aspect, imageWidth, imageHeight) {
+        let cx = imageWidth / 2;
+        let cy = imageHeight / 2;
+        let w = imageWidth;
+        let h = imageHeight;
+        const valid = box && [box.x, box.y, box.w, box.h].every((v) => typeof v === "number" && isFinite(v)) && box.w > 0 && box.h > 0;
+        if (valid && box) {
+            const x = clamp(box.x, 0, 1);
+            const y = clamp(box.y, 0, 1);
+            const bw = clamp(box.w, 0, 1 - x);
+            const bh = clamp(box.h, 0, 1 - y);
+            if (bw > 0 && bh > 0) {
+                w = bw * imageWidth;
+                h = bh * imageHeight;
+                cx = (x + bw / 2) * imageWidth;
+                cy = (y + bh / 2) * imageHeight;
+            }
+        }
+        // grow the short side to the requested aspect
+        if (w / h > aspect) {
+            h = w / aspect;
+        }
+        else {
+            w = h * aspect;
+        }
+        // shrink to fit inside the image
+        if (w > imageWidth) {
+            w = imageWidth;
+            h = w / aspect;
+        }
+        if (h > imageHeight) {
+            h = imageHeight;
+            w = h * aspect;
+        }
+        const width = Math.max(1, Math.round(w));
+        const height = Math.max(1, Math.round(h));
+        const left = Math.round(clamp(cx - width / 2, 0, imageWidth - width));
+        const top = Math.round(clamp(cy - height / 2, 0, imageHeight - height));
+        return { left, top, width, height };
     }
 });
 /**
@@ -5387,7 +5700,7 @@ define("guiprocessmanager", ["require", "exports", "core/pipeline", "core/svg", 
 /**
  * Module that provides function the GUI uses and updates the DOM accordingly
  */
-define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/mockup", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, mockup_1, settings_3, svg_4, guiprocessmanager_1, palettefamilies_2) {
+define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core/paint", "core/crop", "core/mockup", "core/settings", "core/svg", "guiprocessmanager", "palettefamilies"], function (require, exports, common_7, palette_3, pdf_1, paint_2, crop_1, mockup_1, settings_3, svg_4, guiprocessmanager_1, palettefamilies_2) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.time = time;
@@ -5804,7 +6117,14 @@ define("gui", ["require", "exports", "common", "core/palette", "core/pdf", "core
             return null;
         }
         const size = (pdf_1.PAPER_SIZES.indexOf(paperSize) >= 0 ? paperSize : "a4");
-        return (0, pdf_1.buildPaintingPdf)(jspdf.jsPDF, processResult, { paperSize: size });
+        // the paints and pots page, for the canvas size chosen in the crop step ("60x75")
+        let paintPlan;
+        const canvasSize = String(window.confirmedCanvasSize || "");
+        if ((0, crop_1.parseCanvasSize)(canvasSize)) {
+            const fr = processResult.facetResult;
+            paintPlan = (0, paint_2.planPaints)(fr, processResult.colorsByIndex.length, (0, crop_1.resolveCanvasSize)(canvasSize, "auto", fr.width, fr.height));
+        }
+        return (0, pdf_1.buildPaintingPdf)(jspdf.jsPDF, processResult, { paperSize: size, paintPlan });
     }
     try {
         window.downloadSVG = downloadSVG;
@@ -6113,129 +6433,6 @@ define("core/complexity", ["require", "exports"], function (require, exports) {
             difficulty = "medium";
         }
         return { difficulty, metrics };
-    }
-});
-/**
- * Canvas sizes and crop geometry shared by the website and the API
- */
-define("core/crop", ["require", "exports"], function (require, exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PRINT_FORMAT_IDS = exports.PRINT_FORMATS = exports.CANVAS_SIZES = void 0;
-    exports.parseCanvasSize = parseCanvasSize;
-    exports.parsePrintFormat = parsePrintFormat;
-    exports.printFormatForCanvas = printFormatForCanvas;
-    exports.resolveCanvasSize = resolveCanvasSize;
-    exports.fitCropToAspect = fitCropToAspect;
-    /** Canvas sizes in cm, as offered in the crop dialog (portrait form; landscape swaps them) */
-    exports.CANVAS_SIZES = ["30x40", "40x50", "50x50", "60x70"];
-    exports.PRINT_FORMATS = [
-        { id: "a4", label: "A4", canvasSize: "21x29.7", widthCm: 21, heightCm: 29.7 },
-        { id: "a3", label: "A3", canvasSize: "29.7x42", widthCm: 29.7, heightCm: 42 },
-        { id: "a2", label: "A2", canvasSize: "42x59.4", widthCm: 42, heightCm: 59.4 },
-    ];
-    exports.PRINT_FORMAT_IDS = exports.PRINT_FORMATS.map((format) => format.id);
-    function parseCanvasSize(size) {
-        const match = (size || "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)$/);
-        if (!match) {
-            return null;
-        }
-        const a = parseFloat(match[1]);
-        const b = parseFloat(match[2]);
-        if (!(a > 0) || !(b > 0)) {
-            return null;
-        }
-        return { a, b };
-    }
-    /** The print format named in a text, e.g. "A3", "Format A4 — 21 × 29,7 cm" */
-    function parsePrintFormat(text) {
-        const match = (text || "").match(/\ba\s*([234])\b/i);
-        if (!match) {
-            return null;
-        }
-        return exports.PRINT_FORMATS.find((format) => format.id === `a${match[1]}`) || null;
-    }
-    /** The print format of a canvas size in either orientation, e.g. "29.7x42" and "42x29.7" are both A3 */
-    function printFormatForCanvas(size) {
-        const parsed = parseCanvasSize(size);
-        if (!parsed) {
-            return null;
-        }
-        const short = Math.min(parsed.a, parsed.b);
-        const long = Math.max(parsed.a, parsed.b);
-        return exports.PRINT_FORMATS.find((format) => Math.abs(format.widthCm - short) < 0.05 && Math.abs(format.heightCm - long) < 0.05) || null;
-    }
-    /**
-     * Resolves the canvas dimensions for a size like "40x50" and an orientation.
-     * "auto" follows the photo: landscape when it's wider than it is tall, portrait otherwise, a square photo
-     * included (same rule as the crop dialog).
-     */
-    function resolveCanvasSize(size, orientation, imageWidth, imageHeight) {
-        const parsed = parseCanvasSize(size);
-        if (!parsed) {
-            throw new Error(`Invalid canvas size "${size}", expected e.g. "40x50"`);
-        }
-        const short = Math.min(parsed.a, parsed.b);
-        const long = Math.max(parsed.a, parsed.b);
-        let resolved;
-        if (short === long) {
-            resolved = "square";
-        }
-        else if (orientation === "auto") {
-            resolved = imageWidth > imageHeight ? "landscape" : "portrait";
-        }
-        else {
-            resolved = orientation;
-        }
-        const widthCm = resolved === "landscape" ? long : short;
-        const heightCm = resolved === "landscape" ? short : long;
-        return { widthCm, heightCm, orientation: resolved, aspect: widthCm / heightCm, label: `${widthCm}x${heightCm}` };
-    }
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    /**
-     * Turns a (possibly imprecise, e.g. AI-proposed) crop box into a valid pixel box with the exact aspect ratio:
-     * keeps the box center, grows the short side to match the aspect, shrinks when it doesn't fit the image and clamps inside the image.
-     * Without a box, the largest centered crop is returned.
-     */
-    function fitCropToAspect(box, aspect, imageWidth, imageHeight) {
-        let cx = imageWidth / 2;
-        let cy = imageHeight / 2;
-        let w = imageWidth;
-        let h = imageHeight;
-        const valid = box && [box.x, box.y, box.w, box.h].every((v) => typeof v === "number" && isFinite(v)) && box.w > 0 && box.h > 0;
-        if (valid && box) {
-            const x = clamp(box.x, 0, 1);
-            const y = clamp(box.y, 0, 1);
-            const bw = clamp(box.w, 0, 1 - x);
-            const bh = clamp(box.h, 0, 1 - y);
-            if (bw > 0 && bh > 0) {
-                w = bw * imageWidth;
-                h = bh * imageHeight;
-                cx = (x + bw / 2) * imageWidth;
-                cy = (y + bh / 2) * imageHeight;
-            }
-        }
-        // grow the short side to the requested aspect
-        if (w / h > aspect) {
-            h = w / aspect;
-        }
-        else {
-            w = h * aspect;
-        }
-        // shrink to fit inside the image
-        if (w > imageWidth) {
-            w = imageWidth;
-            h = w / aspect;
-        }
-        if (h > imageHeight) {
-            h = imageHeight;
-            w = h * aspect;
-        }
-        const width = Math.max(1, Math.round(w));
-        const height = Math.max(1, Math.round(h));
-        const left = Math.round(clamp(cx - width / 2, 0, imageWidth - width));
-        const top = Math.round(clamp(cy - height / 2, 0, imageHeight - height));
-        return { left, top, width, height };
     }
 });
 

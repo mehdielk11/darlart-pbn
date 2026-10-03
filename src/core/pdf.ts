@@ -4,7 +4,7 @@
  *
  * buildPdf (the customer's "User PDF"): page 1 the finished painting (colors only), page 2 the painted template
  * (colors, outlines and numbers), page 3 the blank template with callouts, page 4+ the legend: numbers and colors only
- * buildPaintingPdf: page 1 colored with numbers, page 2 palette
+ * buildPaintingPdf: page 1 colored with numbers, page 2 palette, then (with a paint plan) the paints and pots to pack
  *
  * jsPDF is passed in (window.jspdf.jsPDF in the browser, require("jspdf").jsPDF in Node).
  */
@@ -13,6 +13,7 @@ import { FacetResult } from "../facetmanagement";
 import { buildPaletteEntries, groupPaletteEntries, PaletteEntry, PaletteRow } from "./palette";
 import { getFacetOutline, getLabelFontSize, labelColorFor } from "./svg";
 import { computeLabelLayout, DIGIT_BASELINE_OFFSET } from "./callouts";
+import { describePots, PaintNeed, PaintPlan } from "./paint";
 
 export type PaperSize = "a2" | "a3" | "a4" | "a5";
 export const PAPER_SIZES: PaperSize[] = ["a2", "a3", "a4", "a5"];
@@ -36,6 +37,8 @@ export interface PdfOptions {
     /** Borders of the painting guide's colored page: grey, so they guide without cutting up the artwork */
     outlineColor?: string;
     legendTitle?: string;
+    /** Painting guide only: adds the production page of the paints and pots (src/core/paint.ts) */
+    paintPlan?: PaintPlan;
 }
 
 const PAGE_MARGIN = 36; // 0.5 inch
@@ -205,6 +208,9 @@ export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate,
     page.drawColoredTemplate(page.outlineColor);
     page.drawLabels("contrast");
     page.addLegend();
+    if (options.paintPlan) {
+        addPaintPages(page.doc, buildPaletteEntries(template.colorsByIndex, template.colorCodes), options.paintPlan);
+    }
     return page.doc;
 }
 
@@ -396,4 +402,95 @@ export function addLegendPages(doc: any, rows: PaletteRow[], title: string) {
         }
         y += line.height + cardGap;
     }
+}
+
+/**
+ * Production page of the paints: for each color its area on the canvas, its regions, the paint it needs and the pots
+ * to pack (src/core/paint.ts), with the kit totals at the top and the assumptions at the bottom.
+ */
+export function addPaintPages(doc: any, entries: PaletteEntry[], plan: PaintPlan) {
+    if (plan.colors.length === 0) { return; }
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const byIndex = new Map<number, PaintNeed>(plan.colors.map((c) => [c.index, c]));
+    const rows = entries.filter((e) => byIndex.has(e.number - 1));
+    const potCount = plan.potsBySize.reduce((sum, p) => sum + p.count, 0);
+    const summary = `${plan.canvas.widthCm}x${plan.canvas.heightCm} cm canvas · ${rows.length} colors · ${Math.round(plan.totalMl)} ml needed · ${potCount} pots`;
+
+    // columns: number, swatch, code, area, regions, need, pots
+    const x = {
+        number: PAGE_MARGIN + 14,
+        swatch: PAGE_MARGIN + 30,
+        code: PAGE_MARGIN + 52,
+        area: PAGE_MARGIN + 162,
+        regions: PAGE_MARGIN + 222,
+        need: PAGE_MARGIN + 275,
+        pots: PAGE_MARGIN + 300,
+    };
+    const rowHeight = 17;
+    const headerRow = (y: number) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor("#6b7280");
+        doc.text("#", x.number, y, { align: "right" });
+        doc.text("Paint", x.code, y);
+        doc.text("Area", x.area, y, { align: "right" });
+        doc.text("Regions", x.regions, y, { align: "right" });
+        doc.text("Need", x.need, y, { align: "right" });
+        doc.text("Pots to pack", x.pots, y);
+        return y + 8;
+    };
+
+    doc.addPage();
+    let y = drawLegendHeader(doc, "Paints & pots", summary);
+    // the kit at a glance: how many pots of each size
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor("#111827");
+    doc.text("Kit: " + describePots(plan.potsBySize) + `  (${Math.round(plan.totalPackedMl)} ml packed)`, PAGE_MARGIN, y + 4);
+    y = headerRow(y + 24);
+
+    for (const entry of rows) {
+        if (y + rowHeight > pageHeight - PAGE_MARGIN - 30) {
+            doc.addPage();
+            y = headerRow(PAGE_MARGIN + 10);
+        }
+        const need = byIndex.get(entry.number - 1)!;
+        const several = need.pots.reduce((sum, p) => sum + p.count, 0) > 1;
+        if (several) {
+            // a color that needs several pots stands out: every one of them carries the same number
+            doc.setFillColor("#fef3c7");
+            doc.rect(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN * 2, rowHeight, "F");
+        }
+        const mid = y + rowHeight / 2;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor("#111827");
+        doc.text(String(entry.number), x.number, mid + 3.5, { align: "right" });
+        doc.setLineWidth(0.5);
+        doc.setDrawColor("#9ca3af");
+        doc.setFillColor(entry.color[0], entry.color[1], entry.color[2]);
+        doc.circle(x.swatch + 7, mid, 6.5, "FD");
+        doc.setFont("helvetica", "normal");
+        doc.text(entry.code || entry.hex, x.code, mid + 3.5);
+        doc.setFontSize(9);
+        doc.setTextColor("#374151");
+        doc.text(`${Math.round(need.areaCm2)} cm²  ${need.sharePercent.toFixed(1)}%`, x.area, mid + 3.5, { align: "right" });
+        doc.text(String(need.regions), x.regions, mid + 3.5, { align: "right" });
+        doc.text(`${need.ml.toFixed(1)} ml`, x.need, mid + 3.5, { align: "right" });
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor("#111827");
+        doc.text(describePots(need.pots) + (several ? "  (same number on each)" : ""), x.pots, mid + 3.5);
+        doc.setDrawColor("#f3f4f6");
+        doc.line(PAGE_MARGIN, y + rowHeight, pageWidth - PAGE_MARGIN, y + rowHeight);
+        y += rowHeight;
+    }
+
+    // the assumptions behind the estimates
+    const s = plan.settings;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor("#6b7280");
+    doc.text(`Estimate: ${s.coverageCm2PerMl} cm² per ml (all coats), +${Math.round(s.margin * 100)}% margin, +${s.mlPerRegion} ml per region. ` +
+        `Pot sizes: ${s.potSizesMl.slice().sort((a, b) => a - b).join(", ")} ml.`, PAGE_MARGIN, pageHeight - PAGE_MARGIN);
 }

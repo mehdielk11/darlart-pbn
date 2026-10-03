@@ -98,6 +98,10 @@ n8n then reaches the API at `http://pbn-api:3000`. Set that address in **Normali
 | `MAX_IMAGE_BYTES` | 30 MB | Largest photo accepted. |
 | `DATA_DIR` | `./data` | Job files. |
 | `DEFAULT_PALETTE` | `darlart-v3` | Palette used when a job doesn't name one. |
+| `PAINT_COVERAGE_CM2_PER_ML` | `35` | Paint plan (catalog PDF "Paints & pots" page, `palette.json`): cm² one ml of paint covers, all coats included. Calibrate it: paint a 10x10 cm square (100 cm²) the way a customer would and divide 100 by the ml used. |
+| `PAINT_MARGIN` | `0.2` | Safety share added to each color's need (0.2 = +20%). |
+| `PAINT_ML_PER_REGION` | `0.01` | Extra paint per region (brush loading, edges): many small regions use more than one large area of the same size. |
+| `PAINT_POT_SIZES_ML` | `3,5,10,20` | Pot sizes you can pack, in ml. Each color gets the smallest pot that holds its need; above the largest size, several pots with the same number. |
 
 Palettes live in `server/palettes/<id>.json` (same format as the website's custom colors). `darlart-v3` is the current paint range (566 colors, 38 families of 15 shades); `darlart-v2` is the previous one (409 colors). Use `"palette": "none"` to take the colors from the photo.
 
