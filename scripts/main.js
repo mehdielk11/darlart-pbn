@@ -3718,10 +3718,10 @@ define("core/paint", ["require", "exports"], function (require, exports) {
     exports.describePots = describePots;
     exports.planPaints = planPaints;
     exports.DEFAULT_PAINT_SETTINGS = {
-        coverageCm2PerMl: 35,
-        margin: 0.2,
-        mlPerRegion: 0.01,
-        potSizesMl: [3, 5, 10, 20],
+        coverageCm2PerMl: 100,
+        margin: 0.1,
+        mlPerRegion: 0.002,
+        potSizesMl: [3],
     };
     /** Reads the settings from text values (environment variables, request fields); a missing or invalid value keeps the default */
     function parsePaintSettings(values) {
@@ -4199,16 +4199,20 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
         doc.setFontSize(10);
         doc.setTextColor("#111827");
         doc.text("Kit: " + (0, paint_1.describePots)(plan.potsBySize) + `  (${Math.round(plan.totalPackedMl)} ml packed)`, PAGE_MARGIN, y + 4);
-        y = headerRow(y + 24);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor("#6b7280");
+        doc.text("A color with several pots: every pot carries that color's number. Highlighted: the large colors (more than 3 pots).", PAGE_MARGIN, y + 16);
+        y = headerRow(y + 34);
         for (const entry of rows) {
             if (y + rowHeight > pageHeight - PAGE_MARGIN - 30) {
                 doc.addPage();
                 y = headerRow(PAGE_MARGIN + 10);
             }
             const need = byIndex.get(entry.number - 1);
-            const several = need.pots.reduce((sum, p) => sum + p.count, 0) > 1;
-            if (several) {
-                // a color that needs several pots stands out: every one of them carries the same number
+            const large = need.pots.reduce((sum, p) => sum + p.count, 0) > 3;
+            if (large) {
+                // the large colors stand out: the packer checks them twice
                 doc.setFillColor("#fef3c7");
                 doc.rect(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN * 2, rowHeight, "F");
             }
@@ -4230,7 +4234,7 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
             doc.text(`${need.ml.toFixed(1)} ml`, x.need, mid + 3.5, { align: "right" });
             doc.setFont("helvetica", "bold");
             doc.setTextColor("#111827");
-            doc.text((0, paint_1.describePots)(need.pots) + (several ? "  (same number on each)" : ""), x.pots, mid + 3.5);
+            doc.text((0, paint_1.describePots)(need.pots), x.pots, mid + 3.5);
             doc.setDrawColor("#f3f4f6");
             doc.line(PAGE_MARGIN, y + rowHeight, pageWidth - PAGE_MARGIN, y + rowHeight);
             y += rowHeight;

@@ -4,7 +4,9 @@
  * background) and is mostly wasted on a tiny one: the pots follow the actual need instead.
  *
  * need (ml) = area / coverage x (1 + margin) + regions x ml per region
- * - coverage: cm² one ml of paint covers with the coats a painting needs (two over the printed lines)
+ * - coverage: cm² one ml of paint covers with the coats a painting needs. A thin brushed paint-by-numbers layer is
+ *   far thinner than wall paint: commercial kits cover the largest color of a 40x50 canvas (300-400 cm²) with one
+ *   3 ml pot, i.e. at least ~100 cm² per ml
  * - margin: a safety share on top, the customer must never run short
  * - per region: every small region costs a little extra paint (loading the brush, edges)
  * The pots are the smallest size that holds the need; above the largest size, several pots of the same number.
@@ -12,21 +14,21 @@
 import { FacetResult } from "../facetmanagement";
 
 export interface PaintSettings {
-    /** cm² covered by 1 ml of paint, all coats included (default 35, to be calibrated with the real paint) */
+    /** cm² covered by 1 ml of paint, all coats included (default 100, to be calibrated with the real paint) */
     coverageCm2PerMl: number;
-    /** Safety margin on top of the need (default 0.2: 20%) */
+    /** Safety margin on top of the need (default 0.1: 10%) */
     margin: number;
-    /** Extra paint per region (default 0.01 ml) */
+    /** Extra paint per region (default 0.002 ml: a color's regions are painted in one go, the brush is loaded once per dip) */
     mlPerRegion: number;
-    /** Pot sizes that can be packed, in ml (default 3, 5, 10, 20) */
+    /** Pot sizes that can be packed, in ml (default 3: Darl'Art kits use 3 ml pots only) */
     potSizesMl: number[];
 }
 
 export const DEFAULT_PAINT_SETTINGS: PaintSettings = {
-    coverageCm2PerMl: 35,
-    margin: 0.2,
-    mlPerRegion: 0.01,
-    potSizesMl: [3, 5, 10, 20],
+    coverageCm2PerMl: 100,
+    margin: 0.1,
+    mlPerRegion: 0.002,
+    potSizesMl: [3],
 };
 
 export interface PaintPot {
