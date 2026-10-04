@@ -10,7 +10,8 @@
  * - margin: a safety share on top, the customer must never run short
  * - per region: every small region costs a little extra paint (loading the brush, edges); the regions are the same on
  *   every canvas size but smaller on a small canvas, so this extra scales with the canvas area (set for a 40x50)
- * The pots are the smallest size that holds the need; above the largest size, several pots of the same number.
+ * The pots are the combination that holds the need with the least surplus; above the largest size, several pots of
+ * the same number.
  *
  * One template serves every canvas size sold (it is generated at 60x75 and printed at 40x50, 32x40, 20x25: the same
  * 4:5 shape), so each color's share of the canvas is the same on all of them: planPaintsForSizes gives each size its
@@ -26,7 +27,7 @@ export interface PaintSettings {
     /** Extra paint per region on a 40x50 canvas, scaled with the canvas area (default 0.002 ml: a color's regions
      *  are painted in one go, the brush is loaded once per dip) */
     mlPerRegion: number;
-    /** Pot sizes that can be packed, in ml (default 3: Darl'Art kits use 3 ml pots only) */
+    /** Pot sizes that can be packed, in ml (default 2: Darl'Art kits use 2 ml pots only, several pots of the same number above 2 ml) */
     potSizesMl: number[];
     /** Canvas sizes sold, orientation-neutral (default 40x50, 32x40, 20x25): the paints page gives the pots for each */
     canvasSizes: string[];
@@ -39,7 +40,7 @@ export const DEFAULT_PAINT_SETTINGS: PaintSettings = {
     coverageCm2PerMl: 100,
     margin: 0.1,
     mlPerRegion: 0.002,
-    potSizesMl: [3],
+    potSizesMl: [2],
     canvasSizes: ["40x50", "32x40", "20x25"],
 };
 
@@ -105,20 +106,34 @@ function parseSize(size: string): [number, number] | null {
     return a > 0 && b > 0 ? [a, b] : null;
 }
 
-/** The pots for a need: the largest size as many times as needed, then the smallest size that holds the rest */
+/**
+ * The pots for a need: the combination of sizes that holds it with the least paint packed, then the fewest pots
+ * (3.7 ml with 2, 2.5 and 3 ml pots: 2 × 2 ml, not 3 + 2 ml)
+ */
 export function potsFor(ml: number, potSizesMl: number[]): PaintPot[] {
-    const sizes = potSizesMl.filter((s) => s > 0).sort((a, b) => a - b);
+    // in tenths of a ml, so 2.5 ml pots add up exactly
+    const sizes = Array.from(new Set(potSizesMl.filter((s) => s > 0).map((s) => Math.max(1, Math.round(s * 10))))).sort((a, b) => a - b);
     if (!sizes.length) { return []; }
     const largest = sizes[sizes.length - 1];
-    const pots = new Map<number, number>();
-    let rest = ml;
-    while (rest > largest) {
-        pots.set(largest, (pots.get(largest) || 0) + 1);
-        rest -= largest;
+    const need = Math.max(1, Math.ceil(ml * 10 - 1e-6));
+    // fewest pots to pack exactly t tenths, for every t up to the need plus one largest pot
+    const limit = need + largest;
+    const potCount = new Array(limit + 1).fill(Infinity);
+    const lastPot = new Array(limit + 1).fill(0);
+    potCount[0] = 0;
+    for (let t = 1; t <= limit; t++) {
+        for (const s of sizes) {
+            if (s <= t && potCount[t - s] + 1 < potCount[t]) {
+                potCount[t] = potCount[t - s] + 1;
+                lastPot[t] = s;
+            }
+        }
     }
-    const last = sizes.find((s) => s >= rest) || largest;
-    pots.set(last, (pots.get(last) || 0) + 1);
-    return Array.from(pots.entries()).sort((a, b) => b[0] - a[0]).map(([sizeMl, count]) => ({ sizeMl, count }));
+    let t = need;
+    while (potCount[t] === Infinity) { t++; }
+    const pots = new Map<number, number>();
+    for (; t > 0; t -= lastPot[t]) { pots.set(lastPot[t], (pots.get(lastPot[t]) || 0) + 1); }
+    return Array.from(pots.entries()).sort((a, b) => b[0] - a[0]).map(([tenths, count]) => ({ sizeMl: tenths / 10, count }));
 }
 
 /** "20 ml + 10 ml", "2 × 20 ml" */

@@ -3724,7 +3724,7 @@ define("core/paint", ["require", "exports"], function (require, exports) {
         coverageCm2PerMl: 100,
         margin: 0.1,
         mlPerRegion: 0.002,
-        potSizesMl: [3],
+        potSizesMl: [2],
         canvasSizes: ["40x50", "32x40", "20x25"],
     };
     /** Reads the settings from text values (environment variables, request fields); a missing or invalid value keeps the default */
@@ -3754,22 +3754,40 @@ define("core/paint", ["require", "exports"], function (require, exports) {
         const b = Number(m[2]);
         return a > 0 && b > 0 ? [a, b] : null;
     }
-    /** The pots for a need: the largest size as many times as needed, then the smallest size that holds the rest */
+    /**
+     * The pots for a need: the combination of sizes that holds it with the least paint packed, then the fewest pots
+     * (3.7 ml with 2, 2.5 and 3 ml pots: 2 × 2 ml, not 3 + 2 ml)
+     */
     function potsFor(ml, potSizesMl) {
-        const sizes = potSizesMl.filter((s) => s > 0).sort((a, b) => a - b);
+        // in tenths of a ml, so 2.5 ml pots add up exactly
+        const sizes = Array.from(new Set(potSizesMl.filter((s) => s > 0).map((s) => Math.max(1, Math.round(s * 10))))).sort((a, b) => a - b);
         if (!sizes.length) {
             return [];
         }
         const largest = sizes[sizes.length - 1];
-        const pots = new Map();
-        let rest = ml;
-        while (rest > largest) {
-            pots.set(largest, (pots.get(largest) || 0) + 1);
-            rest -= largest;
+        const need = Math.max(1, Math.ceil(ml * 10 - 1e-6));
+        // fewest pots to pack exactly t tenths, for every t up to the need plus one largest pot
+        const limit = need + largest;
+        const potCount = new Array(limit + 1).fill(Infinity);
+        const lastPot = new Array(limit + 1).fill(0);
+        potCount[0] = 0;
+        for (let t = 1; t <= limit; t++) {
+            for (const s of sizes) {
+                if (s <= t && potCount[t - s] + 1 < potCount[t]) {
+                    potCount[t] = potCount[t - s] + 1;
+                    lastPot[t] = s;
+                }
+            }
         }
-        const last = sizes.find((s) => s >= rest) || largest;
-        pots.set(last, (pots.get(last) || 0) + 1);
-        return Array.from(pots.entries()).sort((a, b) => b[0] - a[0]).map(([sizeMl, count]) => ({ sizeMl, count }));
+        let t = need;
+        while (potCount[t] === Infinity) {
+            t++;
+        }
+        const pots = new Map();
+        for (; t > 0; t -= lastPot[t]) {
+            pots.set(lastPot[t], (pots.get(lastPot[t]) || 0) + 1);
+        }
+        return Array.from(pots.entries()).sort((a, b) => b[0] - a[0]).map(([tenths, count]) => ({ sizeMl: tenths / 10, count }));
     }
     /** "20 ml + 10 ml", "2 × 20 ml" */
     function describePots(pots) {

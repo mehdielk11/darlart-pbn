@@ -626,9 +626,22 @@ test("paint plan: pots follow the need, a large color gets several pots, the are
     const sizes = [3, 5, 10, 20];
     assert.deepEqual(potsFor(0.4, sizes), [{ sizeMl: 3, count: 1 }]);
     assert.deepEqual(potsFor(9.5, sizes), [{ sizeMl: 10, count: 1 }]);
-    assert.deepEqual(potsFor(25.1, sizes), [{ sizeMl: 20, count: 1 }, { sizeMl: 10, count: 1 }]);
+    // least paint packed (26 ml, not 20 + 10 ml), then the fewest pots
+    assert.deepEqual(potsFor(25.1, sizes), [{ sizeMl: 20, count: 1 }, { sizeMl: 3, count: 2 }]);
     assert.deepEqual(potsFor(39.5, sizes), [{ sizeMl: 20, count: 2 }]);
     assert.equal(describePots(potsFor(45, sizes)), "2 × 20 ml + 5 ml");
+    // the default: 2 ml pots only
+    assert.deepEqual(DEFAULT_PAINT_SETTINGS.potSizesMl, [2]);
+    assert.deepEqual(potsFor(0.3, [2]), [{ sizeMl: 2, count: 1 }]);
+    assert.deepEqual(potsFor(4.1, [2]), [{ sizeMl: 2, count: 3 }]);
+    // mixed sizes, if ever set
+    const small = [2, 2.5, 3];
+    assert.deepEqual(potsFor(0.3, small), [{ sizeMl: 2, count: 1 }]);
+    assert.deepEqual(potsFor(2.2, small), [{ sizeMl: 2.5, count: 1 }]);
+    assert.deepEqual(potsFor(3, small), [{ sizeMl: 3, count: 1 }]);
+    assert.deepEqual(potsFor(3.7, small), [{ sizeMl: 2, count: 2 }]);
+    assert.deepEqual(potsFor(4.3, small), [{ sizeMl: 2.5, count: 1 }, { sizeMl: 2, count: 1 }]);
+    assert.deepEqual(potsFor(8.9, small), [{ sizeMl: 3, count: 3 }]);
     // settings from the environment: invalid values keep the defaults
     const parsed = parsePaintSettings({ coverage: "40", margin: "abc", potSizes: "5, 15,30" });
     assert.equal(parsed.coverageCm2PerMl, 40);
@@ -644,7 +657,9 @@ test("paint plan: pots follow the need, a large color gets several pots, the are
     assert.equal(plan.totalMl, 150);
     // 90 ml: four 20 ml pots and a 10 ml one, rather than a fifth 20 ml pot
     assert.deepEqual(plan.colors[0].pots, [{ sizeMl: 20, count: 4 }, { sizeMl: 10, count: 1 }]);
-    assert.equal(plan.potsBySize.reduce((n, p) => n + p.count, 0), 5 + 3 + 1);
+    // 15 ml: 10 + 5 ml, not a 20 ml pot
+    assert.deepEqual(plan.colors[2].pots, [{ sizeMl: 10, count: 1 }, { sizeMl: 5, count: 1 }]);
+    assert.equal(plan.potsBySize.reduce((n, p) => n + p.count, 0), 5 + 3 + 2);
 });
 
 test("paint plan per canvas size sold: turned like the template, per-region paint scaled, other shapes flagged", () => {
