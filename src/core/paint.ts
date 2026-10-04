@@ -27,7 +27,7 @@ export interface PaintSettings {
     /** Extra paint per region on a 40x50 canvas, scaled with the canvas area (default 0.002 ml: a color's regions
      *  are painted in one go, the brush is loaded once per dip) */
     mlPerRegion: number;
-    /** Pot sizes that can be packed, in ml (default 2: Darl'Art kits use 2 ml pots only, several pots of the same number above 2 ml) */
+    /** Pot sizes that can be packed, in ml (default 1.5: Darl'Art kits use 1.5 ml pots only, several pots of the same number above 1.5 ml) */
     potSizesMl: number[];
     /** Canvas sizes sold, orientation-neutral (default 40x50, 32x40, 20x25): the paints page gives the pots for each */
     canvasSizes: string[];
@@ -40,7 +40,7 @@ export const DEFAULT_PAINT_SETTINGS: PaintSettings = {
     coverageCm2PerMl: 100,
     margin: 0.1,
     mlPerRegion: 0.002,
-    potSizesMl: [2],
+    potSizesMl: [1.5],
     canvasSizes: ["40x50", "32x40", "20x25"],
 };
 

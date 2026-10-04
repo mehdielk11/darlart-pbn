@@ -3724,7 +3724,7 @@ define("core/paint", ["require", "exports"], function (require, exports) {
         coverageCm2PerMl: 100,
         margin: 0.1,
         mlPerRegion: 0.002,
-        potSizesMl: [2],
+        potSizesMl: [1.5],
         canvasSizes: ["40x50", "32x40", "20x25"],
     };
     /** Reads the settings from text values (environment variables, request fields); a missing or invalid value keeps the default */
