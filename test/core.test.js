@@ -341,6 +341,11 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         const painting = fs.readFileSync(path.join(outputDir, "painting.pdf"), "latin1");
         assert.ok(painting.startsWith("%PDF"));
         assert.equal((painting.match(/\/Type \/Page\b/g) || []).length, 3);
+        // the file's reference (order or product folder + color count) at the bottom of every page of both PDFs
+        const pageText = (file) => [...file.matchAll(/stream\r?\n([\s\S]*?)endstream/g)]
+            .map((m) => { try { return require("zlib").inflateSync(Buffer.from(m[1], "latin1")).toString("latin1"); } catch (e) { return m[1]; } }).join("\n");
+        assert.equal((pageText(painting).match(/\(#1001_12\) Tj/g) || []).length, 3);
+        assert.equal((pageText(pdf).match(/\(#1001_12\) Tj/g) || []).length, pages);
 
         const colors = result.palette.flatMap((row) => row.colors);
         assert.ok(colors.every((c) => /^\d{4}$/.test(c.code)), "every color should have a Darl'Art code");

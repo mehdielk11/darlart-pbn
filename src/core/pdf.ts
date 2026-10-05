@@ -39,6 +39,8 @@ export interface PdfOptions {
     legendTitle?: string;
     /** Painting guide only: adds the production page of the paints and pots, one plan per canvas size sold (src/core/paint.ts) */
     paintPlans?: PaintPlan[];
+    /** The file's reference (the product folder and the color count, "1097_36"), printed at the bottom of every page */
+    reference?: string;
 }
 
 const PAGE_MARGIN = 36; // 0.5 inch
@@ -195,6 +197,7 @@ export function buildPdf(JsPDF: JsPdfConstructor, template: PdfTemplate, options
     page.doc.addPage();
     page.drawCalloutTemplate();
     page.addLegend(true);
+    addReference(page.doc, options.reference);
     return page.doc;
 }
 
@@ -211,7 +214,22 @@ export function buildPaintingPdf(JsPDF: JsPdfConstructor, template: PdfTemplate,
     if (options.paintPlans && options.paintPlans.length) {
         addPaintPages(page.doc, buildPaletteEntries(template.colorsByIndex, template.colorCodes), options.paintPlans);
     }
+    addReference(page.doc, options.reference);
     return page.doc;
+}
+
+/** The reference at the bottom center of every page, in the margin below the content */
+function addReference(doc: any, reference: string | undefined) {
+    if (!reference) { return; }
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+        doc.setPage(i);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor("#6b7280");
+        doc.text(reference, pageWidth / 2, pageHeight - PAGE_MARGIN / 2, { align: "center", baseline: "middle" });
+    }
 }
 
 /**

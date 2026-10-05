@@ -4022,6 +4022,7 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
         page.doc.addPage();
         page.drawCalloutTemplate();
         page.addLegend(true);
+        addReference(page.doc, options.reference);
         return page.doc;
     }
     /**
@@ -4037,7 +4038,23 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
         if (options.paintPlans && options.paintPlans.length) {
             addPaintPages(page.doc, (0, palette_1.buildPaletteEntries)(template.colorsByIndex, template.colorCodes), options.paintPlans);
         }
+        addReference(page.doc, options.reference);
         return page.doc;
+    }
+    /** The reference at the bottom center of every page, in the margin below the content */
+    function addReference(doc, reference) {
+        if (!reference) {
+            return;
+        }
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+            doc.setPage(i);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor("#6b7280");
+            doc.text(reference, pageWidth / 2, pageHeight - PAGE_MARGIN / 2, { align: "center", baseline: "middle" });
+        }
     }
     /**
      * Legend as vector content. Family cards are packed into full-width lines and a new page

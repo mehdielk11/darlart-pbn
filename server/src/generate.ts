@@ -153,6 +153,8 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     const printFormat = printFormatForCanvas(prepared.canvas.label);
     const sizeLabel = printFormat ? printFormat.label : prepared.canvas.label;
     const downloadBaseName = safeFileName(`${request.orderId || "paintbynumbers"} ${request.colors} ${difficulty} ${sizeLabel}`);
+    // printed at the bottom of every PDF page: the product folder (or order) and the color count, "1097_36"
+    const reference = request.orderId ? `${request.orderId}_${request.colors}` : "";
     const files: OutputFile[] = [];
     const writeOutput = async (file: { name: string; contentType: string }, extension: string, data: Buffer | string) => {
         await fs.writeFile(path.join(request.outputDir, file.name), data);
@@ -161,14 +163,14 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     };
 
     // PDF: colored page, numbered outline, legend grouped by family
-    const doc = buildPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize });
+    const doc = buildPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, reference });
     await writeOutput(OUTPUT_FILES.pdf, ".pdf", Buffer.from(doc.output("arraybuffer")));
     report("output", 0.4);
 
     // Painting guide: colored page with its numbers, the palette, then the paints and pots to pack for every canvas size
     // sold (the template is printed at those sizes: same shape, so the same shares of the canvas)
     const paintPlans = planPaintsForSizes(result.facetResult, result.colorsByIndex.length, prepared.canvas, config.paint);
-    const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, paintPlans });
+    const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, paintPlans, reference });
     await writeOutput(OUTPUT_FILES.paintingPdf, "-painting.pdf", Buffer.from(paintingDoc.output("arraybuffer")));
     report("output", 0.5);
 
