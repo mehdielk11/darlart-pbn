@@ -4051,8 +4051,8 @@ define("core/pdf", ["require", "exports", "core/palette", "core/svg", "core/call
         for (let i = 1; i <= doc.getNumberOfPages(); i++) {
             doc.setPage(i);
             doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor("#6b7280");
+            doc.setFontSize(12);
+            doc.setTextColor("#111827");
             doc.text(reference, pageWidth / 2, pageHeight - PAGE_MARGIN / 2, { align: "center", baseline: "middle" });
         }
     }
