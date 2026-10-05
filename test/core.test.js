@@ -324,6 +324,8 @@ test("generate produces the PDF, SVG, preview and palette for a photo", { timeou
         const blankSvg = fs.readFileSync(path.join(outputDir, "blank.svg"), "utf8");
         assert.ok(!/fill: rgb/.test(blankSvg), "blank.svg has no colored regions");
         assert.ok(/stroke: #6a6f77/.test(blankSvg) && /<text[^>]*fill="#000000"/.test(blankSvg), "blank.svg: grey outlines, black numbers");
+        // the reference sits in a band under the artwork, as the last text of the file
+        assert.ok(/>#1001_12<\/text><\/svg>$/.test(blankSvg), "blank.svg ends with the reference text");
         const canvasSvg = fs.readFileSync(path.join(outputDir, "canvas.svg"), "utf8");
         assert.ok(canvasSvg.includes('<rect width="100%" height="100%" fill="#ffffff">'), "the canvas SVG should be on white");
         assert.equal([...canvasSvg.matchAll(/<\/text>/g)].length, [...svg.matchAll(/<\/text>/g)].length);

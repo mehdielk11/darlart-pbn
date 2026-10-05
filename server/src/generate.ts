@@ -187,6 +187,8 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     // Blank SVG: grey outlines and black numbers on white, no colors (same as the website "Blank SVG")
     await writeOutput(OUTPUT_FILES.blankSvg, "-blank.svg", buildBlankSvgString(result.facetResult, result.colorsByIndex, {
         fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
+        // the sheet's reference in a band under the artwork, so printed sheets can be told apart (1097_36)
+        footerText: reference || undefined,
     }));
     report("output", 0.6);
 

@@ -21,6 +21,8 @@ export interface SvgOptions {
     background?: string;
     /** Numbers on dark filled regions are written in white instead of fontColor, so they stay readable */
     labelContrast?: boolean;
+    /** Text in a band under the artwork (the sheet's reference, e.g. 1097_36): the artwork keeps its size and place */
+    footerText?: string;
 }
 
 /** Numbers stay readable on any fill: white on a dark region, the normal color on a light one */
@@ -70,6 +72,11 @@ function rgbString(color: RGB) {
     return `rgb(${color[0]},${color[1]},${color[2]})`;
 }
 
+/** Text inside an SVG element: &, < and > escaped */
+function escapeXml(text: string): string {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], options: SvgOptions = {}): string {
     const sizeMultiplier = options.sizeMultiplier !== undefined ? options.sizeMultiplier : 3;
     const fill = options.fill !== undefined ? options.fill : true;
@@ -82,7 +89,9 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
     const fontFamily = (options.fontFamily || "Tahoma").replace(/"/g, "'");
 
     const parts: string[] = [];
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height}">`);
+    // the band goes below the artwork: the artwork's own coordinates don't change
+    const bandHeight = options.footerText ? Math.round(sizeMultiplier * facetResult.height * 0.04) + 40 : 0;
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height + bandHeight}">`);
     if (options.background) {
         parts.push(`<rect width="100%" height="100%" fill="${options.background}"></rect>`);
     }
@@ -114,6 +123,10 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
         }
     }
 
+    if (options.footerText) {
+        const size = Math.round(bandHeight * 0.5);
+        parts.push(`<text x="${(sizeMultiplier * facetResult.width) / 2}" y="${sizeMultiplier * facetResult.height + bandHeight / 2}" font-family="${fontFamily}" font-size="${size}" dominant-baseline="middle" text-anchor="middle" fill="#000000">${escapeXml(options.footerText)}</text>`);
+    }
     parts.push("</svg>");
     return parts.join("");
 }

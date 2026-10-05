@@ -3115,6 +3115,10 @@ define("core/svg", ["require", "exports"], function (require, exports) {
     function rgbString(color) {
         return `rgb(${color[0]},${color[1]},${color[2]})`;
     }
+    /** Text inside an SVG element: &, < and > escaped */
+    function escapeXml(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
     function buildSvgString(facetResult, colorsByIndex, options = {}) {
         const sizeMultiplier = options.sizeMultiplier !== undefined ? options.sizeMultiplier : 3;
         const fill = options.fill !== undefined ? options.fill : true;
@@ -3126,7 +3130,9 @@ define("core/svg", ["require", "exports"], function (require, exports) {
         const strokeWidth = options.strokeWidth !== undefined ? options.strokeWidth : 1;
         const fontFamily = (options.fontFamily || "Tahoma").replace(/"/g, "'");
         const parts = [];
-        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height}">`);
+        // the band goes below the artwork: the artwork's own coordinates don't change
+        const bandHeight = options.footerText ? Math.round(sizeMultiplier * facetResult.height * 0.04) + 40 : 0;
+        parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height + bandHeight}">`);
         if (options.background) {
             parts.push(`<rect width="100%" height="100%" fill="${options.background}"></rect>`);
         }
@@ -3154,6 +3160,10 @@ define("core/svg", ["require", "exports"], function (require, exports) {
                     `<text font-family="${fontFamily}" font-size="${getLabelFontSize(f, fontSize)}" dominant-baseline="middle" text-anchor="middle" fill="${labelFill}">${f.color + 1}</text>` +
                     `</svg></g>`);
             }
+        }
+        if (options.footerText) {
+            const size = Math.round(bandHeight * 0.5);
+            parts.push(`<text x="${(sizeMultiplier * facetResult.width) / 2}" y="${sizeMultiplier * facetResult.height + bandHeight / 2}" font-family="${fontFamily}" font-size="${size}" dominant-baseline="middle" text-anchor="middle" fill="#000000">${escapeXml(options.footerText)}</text>`);
         }
         parts.push("</svg>");
         return parts.join("");
