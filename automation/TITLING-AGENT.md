@@ -4,9 +4,9 @@
 
 ```
 Artwork Agent finished / Run now / every day 03:00 -> Shopify collections (themes) -> Drive "Artwork Agent" folders
-  -> folders with <date+time>_art.png and no <date+time>_product.json, one by one:
+  -> folders with <folder>_art.png and no <folder>_product.json, one by one:
      download the artwork -> Titling agent (gpt-5-mini, sees the artwork)
-     -> <date+time>_product.json saved in the same folder
+     -> <folder>_product.json saved in the same folder
 ```
 
 Result: `Artwork Agent/1xxx` = Artwork Ref + Artwork Gen + palette JSON + product JSON.

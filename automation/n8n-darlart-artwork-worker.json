@@ -1530,7 +1530,7 @@
         -320
       ],
       "parameters": {
-        "jsCode": "// Artwork Ref + the palette JSON + Artwork Gen, one item per file. The artwork goes last: a folder only counts\n// for Titling, Print and the Watchdog once it has its artwork, so a run that stops midway leaves no half folder behind.\nconst folderId = $input.first().json.id;\nconst prepared = $('Prepare').first();\nconst paletteJson = $('Check palette').first().json.paletteJson;\nreturn [\n    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },\n    {\n        json: { folderId, name: prepared.json.paletteName },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: prepared.json.paletteName } },\n    },\n    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },\n];"
+        "jsCode": "// Artwork Ref + the palette JSON + Artwork Gen, one item per file, named after the folder: 1095_ref.jpg,\n// 1095_palette.json, 1095_art.png. The artwork goes last: a folder only counts for Titling, Print and the Watchdog\n// once it has its artwork, so a run that stops midway leaves no half folder behind.\nconst folderId = $input.first().json.id;\nconst base = $('Next folder number').first().json.folderName;\nconst prepared = $('Prepare').first();\nconst names = folderFileNames(base, $('Next reference').first().json.extension);\nconst paletteJson = { ...$('Check palette').first().json.paletteJson, artwork: names.artwork, reference: names.reference };\nreturn [\n    { json: { folderId, name: names.reference }, binary: { data: { ...prepared.binary.reference, fileName: names.reference } } },\n    {\n        json: { folderId, name: names.palette },\n        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName: names.palette } },\n    },\n    { json: { folderId, name: names.artwork }, binary: { data: { ...$('Artwork file').first().binary.artwork, fileName: names.artwork } } },\n];\nfunction folderFileNames(base, extension) {\n    return { reference: base + \"_ref.\" + extension, palette: base + \"_palette.json\", artwork: base + \"_art.png\" };\n}"
       }
     },
     {
@@ -1619,7 +1619,7 @@
         -320
       ],
       "parameters": {
-        "jsCode": "const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\nreturn [{ json: { status: \"done\", folder: folder.name, folderId: folder.id, referenceName: $('Prepare').first().json.referenceName } }];"
+        "jsCode": "const folder = $('Create folder (Artwork Agent/1xxx)').first().json;\n// the reference keeps its folder name in Artwork Ref too: 1095_ref.jpg\nreturn [{ json: { status: \"done\", folder: folder.name, folderId: folder.id, referenceName: folder.name + \"_ref.\" + $('Next reference').first().json.extension } }];"
       },
       "executeOnce": true
     },

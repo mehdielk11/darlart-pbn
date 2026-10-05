@@ -5,11 +5,11 @@
 ```
 Print Agent finished / Run now / every day 05:00 -> "Darl'Art Prices" sheet (Drive) -> Drive "Artwork Agent" folders
   -> folders with _product.json + _art.png + _featured.png + _mockup.png and no _shopify.json, one by one:
-     WebP copies of the featured image and the mockup (pbn API /v1/webp), saved once as <date+time>_<name>.webp
+     WebP copies of the featured image and the mockup (pbn API /v1/webp), saved once as <folder>_<name>.webp
      staged upload of the two WebP files to Shopify (never the PNGs, and never the artwork itself)
      -> productSet: draft product (texts, collections, variants + prices, images)
      -> image order enforced (productReorderMedia), then read back until it is right
-     -> <date+time>_shopify.json saved in the folder (product id, admin link)
+     -> <folder>_shopify.json saved in the folder (product id, admin link)
 ```
 
 ## The product
@@ -39,13 +39,13 @@ In the Drive "Artwork Agent" folder (`pricesSheetId` in Settings). Its first tab
 
 ## Featured image
 
-The product's first image: the artwork (`<date+time>_art.png`) on a blank stretched canvas against a light wall. The **Print Agent** makes it (see `PRINT-AGENT.md`) and the Uploader waits for it. The pbn API (`POST /v1/featured`) picks the landscape photo for an artwork wider than tall and the portrait one otherwise (a square artwork is portrait), fills the 4:5 canvas face without distortion and returns a 1600 x 1600 PNG, saved in the folder as `<date+time>_featured.png`.
+The product's first image: the artwork (`<folder>_art.png`) on a blank stretched canvas against a light wall. The **Print Agent** makes it (see `PRINT-AGENT.md`) and the Uploader waits for it. The pbn API (`POST /v1/featured`) picks the landscape photo for an artwork wider than tall and the portrait one otherwise (a square artwork is portrait), fills the 4:5 canvas face without distortion and returns a 1600 x 1600 PNG, saved in the folder as `<folder>_featured.png`.
 
 The two photos are `mockups/featured-portrait.webp` and `featured-landscape.webp` (800 x 800, face positions in `src/core/mockup.ts`); `npm run prepare:mockups` paints their faces blank into the `-blank.webp` files the API uses.
 
 ## WebP images
 
-Shopify only gets WebP files, never PNGs: the pbn API (`POST /v1/webp`, quality 88) makes a WebP copy of the featured image and the mockup, about 15 times lighter at the same size. The copies are saved in the folder as `<date+time>_featured.webp` and `_mockup.webp` the first time; later runs keep those files. The PNGs made by the pbn API stay in the folder as they are.
+Shopify only gets WebP files, never PNGs: the pbn API (`POST /v1/webp`, quality 88) makes a WebP copy of the featured image and the mockup, about 15 times lighter at the same size. The copies are saved in the folder as `<folder>_featured.webp` and `_mockup.webp` the first time; later runs keep those files. The PNGs made by the pbn API stay in the folder as they are.
 
 ## Shared images
 
@@ -77,7 +77,7 @@ A price of 0 (or an empty price) in the sheet means that combination is not sold
 
 ## A folder that keeps failing
 
-Each try on a folder leaves a small marker `_upload-try-<execution>` in it, deleted as soon as its `<date+time>_shopify.json` is saved. After **3 tries** (`maxTries` in Settings) the folder is **given up**: it gets the marker `_upload-gave-up`, one Telegram alert, and it is no longer uploaded again every 30 minutes. Folders never tried go first, so a folder that fails never holds up the others. The Queue Watchdog skips given-up folders too.
+Each try on a folder leaves a small marker `_upload-try-<execution>` in it, deleted as soon as its `<folder>_shopify.json` is saved. After **3 tries** (`maxTries` in Settings) the folder is **given up**: it gets the marker `_upload-gave-up`, one Telegram alert, and it is no longer uploaded again every 30 minutes. Folders never tried go first, so a folder that fails never holds up the others. The Queue Watchdog skips given-up folders too.
 
 - **To try it again:** delete the files named `_upload-...` in the folder.
 - A run that failed because of an **account or a service** (Shopify permission, rate limit, Drive access) does not count: the Error Handler deletes its try markers.

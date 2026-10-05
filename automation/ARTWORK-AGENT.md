@@ -18,7 +18,7 @@ Artwork Worker (called by the form, or Run now), one reference per run:
   -> Create folder "Artwork Agent/1xxx" -> upload ref + art + palette JSON
                                         -> Run Titling Agent (product JSON, not awaited)
                                         -> Run Print Agent (print files + mockup, queued, not awaited)
-  -> the reference moves to "Artwork Ref" (renamed <stamp>_ref.<ext>), or to "Artwork Ref/Failed"
+  -> the reference moves to "Artwork Ref" (renamed <folder>_ref.<ext>, e.g. 1095_ref.jpg), or to "Artwork Ref/Failed"
   -> the manifest records the result; a batch with nothing left queued moves to "Artwork Ref/Queue/Done"
   -> release the lock, run again (stops when the queue is empty)
 ```
@@ -50,9 +50,11 @@ Every artwork keeps its reference's shape (`orientation` "auto" in **Settings**)
 ## Output
 
 `Artwork Agent/1001`, `1002`, ... (next free number), each containing:
-- `2026-09-23_14-05-33_ref.jpg`: the reference as uploaded (also kept in `Artwork Ref` under the same name);
-- `2026-09-23_14-05-33_art.png`: the 48-color artwork;
-- `2026-09-23_14-05-33_palette.json`: the 48 colors (code, hex, rgb, area percent).
+- `1095_ref.jpg`: the reference as uploaded (also kept in `Artwork Ref` under the same name);
+- `1095_art.png`: the 48-color artwork;
+- `1095_palette.json`: the 48 colors (code, hex, rgb, area percent).
+
+The files are named after their folder (here `1095`); the other agents add theirs the same way (`1095_product.json`, `1095_featured.png`, `1095_mockup.png`, `1095_shopify.json`, `Print/1095_24_user.pdf`). Folders made before 2026-10-05 keep their date+time names.
 
 ## Setup
 

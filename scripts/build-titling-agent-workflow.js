@@ -3,7 +3,7 @@
  *
  *   Artwork Agent finished / Run now / every day -> Shopify collections (the store's themes) + Drive "Artwork Agent" folders
  *   -> folders that have an artwork but no product JSON yet, one by one:
- *      download the artwork -> AI agent (title, description, tags, themes) -> <date+time>_product.json in the same folder
+ *      download the artwork -> AI agent (title, description, tags, themes) -> <folder>_product.json in the same folder
  *
  * One run at a time (a Drive lock in "Artwork Agent", see scripts/lib/n8n-queue-lock.js): a call that finds another
  * run working waits and tries again, and a run that wrote product JSONs starts itself again until none is missing.
@@ -175,7 +175,7 @@ driveList("List folder files", [1320, 100], "={{ $json.none ? \"name = '__none__
 connect("Folders", "List folder files");
 
 node("Pending folders", "n8n-nodes-base.code", 2, [1540, 100], {
-    jsCode: `// Keeps the folders that have an artwork (<date+time>_art.png) and no <date+time>_product.json yet, and were not
+    jsCode: `// Keeps the folders that have an artwork (1095_art.png) and no 1095_product.json yet, and were not
 // given up (maxTries tries); folders never tried first, then the oldest
 const settings = $('Settings').first().json;
 const maxTries = Number(settings.maxTries) || 3;
@@ -185,9 +185,10 @@ $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const files = item.json.files || [];
-    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));
+    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));
     if (!art) return;
-    const stamp = art.name.slice(0, 19);
+    // the files' prefix: the folder number (a date+time in folders made before 2026-10-05)
+    const stamp = art.name.slice(0, -"_art.png".length);
     const productName = stamp + "_product.json";
     if (files.some((f) => f.name === productName)) return;
     const tries = files.filter((f) => f.name.startsWith("_titling-try-")).length;
@@ -212,8 +213,8 @@ $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const files = item.json.files || [];
-    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));
-    if (!art || files.some((f) => f.name === art.name.slice(0, 19) + "_product.json")) return;
+    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));
+    if (!art || files.some((f) => f.name === art.name.slice(0, -"_art.png".length) + "_product.json")) return;
     const tries = files.filter((f) => f.name.startsWith("_titling-try-")).length;
     if (tries >= maxTries && !files.some((f) => f.name === "_titling-gave-up")) out.push({ json: { folderId: folder.id, folder: folder.name, tries } });
 });
@@ -320,7 +321,7 @@ node("Listing format", "@n8n/n8n-nodes-langchain.outputParserStructured", 1.2, [
 connect("Listing format", "Titling agent", 0, "ai_outputParser");
 
 node("Build product JSON", "n8n-nodes-base.code", 2, [2500, 200], {
-    jsCode: `// The product JSON, in Shopify's field names, saved next to the artwork as <date+time>_product.json
+    jsCode: `// The product JSON, in Shopify's field names, saved next to the artwork as <folder>_product.json
 const settings = $('Settings').first().json;
 const folder = $('Loop over folders').first().json;
 const themes = $('Themes').first().json.themes;

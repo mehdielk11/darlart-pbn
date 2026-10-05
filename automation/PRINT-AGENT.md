@@ -7,15 +7,17 @@ Artwork Agent finished / Run now / every day 04:00
   -> queue lock (one worker at a time)
   -> folders still missing print files, oldest first (maxPerRun per run)
   -> one pbn job at a time: canvasSizes x colorsList (default 60x75 x 12/24/36/48), HARD, orientation auto
-  -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, then 1xxx/<stamp>_mockup.png
+  -> 1xxx/Print/1xxx_<N>_blank.svg + _catalog.pdf + _user.pdf, then 1xxx/1xxx_mockup.png
   -> release the lock; if files were saved, start again (picks up folders that arrived meanwhile)
 ```
 
 ## Files
-- `Print/<stamp>_60x75_24_blank.svg`: the website's **Blank SVG** (`blank.svg`): grey outlines and black numbers on white, no colors (the file printed on the canvas);
-- `Print/<stamp>_60x75_24_catalog.pdf`: the website's **Agency PDF** (`painting.pdf`): colored template with grey outlines and numbers, plus the palette page;
-- `Print/<stamp>_60x75_24_user.pdf` (one per version): the website's **User PDF** (`template.pdf`): finished painting, painted template with numbers, legend with numbers and colors only;
-- `<stamp>_mockup.png`: one kit mockup, from the first canvas size at `mockupColors` (48). It's saved last, so it also marks the folder as done.
+- `Print/1095_24_blank.svg`: the website's **Blank SVG** (`blank.svg`): grey outlines and black numbers on white, no colors (the file printed on the canvas);
+- `Print/1095_24_catalog.pdf`: the website's **Agency PDF** (`painting.pdf`): colored template with grey outlines and numbers, plus the palette page;
+- `Print/1095_24_user.pdf` (one per version): the website's **User PDF** (`template.pdf`): finished painting, painted template with numbers, legend with numbers and colors only;
+- `1095_mockup.png`: one kit mockup, from the first canvas size at `mockupColors` (48). It's saved last, so it also marks the folder as done.
+
+Every file is named after its folder number (folder `1095`: `1095_featured.png`, `Print/1095_24_user.pdf`). The canvas size is added to the Print names (`1095_60x75_24_user.pdf`) only when `canvasSizes` lists several sizes. Folders made before 2026-10-05 keep their date+time names (`2026-10-05_12-02-14_60x75_24_user.pdf`): the agents still recognize them and don't make their files again.
 
 ## Orientation and crop
 The job is sent with `orientation: auto`: the API compares the artwork's width and height, so a portrait artwork becomes **60x75** and a landscape (or square) one **75x60**. It crops automatically to the exact ratio without distortion (`cropMode: attention` keeps the most interesting area). The size the API chose is part of the file names.
@@ -56,5 +58,5 @@ A call that finds another run working waits 30 s and tries again (3 times), so w
 - **Very speckled artworks** (more than 20,000 small areas of one colour, e.g. heavily textured paintings) used to take 10+ minutes per job in the facet reduction, which deletes tiny areas one at a time. The pbn API now merges those tiny areas into their surroundings in one pass first (`src/core/despeckle.ts`, API only; the website generator is unchanged).
   - Artwork 1023: 559 s → 73 s.
   - A normal artwork: about 4× faster, with 2–3% of pixels changing colour along borders.
-- **A folder whose jobs keep failing** gets a marker `<stamp>_print-failed-<execution>` after each run with failed jobs. After `maxFailedRuns` (3) markers, the Print Agent and the Queue Watchdog skip it, and one Telegram alert says so. Delete its `_print-failed-` markers to try it again.
+- **A folder whose jobs keep failing** gets a marker `1095_print-failed-<execution>` after each run with failed jobs. After `maxFailedRuns` (3) markers, the Print Agent and the Queue Watchdog skip it, and one Telegram alert says so. Delete its `_print-failed-` markers to try it again.
 

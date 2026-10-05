@@ -4,9 +4,9 @@
  *
  *   Artwork Worker   : references in "Artwork Ref/Queue", or a batch manifest left there over 10 minutes with none
  *                      (the worker finishes it and moves it to Done)
- *   Titling Agent    : a recent 1xxx folder with an artwork and no <date+time>_product.json
+ *   Titling Agent    : a recent 1xxx folder with an artwork and no <folder>_product.json
  *   Print Agent      : a recent 1xxx folder with an artwork and no featured image or no mockup (the mockup is made last)
- *   Shopify Uploader : a recent 1xxx folder with product JSON, featured image and mockup, and no <date+time>_shopify.json
+ *   Shopify Uploader : a recent 1xxx folder with product JSON, featured image and mockup, and no <folder>_shopify.json
  *
  * A stage is started only when none of its runs holds a fresh lock (a running workflow already starts itself again
  * until nothing is left; each lock says in its description how long it stays fresh without a refresh, the values
@@ -187,9 +187,9 @@ $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const names = (item.json.files || []).map((f) => f.name);
-    const art = names.find((n) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(n));
+    const art = names.find((n) => /^.+_art\\.png$/.test(n));
     if (!art) return;
-    const stamp = art.slice(0, 19);
+    const stamp = art.slice(0, -"_art.png".length);
     const has = (suffix) => names.includes(stamp + suffix);
     // folders the Titling Agent or the Shopify Uploader gave up on (3 tries) are not waiting for them any more
     const gaveUp = (prefix) => names.includes(prefix + "gave-up") || names.filter((n) => n.startsWith(prefix + "try-")).length >= 3;

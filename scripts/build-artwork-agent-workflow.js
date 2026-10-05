@@ -713,19 +713,25 @@ return [{ json: { folderName: String(next) } }];`);
     }, RETRY);
     connect("Next folder number", "Create folder (Artwork Agent/1xxx)");
 
-    code("Files for the folder", [X + 2960, -320], `// Artwork Ref + the palette JSON + Artwork Gen, one item per file. The artwork goes last: a folder only counts
-// for Titling, Print and the Watchdog once it has its artwork, so a run that stops midway leaves no half folder behind.
+    code("Files for the folder", [X + 2960, -320], `// Artwork Ref + the palette JSON + Artwork Gen, one item per file, named after the folder: 1095_ref.jpg,
+// 1095_palette.json, 1095_art.png. The artwork goes last: a folder only counts for Titling, Print and the Watchdog
+// once it has its artwork, so a run that stops midway leaves no half folder behind.
 const folderId = $input.first().json.id;
+const base = $('Next folder number').first().json.folderName;
 const prepared = $('Prepare').first();
-const paletteJson = $('Check palette').first().json.paletteJson;
+const names = folderFileNames(base, $('Next reference').first().json.extension);
+const paletteJson = { ...$('Check palette').first().json.paletteJson, artwork: names.artwork, reference: names.reference };
 return [
-    { json: { folderId, name: prepared.json.referenceName }, binary: { data: prepared.binary.reference } },
+    { json: { folderId, name: names.reference }, binary: { data: { ...prepared.binary.reference, fileName: names.reference } } },
     {
-        json: { folderId, name: prepared.json.paletteName },
-        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString("base64"), mimeType: "application/json", fileName: prepared.json.paletteName } },
+        json: { folderId, name: names.palette },
+        binary: { data: { data: Buffer.from(JSON.stringify(paletteJson, null, 2)).toString("base64"), mimeType: "application/json", fileName: names.palette } },
     },
-    { json: { folderId, name: prepared.json.artworkName }, binary: { data: $('Artwork file').first().binary.artwork } },
-];`);
+    { json: { folderId, name: names.artwork }, binary: { data: { ...$('Artwork file').first().binary.artwork, fileName: names.artwork } } },
+];
+function folderFileNames(base, extension) {
+    return { reference: base + "_ref." + extension, palette: base + "_palette.json", artwork: base + "_art.png" };
+}`);
     connect("Create folder (Artwork Agent/1xxx)", "Files for the folder");
 
     node("Upload to folder", "n8n-nodes-base.googleDrive", 3, [X + 3180, -320], {
@@ -744,7 +750,8 @@ return [
     connect("Upload to folder", "Run Print Agent");
 
     code("Result: painted", [X + 3400, -320], `const folder = $('Create folder (Artwork Agent/1xxx)').first().json;
-return [{ json: { status: "done", folder: folder.name, folderId: folder.id, referenceName: $('Prepare').first().json.referenceName } }];`, { executeOnce: true });
+// the reference keeps its folder name in Artwork Ref too: 1095_ref.jpg
+return [{ json: { status: "done", folder: folder.name, folderId: folder.id, referenceName: folder.name + "_ref." + $('Next reference').first().json.extension } }];`, { executeOnce: true });
     connect("Upload to folder", "Result: painted");
 
     // ---- 5. record the result, move the reference out of the queue ----------------------------------------

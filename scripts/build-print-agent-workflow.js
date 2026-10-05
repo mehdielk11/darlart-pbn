@@ -8,8 +8,9 @@
  *      12/24/36/48 colors, HARD, 60x75 (portrait or landscape from the artwork itself). A finished job's files are
  *      saved at once and the next job is sent. No fixed time limit for the run: it takes as long as its jobs need,
  *      only a job with no result 2 x jobTimeoutMinutes + 5 after it was sent is given up (retried by the next run)
- *   -> 1xxx/<stamp>_featured.png (pbn API /v1/featured: the artwork on a canvas photo, the product's first image)
- *   -> 1xxx/Print/<stamp>_<size>_<N>_blank.svg + _catalog.pdf + _user.pdf, and one 1xxx/<stamp>_mockup.png
+ *   -> 1xxx/1xxx_featured.png (pbn API /v1/featured: the artwork on a canvas photo, the product's first image)
+ *   -> 1xxx/Print/1xxx_<N>_blank.svg + _catalog.pdf + _user.pdf (1xxx_<size>_<N>_... when several canvas sizes are
+ *      made), and one 1xxx/1xxx_mockup.png. Folders made before 2026-10-05 keep their date+time prefix
  *   -> a folder with failed jobs gets a marker "<stamp>_print-failed-<execution>"; after maxFailedRuns of them it is
  *      given up (one Telegram alert), instead of being retried by every run: delete its markers to try it again
  *   -> release the lock; if work was done, start again to pick up folders that arrived meanwhile
@@ -143,17 +144,17 @@ connect("List Artwork Agent folders", "Folders");
 driveList("List folder files", [2420, 40], `={{ $json.none ? "${NONE_Q}" : "'" + $json.id + "' in parents and trashed = false" }}`);
 connect("Folders", "List folder files");
 
-code("Folder states", [2640, 40], `// Folders with an artwork: its date+time stamp, the Print subfolder (if any) and the files already there
+code("Folder states", [2640, 40], `// Folders with an artwork: its files' prefix (the folder number, a date+time in older folders), the Print subfolder (if any) and the files already there
 const folders = $('Folders').all();
 const states = [];
 $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const files = item.json.files || [];
-    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));
+    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));
     if (!art) return;
     const print = files.find((f) => f.name === "Print" && f.mimeType === "application/vnd.google-apps.folder");
-    states.push({ json: { folderId: folder.id, folder: folder.name, stamp: art.name.slice(0, 19), artworkId: art.id, printFolderId: print ? print.id : "", rootFiles: files.map((f) => f.name) } });
+    states.push({ json: { folderId: folder.id, folder: folder.name, stamp: art.name.slice(0, -"_art.png".length), artworkId: art.id, printFolderId: print ? print.id : "", rootFiles: files.map((f) => f.name) } });
 });
 return states.length ? states : [{ json: { none: true } }];`);
 connect("List folder files", "Folder states");
@@ -162,7 +163,7 @@ driveList("List Print files", [2860, 40], `={{ $json.printFolderId ? "'" + $json
 connect("Folder states", "List Print files");
 
 // ---- the featured image (the artwork on a canvas photo), made once per folder, before the print jobs --------------
-code("Featured to make", [2860, -300], `// Folders with an artwork and no <date+time>_featured.png yet (at most maxPerRun per run)
+code("Featured to make", [2860, -300], `// Folders with an artwork and no <folder>_featured.png yet (at most maxPerRun per run)
 const settings = $('Settings').first().json;
 const todo = $('Folder states').all().map((item) => item.json)
     .filter((state) => !state.none && !state.rootFiles.includes(state.stamp + "_featured.png"))
@@ -232,7 +233,9 @@ $('List Print files').all().forEach((item, i) => {
     // given up after maxFailedRuns runs with failed jobs (delete its "_print-failed-" markers to try again)
     if (state.rootFiles.filter((n) => n.startsWith(state.stamp + "_print-failed-")).length >= Number(settings.maxFailedRuns || 3)) return;
     const printFiles = new Set((item.json.files || []).map((f) => f.name));
-    const has = (size, n, suffix) => printFiles.has(state.stamp + "_" + size + "_" + n + suffix) || printFiles.has(state.stamp + "_" + flip(size) + "_" + n + suffix);
+    // 1095_12_blank.svg, or with the size (several sizes made, or a folder from before 2026-10-05): ..._60x75_12_blank.svg
+    const has = (size, n, suffix) => (sizes.length === 1 && printFiles.has(state.stamp + "_" + n + suffix))
+        || printFiles.has(state.stamp + "_" + size + "_" + n + suffix) || printFiles.has(state.stamp + "_" + flip(size) + "_" + n + suffix);
     const needMockupFile = !state.rootFiles.includes(state.stamp + "_mockup.png");
     const folderJobs = [];
     sizes.forEach((size, s) => {
@@ -251,7 +254,7 @@ $('List Print files').all().forEach((item, i) => {
     folderCount++;
     folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));
     for (const job of folderJobs) {
-        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });
+        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, withSize: sizes.length > 1, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });
     }
 });
 return jobs.length ? jobs : [{ json: { none: true } }];`, { executeOnce: true });
@@ -411,10 +414,12 @@ for (const job of state.jobs) {
     if (job.status !== "completed" || job.saved) continue;
     const url = (name) => (job.result.files.find((x) => x.name === name) || {}).url;
     const want = [];
+    // 1095_12_blank.svg; the canvas size is in the name only when several sizes are made
+    const prefix = job.stamp + "_" + (job.withSize ? job.result.label + "_" : "") + job.colors;
     // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas
-    if (job.needSvg) want.push({ url: url("blank.svg"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_blank.svg", parent: job.printFolderId });
-    if (job.needPdf) want.push({ url: url("painting.pdf"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_catalog.pdf", parent: job.printFolderId });
-    if (job.needUser) want.push({ url: url("template.pdf"), name: job.stamp + "_" + job.result.label + "_" + job.colors + "_user.pdf", parent: job.printFolderId });
+    if (job.needSvg) want.push({ url: url("blank.svg"), name: prefix + "_blank.svg", parent: job.printFolderId });
+    if (job.needPdf) want.push({ url: url("painting.pdf"), name: prefix + "_catalog.pdf", parent: job.printFolderId });
+    if (job.needUser) want.push({ url: url("template.pdf"), name: prefix + "_user.pdf", parent: job.printFolderId });
     if (job.needMockup && !url("mockup.png")) want.push({ url: "" });
     if (want.some((w) => !w.url)) {
         Object.assign(job, { status: "failed", error: "the pbn API result is missing a file" });
@@ -572,7 +577,8 @@ let made = 0;
 const files = $('Run summary').isExecuted ? $('Run summary').first().json.files || [] : [];
 for (const name of files) {
     const kind = name.endsWith("_blank.svg") ? "blank SVG" : name.endsWith("_catalog.pdf") ? "catalog PDF" : name.endsWith("_user.pdf") ? "user PDF" : name.endsWith("_mockup.png") ? "mockup" : "file";
-    add(stampToFolder[name.slice(0, 19)] || name.slice(0, 19), kind);
+    const stamp = Object.keys(stampToFolder).find((s) => name.startsWith(s + "_"));
+    add(stamp ? stampToFolder[stamp] : name.split("_")[0], kind);
     made++;
 }
 if ($('Save featured image').isExecuted) {

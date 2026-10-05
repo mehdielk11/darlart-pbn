@@ -3,10 +3,10 @@
  *
  *   Print Agent finished / Run now / every day -> prices Google Sheet (Drive) + Drive "Artwork Agent" folders
  *   -> folders that have a product JSON, an artwork, a featured image and a mockup (both made by the Print Agent)
- *      but no <date+time>_shopify.json yet, one by one: WebP copies of the featured image and the mockup
- *      (pbn API, saved once as <date+time>_<name>.webp) -> the WebP files go to
+ *      but no <folder>_shopify.json yet, one by one: WebP copies of the featured image and the mockup
+ *      (pbn API, saved once as <folder>_<name>.webp) -> the WebP files go to
  *      Shopify, never the PNGs nor the artwork itself -> draft product (texts from the product JSON, variants and
- *      prices from the sheet, images: featured, mockup, then the shared images) -> <date+time>_shopify.json
+ *      prices from the sheet, images: featured, mockup, then the shared images) -> <folder>_shopify.json
  *
  * The prices Google Sheet ("Darl'Art Prices", first tab) is exported as CSV on every run, so a new price
  * applies to every product uploaded after the change (products already in Shopify: the "Darl'Art Price Sync" workflow).
@@ -21,7 +21,7 @@
  * The product's handle is the product JSON's handle plus the folder number (e.g. blue-iris-1003): a rerun updates
  * the same draft instead of creating a second one, and never touches an existing product.
  *
- * Each try on a folder leaves a marker "_upload-try-<execution>" in it (deleted once its <date+time>_shopify.json is
+ * Each try on a folder leaves a marker "_upload-try-<execution>" in it (deleted once its <folder>_shopify.json is
  * saved). A folder is given up after maxTries tries (marker "_upload-gave-up", one Telegram alert), so a folder that
  * always fails is not uploaded again every 30 minutes; folders never tried go first, so it never holds up the others.
  * Delete its "_upload-..." markers to try it again. The Error Handler deletes the try markers of a run that failed on
@@ -197,7 +197,7 @@ connect("List Artwork Agent folders", "Folders");
 driveList("List folder files", [1760, 200], "={{ $json.none ? \"name = '__none__' and trashed = false\" : \"'\" + $json.id + \"' in parents and trashed = false\" }}");
 connect("Folders", "List folder files");
 
-code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <date+time>_shopify.json yet,
+code("Pending folders", [1980, 200], `// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <folder>_shopify.json yet,
 // and were not given up (maxTries tries); folders never tried first, then the oldest
 const settings = $('Settings').first().json;
 const maxTries = Number(settings.maxTries) || 3;
@@ -207,9 +207,10 @@ $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const files = item.json.files || [];
-    const art = files.find((f) => /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})_art\\.png$/.test(f.name));
+    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));
     if (!art) return;
-    const stamp = art.name.slice(0, 19);
+    // the files' prefix: the folder number (a date+time in folders made before 2026-10-05)
+    const stamp = art.name.slice(0, -"_art.png".length);
     const find = (suffix) => files.find((f) => f.name === stamp + suffix);
     const product = find("_product.json");
     const mockup = find("_mockup.png");
@@ -230,7 +231,7 @@ connect("List folder files", "Pending folders");
 
 // ---- folders given up: tried maxTries times without a Shopify draft; one marker and one alert each -----------
 // (placed above the main path: it runs first)
-code("Given up folders", [1980, -120], `// Folders tried maxTries times that still have no <date+time>_shopify.json and no "_upload-gave-up" marker yet
+code("Given up folders", [1980, -120], `// Folders tried maxTries times that still have no <folder>_shopify.json and no "_upload-gave-up" marker yet
 const settings = $('Settings').first().json;
 const maxTries = Number(settings.maxTries) || 3;
 const folders = $('Folders').all();
@@ -239,8 +240,8 @@ $input.all().forEach((item, i) => {
     const folder = folders[i].json;
     if (folder.none) return;
     const files = item.json.files || [];
-    const art = files.find((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_art\\.png$/.test(f.name));
-    if (!art || files.some((f) => f.name === art.name.slice(0, 19) + "_shopify.json")) return;
+    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));
+    if (!art || files.some((f) => f.name === art.name.slice(0, -"_art.png".length) + "_shopify.json")) return;
     const tries = files.filter((f) => f.name.startsWith("_upload-try-")).length;
     if (tries >= maxTries && !files.some((f) => f.name === "_upload-gave-up")) out.push({ json: { folderId: folder.id, folder: folder.name, tries } });
 });
@@ -602,7 +603,7 @@ const folder = $('Loop over folders').first().json;
 throw new Error("Folder " + folder.folder + ": Shopify did not apply the image order (featured image, mockup, shared images) after " + $json.seconds + " seconds");`);
 connect("Check again?", "Images out of order", 1);
 
-code("Shopify marker", [7040, 200], `// <date+time>_shopify.json marks the folder as done (delete it to upload the folder again)
+code("Shopify marker", [7040, 200], `// <folder>_shopify.json marks the folder as done (delete it to upload the folder again)
 const settings = $('Settings').first().json;
 const folder = $('Loop over folders').first().json;
 const product = $('Image order').first().json.product;
@@ -741,7 +742,7 @@ connect("Download batch manifests", "Batch folders");
 driveList("List batch folder files", [3740, -300], `={{ $json.folderId ? "'" + $json.folderId + "' in parents and trashed = false" : "name = '__none__' and trashed = false" }}`);
 connect("Batch folders", "List batch folder files");
 
-code("Batch status", [3960, -300], `// A batch is complete when every painted folder has its <date+time>_shopify.json; stuck when it is still not
+code("Batch status", [3960, -300], `// A batch is complete when every painted folder has its <folder>_shopify.json; stuck when it is still not
 // complete batchStuckHours after it was painted (announced once, then again when it completes)
 const settings = $('Settings').first().json;
 const folders = $('Batch folders').all();
