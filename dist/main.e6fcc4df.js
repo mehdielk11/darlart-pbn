@@ -3131,7 +3131,7 @@ define("core/svg", ["require", "exports"], function (require, exports) {
         const fontFamily = (options.fontFamily || "Tahoma").replace(/"/g, "'");
         const parts = [];
         // the band goes below the artwork: the artwork's own coordinates don't change
-        const bandHeight = options.footerText ? Math.round(sizeMultiplier * facetResult.height * 0.04) + 40 : 0;
+        const bandHeight = options.footerText ? Math.round(sizeMultiplier * facetResult.height * 0.015) + 16 : 0;
         parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height + bandHeight}">`);
         if (options.background) {
             parts.push(`<rect width="100%" height="100%" fill="${options.background}"></rect>`);
