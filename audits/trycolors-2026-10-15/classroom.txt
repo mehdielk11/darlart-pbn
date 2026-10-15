@@ -1,0 +1,177 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - heading "Real paint mixing for your classroom" [level=1]
+    - paragraph: Give every student our physics-based paint mixing engine. No ads, no daily limits, one monthly price paid by card.
+    - link "Get Started":
+      - /url: "#pricing"
+    - generic: 2,300+
+    - generic: Students
+    - generic: 270+
+    - generic: Schools & Universities
+    - generic: 40+
+    - generic: Countries
+    - paragraph: Art classes, university color theory courses, and community college programs
+    - heading "How It Works" [level=2]
+    - generic: "1"
+    - heading "Buy class access" [level=3]
+    - generic: Pay monthly by card with your own Trycolors account. Your account gets Pro right away.
+    - generic: "2"
+    - heading "We set up your students" [level=3]
+    - generic: Within one business day we email you to set up your class. Students create free accounts on trycolors.com and we unlock Pro for them.
+    - generic: "3"
+    - heading "Students mix on any device" [level=3]
+    - generic: Students sign in at trycolors.com on a Chromebook, iPad, phone or laptop and use the Pro engine with no ads and no daily limits.
+    - heading "The Engine Difference" [level=2]
+    - paragraph: Students learn how real paint behaves, not how a simplified algorithm guesses.
+    - img "Comparison of real pigments vs Basic and PRO mixing engines"
+    - heading "Free Version" [level=3]
+    - list:
+      - generic: Simplified mixing model
+      - generic: Works for basic combinations
+      - generic: Loses accuracy with complex mixes
+      - generic: Ads and daily limits
+    - heading "Classroom (Pro Engine)" [level=3]
+    - list:
+      - generic: Two-constant Kubelka-Munk model
+      - generic: Calibrated on real spectrophotometer data
+      - generic: 61 pigments covering a full acrylic range
+      - generic: No ads, no limits
+    - heading "What's Included" [level=3]
+    - paragraph: Pro mixing engine
+    - paragraph: Physics-based Kubelka-Munk model calibrated on real paint
+    - paragraph: Unlimited recipes
+    - paragraph: Save and revisit any mix, no daily limits
+    - paragraph: Color mixing charts
+    - paragraph: Visual reference charts for any set of colors
+    - paragraph: Color games
+    - paragraph: Interactive challenges using the Pro engine and real pigments
+    - paragraph: No ads
+    - paragraph: Clean, distraction-free experience for the classroom
+    - heading "Pricing" [level=2]
+    - paragraph: Up to 30 students. Cancel anytime. Paid by card, no purchase order needed.
+    - link "Buy class access":
+      - /url: /checkout?plan=classroom_monthly
+    - heading "Questions about Classroom?" [level=2]
+    - paragraph: Ask us anything about using Trycolors in your class.
+    - paragraph: Thanks, your question is on its way.
+    - paragraph: We reply within one business day.
+    - heading "Questions about Classroom?" [level=3]
+    - paragraph: We reply within one business day.
+    - text: Your Role
+    - combobox "Your Role":
+      - generic: Select your role
+    - text: Name
+    - textbox "Name":
+      - /placeholder: Your name
+    - text: Email
+    - textbox "Email":
+      - /placeholder: you@school.edu
+    - text: School / Institution
+    - textbox "School / Institution":
+      - /placeholder: e.g. Springfield High School
+    - text: Your question
+    - textbox "Your question":
+      - /placeholder: Which class is it, roughly how many students, and what do you want to know?
+    - button "Send" [disabled]
+    - heading "Frequently Asked Questions" [level=2]
+    - heading "How do students get access?" [level=3]:
+      - button "How do students get access?":
+        - text: How do students get access?
+    - heading "What devices does Trycolors work on?" [level=3]:
+      - button "What devices does Trycolors work on?":
+        - text: What devices does Trycolors work on?
+    - heading "Can I use Trycolors for remote or hybrid classes?" [level=3]:
+      - button "Can I use Trycolors for remote or hybrid classes?":
+        - text: Can I use Trycolors for remote or hybrid classes?
+    - heading "What's the difference between the free version and Classroom?" [level=3]:
+      - button "What's the difference between the free version and Classroom?":
+        - text: What's the difference between the free version and Classroom?
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert

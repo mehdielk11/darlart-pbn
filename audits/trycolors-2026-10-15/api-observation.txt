@@ -1,0 +1,176 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - heading "Mix and Unmix Colors with Ease" [level=1]
+    - paragraph: Enhance your applications with our color mixing API. Get started quickly.
+    - link "Get API Key":
+      - /url: /user/settings
+    - link "Explore API Docs":
+      - /url: https://docs.trycolors.com/api-reference/overview
+      - text: Explore API Docs
+    - code: "async function mixColors() { const apiKey = 'YOUR_API_KEY'; // Replace with your actual API key const endpoint = 'https://api.trycolors.com/v1/mix-colors'; const payload = { colors: [ { hex: '#FFAA16', count: 1 }, { hex: '#BA12FF', count: 1 } ] }; try { const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey }, body: JSON.stringify(payload) }); if (!response.ok) { throw new Error(`HTTP error! status: ${response.status}`); } const data = await response.json(); } catch (error) { console.error('Error mixing colors:', error.message); } } mixColors();"
+    - heading "Getting Started" [level=2]
+    - generic: "1"
+    - heading "Sign Up" [level=3]
+    - generic: Create an account at trycolors.com/signin to get started.
+    - generic: "2"
+    - heading "Generate API Key" [level=3]
+    - generic: Generate your API key in your user account settings.
+    - generic: "3"
+    - heading "Test API" [level=3]
+    - generic: Test the API endpoints using our Swagger sandbox.
+    - generic: "4"
+    - heading "Integrate" [level=3]
+    - generic: Integrate the API into your application using our documentation and example code.
+    - heading "Rate Limits" [level=2]
+    - heading "Hobby and PRO (individual) Plans" [level=3]
+    - table:
+      - rowgroup:
+        - row "API Endpoint Rate Limit (requests/second) Daily Limit (requests/day)":
+          - columnheader "API Endpoint"
+          - columnheader "Rate Limit (requests/second)"
+          - columnheader "Daily Limit (requests/day)"
+      - rowgroup:
+        - row "Mix Colors 2 50":
+          - cell "Mix Colors"
+          - cell "2"
+          - cell "50"
+        - row "Unmix Color 1 10":
+          - cell "Unmix Color"
+          - cell "1"
+          - cell "10"
+        - row "Similar Paints 1 10":
+          - cell "Similar Paints"
+          - cell "1"
+          - cell "10"
+    - heading "Business Plan (Tier 1)" [level=3]
+    - table:
+      - rowgroup:
+        - row "API Endpoint Rate Limit (requests/second) Daily Limit (requests/day)":
+          - columnheader "API Endpoint"
+          - columnheader "Rate Limit (requests/second)"
+          - columnheader "Daily Limit (requests/day)"
+      - rowgroup:
+        - row "Mix Colors 10 2,000":
+          - cell "Mix Colors"
+          - cell "10"
+          - cell "2,000"
+        - row "Unmix Color 5 1,000":
+          - cell "Unmix Color"
+          - cell "5"
+          - cell "1,000"
+        - row "Similar Paints 5 1,000":
+          - cell "Similar Paints"
+          - cell "5"
+          - cell "1,000"
+    - paragraph: Business plan limits can be increased upon request. Contact our support team if you need higher limits.
+    - heading "Empower Your Application with Advanced Color Tools" [level=2]
+    - paragraph: Our API brings advanced color mixing technology directly to your platform, enhancing your users' experience with powerful and flexible color manipulation.
+    - heading "Seamless Integration" [level=3]
+    - paragraph: Integrate our color mixing and matching tools directly into your application with our well-documented API, enhancing your digital offering with powerful color manipulation.
+    - heading "Flexible Implementation" [level=3]
+    - paragraph: Our API allows for flexible implementation, enabling you to create custom color tools and experiences tailored to your users' needs.
+    - heading "Scalable Solution" [level=3]
+    - paragraph: Our API is built to scale, allowing you to handle increasing demand as your application grows, with options for higher rate limits on business plans.
+    - heading "Frequently Asked Questions" [level=2]
+    - heading "What can I do with the Trycolors API?" [level=3]:
+      - button "What can I do with the Trycolors API?":
+        - text: What can I do with the Trycolors API?
+    - heading "How do I get started with the API?" [level=3]:
+      - button "How do I get started with the API?":
+        - text: How do I get started with the API?
+    - heading "Are there any usage limits?" [level=3]:
+      - button "Are there any usage limits?":
+        - text: Are there any usage limits?
+    - heading "Contact Us" [level=2]
+    - paragraph: Have questions or feedback? We're here to help.
+    - link "Contact Support":
+      - /url: /about/contacts
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert

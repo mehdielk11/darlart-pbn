@@ -1,0 +1,243 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+    - link "My Palettes":
+      - /url: /user/palettes
+      - text: My Palettes
+    - generic: HM
+    - generic: hassani mostafa
+    - generic: Pro
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - heading "Pricing" [level=1]
+    - paragraph: Unlock all pro features, remove ads and support Trycolors.
+    - heading "Individual Plans" [level=2]
+    - tablist:
+      - tab "Yearly" [selected]
+      - tab "Monthly"
+    - generic: Save 75% with yearly billing
+    - heading "Hobby" [level=3]
+    - paragraph: Play & Learn
+    - generic: $0
+    - generic: forever
+    - list:
+      - button "Get Mix Recipe":
+        - generic: Get Mix Recipe
+      - generic: (3/day)
+      - button "Pro mixer mode":
+        - generic: Pro mixer mode
+      - generic: (20/day)
+      - button "Mixing Chart":
+        - generic: Mixing Chart
+      - generic: (3/day)
+      - button "Repaint":
+        - generic: Repaint
+      - generic: (5 saved, curated only)
+      - button "Paint by Numbers":
+        - generic: Paint by Numbers
+      - generic: (3 recipes per template)
+      - button "Similar Paints":
+        - generic: Similar Paints
+      - generic: (10/day)
+      - button "Create palettes":
+        - generic: Create palettes
+      - generic: (Up to 10)
+      - button "Starting palettes":
+        - generic: Starting palettes
+      - generic: (Up to 10)
+      - button "Tinting Strength Mode":
+        - generic: Tinting Strength Mode
+      - generic: (20/day)
+      - button "Color from photo":
+        - generic: Color from photo
+      - button "Paints":
+        - generic: Paints
+      - button "Remove ads":
+        - generic: Remove ads
+    - button [disabled]:
+    - heading "PRO" [level=3]
+    - paragraph: Unlimited Everything
+    - generic: $3$12
+    - generic: per month, $36 billed yearly
+    - list:
+      - button "Get Mix Recipe":
+        - generic: Get Mix Recipe
+      - generic: (Unlimited)
+      - button "Pro mixer mode":
+        - generic: Pro mixer mode
+      - generic: (Unlimited)
+      - button "Mixing Chart":
+        - generic: Mixing Chart
+      - generic: (Unlimited)
+      - button "Repaint":
+        - generic: Repaint
+      - generic: (Unlimited + photo uploads)
+      - button "Paint by Numbers":
+        - generic: Paint by Numbers
+      - generic: (Unlimited)
+      - button "Similar Paints":
+        - generic: Similar Paints
+      - generic: (Unlimited)
+      - button "Create palettes":
+        - generic: Create palettes
+      - generic: (Unlimited)
+      - button "Starting palettes":
+        - generic: Starting palettes
+      - generic: (Unlimited)
+      - button "Tinting Strength Mode":
+        - generic: Tinting Strength Mode
+      - generic: (Unlimited)
+      - button "Color from photo":
+        - generic: Color from photo
+      - button "Paints":
+        - generic: Paints
+      - button "Remove ads":
+        - generic: Remove ads
+    - button "Current plan" [disabled]
+    - generic: Cancel anytime
+    - heading "For Educators" [level=2]
+    - heading "Classroom" [level=3]:
+      - text: Classroom
+    - paragraph: For schools & universities
+    - generic: $29
+    - generic: per month, up to 30 students
+    - list:
+      - generic: All PRO features
+      - generic: No ads for students
+      - generic: Unlimited recipes & mixing charts
+    - link "Buy class access":
+      - /url: /checkout?plan=classroom_monthly
+    - link "How Classroom works":
+      - /url: /use-cases/e-learning
+    - heading "Why Choose Classroom?" [level=3]
+    - list:
+      - listitem: Pro mixing engine for every student
+      - listitem: Color games with real pigments
+      - listitem: No daily limits or ads
+      - listitem: Works on any device, no install needed
+    - heading "For Businesses" [level=2]
+    - heading "Business" [level=3]
+    - paragraph: Custom Solutions
+    - generic: Starting from $30 / month
+    - generic: Contact for custom pricing
+    - list:
+      - generic: All PRO features
+      - button "Widgets":
+        - generic: Widgets
+      - button "API":
+        - generic: API
+      - button "Custom Support":
+        - generic: Custom Support
+    - link "Contact Us":
+      - /url: /about/contacts
+      - text: Contact Us
+    - heading "Why Choose Our Business Plan?" [level=3]
+    - list:
+      - listitem: Powerful embeddable widgets for your website
+      - listitem: Full API access with higher rate limits
+      - listitem: Integrate your brand's unique color palette
+      - listitem: Priority support
+      - listitem: Custom solutions tailored to your workflow
+    - heading "Frequently Asked Questions" [level=2]
+    - heading "What's included in the PRO plan?" [level=3]:
+      - button "What's included in the PRO plan?":
+        - text: What's included in the PRO plan?
+    - heading "Is there a free trial for the PRO plan?" [level=3]:
+      - button "Is there a free trial for the PRO plan?":
+        - text: Is there a free trial for the PRO plan?
+    - heading "What payment methods do you accept?" [level=3]:
+      - button "What payment methods do you accept?":
+        - text: What payment methods do you accept?
+    - heading "Is it safe to provide my card details?" [level=3]:
+      - button "Is it safe to provide my card details?":
+        - text: Is it safe to provide my card details?
+    - heading "Have more questions?" [level=2]
+    - link "Contact Us":
+      - /url: /about/contacts
+      - button "Contact Us"
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert

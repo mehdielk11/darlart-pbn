@@ -1,0 +1,3 @@
+Browser tab: 1390842933, Title: "Free Paint by Numbers Generator | Print and Mix with Your Own Paints", URL: "https://trycolors.com/paint-by-numbers".
+There has been no change in the accessibility tree.
+The focused UI element is 105 checkbox Description: Number 1, show how it is mixed, Help: Number 1, Value: 1

@@ -134,7 +134,7 @@ test("recolorToPalette paints a photo with exactly N palette colors, never an ex
     assert.equal(result.colors.length, 48);
     const listed = new Set(result.colors.map((c) => c.hex));
     for (const color of result.colors) {
-        assert.equal(v3[color.hex].code, color.code);
+        assert.equal(v3[color.code].hex.toUpperCase(), color.hex);
         assert.ok(!["3801", "3811"].includes(color.code));
     }
     const { data, info } = await sharp(result.png).raw().toBuffer({ resolveWithObject: true });
@@ -479,7 +479,7 @@ test("callout layout: dots inside their region and clear of every outline, numbe
 test("palette matching: an image already painted with N paints keeps every pixel's paint", () => {
     const { matchToPalette } = require(path.join(dist, "src/core/palettematch"));
     const palette = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8")).restrictions;
-    const paints = [0, 40, 120, 250, 333, 401, 480, 565].map((i) => palette[i]);
+    const paints = [0, 40, 120, 250, 333, 401, 480, palette.length - 1].map((i) => palette[i]);
     const W = 64, H = 40;
     const data = new Uint8ClampedArray(W * H * 4);
     for (let p = 0; p < W * H; p++) {
@@ -544,7 +544,8 @@ test("generation: the legend only lists paints that are painted, and white / bla
     const v3Text = fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8");
     // an artwork painted with paints (white, black, greys, a gold and a blue) at 1024x1280, resized like the print agent's
     const W = 1024, H = 1280, raw = Buffer.alloc(W * H * 3);
-    const paints = { "3801": [255, 255, 255], "3803": [231, 231, 231], "3811": [10, 10, 12], "3714": [30, 31, 28], "0810": [255, 182, 54], "2106": [0, 100, 176] };
+    const paletteByCode = JSON.parse(v3Text);
+    const paints = Object.fromEntries(["3801", "3803", "3811", "3714", "0810", "2106"].map((code) => [code, paletteByCode[code].rgb]));
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const code = y < 500 ? (x < 700 ? "3801" : "3803") : y < 1000 ? (x < 700 ? "3811" : "3714") : (x < 512 ? "0810" : "2106");
         raw.set(paints[code], (y * W + x) * 3);
@@ -592,7 +593,7 @@ test("an artwork painted with paints is recognised even after a JPEG re-encode (
     const palette = parseCustomColors(fs.readFileSync(path.join(root, "server/palettes/darlart-v3.json"), "utf8")).restrictions;
     // flat areas of paints with soft blobs, like an artwork, re-encoded as JPEG
     const W = 400, H = 500, raw = Buffer.alloc(W * H * 3);
-    const paints = [12, 100, 222, 301, 444, 520, 560].map((i) => palette[i]);
+    const paints = [12, 100, 222, 301, 444, 520, palette.length - 1].map((i) => palette[i]);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         raw.set(paints[(Math.floor(x / 57) + Math.floor(y / 71) * 3 + (Math.hypot(x - 200, y - 250) < 90 ? 4 : 0)) % paints.length], (y * W + x) * 3);
     }

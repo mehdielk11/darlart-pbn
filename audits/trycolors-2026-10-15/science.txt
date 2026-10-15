@@ -1,0 +1,292 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - img "A close-up of hand-painted paint swatches in olive green, teal and navy, drawn down on black-and-white cards."
+    - article:
+      - heading "How Trycolors works" [level=1]
+      - paragraph:
+        - time: Published 19 June 2026
+        - text: ·
+        - time: Updated 23 June 2026
+      - paragraph:
+        - text: For years, Trycolors mixed color the way most tools online still do. Take two or more colors, read off their red, green and blue (
+        - strong: RGB
+        - text: ") values, average them across the mix proportions, and show the result. It is fast, and for bright mixes it mostly holds up: red and yellow really do average into a believable orange."
+      - paragraph:
+        - text: Dark, strong pigments are where that falls apart. Ultramarine, the phthalos, and anything with a noticeable undertone do not average cleanly, so blue + yellow drifts toward gray when real paint makes green. So in 2025 we rebuilt the engine to stop blending pixels and start
+        - strong: simulating the paint
+        - text: ", using the same physics labs use to match color. This is how it works today, and it is the difference between a guess and an emulation."
+      - heading "Mixing paint isn't mixing light" [level=2]
+      - paragraph:
+        - text: Your screen makes color by
+        - strong: adding
+        - text: "light: red, green and blue glowing together make white. Paint does the opposite. Every pigment"
+        - strong: subtracts
+        - text: "light: it absorbs some wavelengths and scatters the rest back to your eye. Mix two paints and their absorptions stack, which is why blue + yellow doesn't brighten. It settles into a muted green. Any tool that just averages two colors misses this, because the real result depends on the pigments, not the pixels."
+      - figure "Add light and it climbs toward white. Stack pigments and they sink toward a darker, duller color. Opposite directions.":
+        - generic: Screens add light
+        - generic: red, green and blue stack up to white
+        - generic: Paint subtracts light
+        - generic: pigments layer up toward a dark, muted mix
+        - generic: Add light and it climbs toward white. Stack pigments and they sink toward a darker, duller color. Opposite directions.
+      - paragraph: "Take a real example: Azo Yellow Medium and Ultramarine Blue, two ordinary tubes. Average them like pixels and you get a muddy tan, which is what most online mixers show. Stir the actual paint and you get green, because the ultramarine keeps absorbing red and orange while the yellow keeps absorbing blue, so the only light left to scatter back is green. Here it is on the knife:"
+      - figure:
+        - generic "A palette knife folding blue and yellow paint into green on white paper"
+      - 'figure "Same two paints, two answers: a pixel blend muddies them, real paint makes green."':
+        - generic: What a simple mixer shows
+        - generic: Ultramarine
+        - generic: +
+        - generic: Hansa Yellow
+        - generic: =
+        - generic: Muddy average
+        - generic: What Trycolors PRO engine predicts
+        - generic: Ultramarine
+        - generic: +
+        - generic: Hansa Yellow
+        - generic: =
+        - generic: Real mixed paint
+        - generic: "Same two paints, two answers: a pixel blend muddies them, real paint makes green."
+      - heading "A color is really a curve" [level=2]
+      - paragraph: Before we can mix anything, we have to describe a color the way light does. Shine daylight on a paint and it sends some of every wavelength back to your eye. Measure how much comes back at each wavelength and you get a reflectance curve, the real fingerprint of a color. Ultramarine sends back the blue end and soaks up the rest. A hansa yellow holds onto the blue and returns everything from green onward.
+      - 'figure "Reflectance curves: how much light each pigment sends back at every wavelength."':
+        - list:
+          - text: Ultramarine
+          - text: Hansa Yellow
+        - generic: "Reflectance curves: how much light each pigment sends back at every wavelength."
+      - heading "Light goes into the paint, not just off it" [level=2]
+      - paragraph: "Paint isn't a mirror. The light doesn't bounce cleanly off the surface. It sinks into the film, ricochets between the tiny pigment particles suspended in it, and along the way some wavelengths get absorbed while the rest scatter back out. The color you see is whatever survives that trip. So two things matter for every pigment: how much light it soaks up, and how strongly it scatters light around inside the film."
+      - figure "Light dives into the paint film and bounces between pigment particles. At each particle some wavelengths are absorbed and the rest scatter onward, so the light that finally escapes is the color you see.":
+        - img "Light enters a paint film, scatters off pigment particles, some is absorbed and some scatters back to the eye":
+          - generic: Paint film
+          - generic: Paper
+          - generic: Light in
+          - generic: scatters back out = the color you see
+          - generic: Light in
+          - generic: absorbed here, so this color is removed
+        - generic: Light dives into the paint film and bounces between pigment particles. At each particle some wavelengths are absorbed and the rest scatter onward, so the light that finally escapes is the color you see.
+      - heading "Two curves behind every pigment" [level=2]
+      - paragraph: "Those two behaviours are exactly what the Kubelka-Munk model pins down, with two numbers at each wavelength: absorption (called K) and scattering (called S). Plot them across the spectrum and every pigment gets its own pair of curves. Hansa yellow, for instance, absorbs blue light hard and lets it go past green, while it scatters more gently across the whole range."
+      - figure "One pigment's absorption (K) and scattering (S), wavelength by wavelength.":
+        - list:
+          - text: Absorption (K)
+          - text: Scattering (S)
+        - generic: One pigment's absorption (K) and scattering (S), wavelength by wavelength.
+      - paragraph: Get K and S right for each pigment and you can predict any mixture. Add up the absorption and scattering of the ingredients, turn the result back into a reflectance curve, and then into a color. That is the step a pixel blender skips.
+      - 'heading "On the bench: measuring a real paint" [level=2]'
+      - paragraph: "All of this rests on one real measurement: the reflectance curve. To read it we use a spectrophotometer, a device that shines controlled daylight on a sample and reports how much it reflects at each wavelength. And we don't pull pigment data from a catalog. We make it, one paint at a time, with the same care a lab would use. Here is the whole loop, from bare tools to a finished set of mixes."
+      - heading "1 The tools" [level=3]:
+        - generic: "1"
+        - text: The tools
+      - paragraph: "Everything starts with a small, repeatable kit, and each piece earns its place:"
+      - list:
+        - text: A
+        - strong: 0.001 g precision scale
+        - text: ", because the mix ratios are the data, so every dab of paint is weighed instead of eyeballed."
+        - strong: Palette knives
+        - text: ", to fold paint together thoroughly without whipping in air bubbles."
+        - text: A
+        - strong: 200 µm steel film applicator
+        - text: ", to pull each paint down into an even, fully opaque film."
+        - strong: Mixing wells
+        - text: ", small dishes to combine the weighed paints."
+        - strong: Opacity cards
+        - text: with a white and a black half, a standardized ground to draw on and to confirm a film is hiding fully.
+        - text: A
+        - strong: spectrophotometer
+        - text: ", the instrument that reads color as a reflectance spectrum under controlled daylight, rather than guessing it from a photo. It samples every 10 nm across the visible range, from 400 to 700 nm, giving 31 readings that describe exactly how much light the film returns at each wavelength."
+        - text: The
+        - strong: paints
+        - text: themselves. Here, Amsterdam acrylics plus titanium white.
+      - 'figure "The kit: precision scale, mixing well, palette knives, opacity card, the spectrophotometer, and the paints."':
+        - img "A bench laid out with a precision scale, paint tubes, mixing dish, palette knives, an opacity card and a spectrophotometer."
+        - generic: "The kit: precision scale, mixing well, palette knives, opacity card, the spectrophotometer, and the paints."
+      - heading "2 Apply the paint" [level=3]:
+        - generic: "2"
+        - text: Apply the paint
+      - paragraph: "We draw each paint down into a smooth, even film with a 200 micrometre steel film applicator, thick enough to be fully opaque, so what the instrument sees is the paint itself and nothing of the surface beneath. A clean, flat, opaque film is what makes the reading trustworthy: once a film hides completely, its reflectance no longer depends on exactly how thick it is."
+      - figure "Drawing the paint into a flat, opaque film with a 200 µm steel applicator, so the reading is of the paint and not the card.":
+        - generic "A 200 micrometre steel applicator drawing a smooth paint film down a white-and-black opacity card."
+        - generic: Drawing the paint into a flat, opaque film with a 200 µm steel applicator, so the reading is of the paint and not the card.
+      - heading "3 Measure it" [level=3]:
+        - generic: "3"
+        - text: Measure it
+      - paragraph: Once the film is dry, the spectrophotometer sits flat on it and reads how much light it reflects at each wavelength from 400 to 700 nanometers, under standardized daylight (D65). That spectrum, not a phone snapshot, is the real definition of the color, and it's the number every later calculation is built on.
+      - figure "The spectrophotometer on a swatch, reading its reflectance (here L* 51.7, a* −15.4, b* +32.3).":
+        - img "A spectrophotometer standing on a green swatch, its screen showing measured L* a* b* values."
+        - generic: The spectrophotometer on a swatch, reading its reflectance (here L* 51.7, a* −15.4, b* +32.3).
+      - 'heading "4 Mix with white: the tint ladder" [level=3]':
+        - generic: "4"
+        - text: "Mix with white: the tint ladder"
+      - paragraph: "Next we build the tint ladder: the pigment weighed with titanium white at a series of set ratios, from heavy pigment down to a faint tint, each step mixed and drawn down just like the pure color. How a paint behaves as white is added is its signature: a strong, opaque color holds its ground, a transparent one fades fast, and the hue often drifts on the way to pastel. Reading every rung of that ladder is what lets us pin down how much light the pigment absorbs and how much it scatters."
+      - figure "Weighed pigment-and-white ladders (here yellow and ultramarine), from full strength down to a faint tint, read rung by rung.":
+        - img "Tint ladders for a yellow and a blue pigment, each from full strength down to a pale tint."
+        - generic: Weighed pigment-and-white ladders (here yellow and ultramarine), from full strength down to a faint tint, read rung by rung.
+      - heading "5 Mix colors with each other" [level=3]:
+        - generic: "5"
+        - text: Mix colors with each other
+      - paragraph: Finally we mix the pigments with each other, no white this time. Two paints weighed at known ratios, say ultramarine and a yellow pulled down as a series of greens. These mixes are deliberately kept out of the fitting. The pigment fingerprints, K and S, are solved only from the single-pigment tint ladders, so a mixed green is something the model has never seen.
+      - paragraph: "That makes the greens a true validation set. We predict each one from the single-pigment data alone, hold every mix out of the fit in turn (leave-one-out cross-validation), and score the prediction against the measured swatch. It is also the step that makes the engine practical across brands: two tubes that share a pigment code often differ mostly in tinting strength, and a few measured mixes are exactly what let us calibrate that strength, so the model matches the paint in your hand rather than a name in a catalog."
+      - 'figure "Two pigments, no white: ultramarine plus yellow into a series of greens, measured and checked."':
+        - img "Three green mixes of ultramarine and yellow drawn down over white and black."
+        - generic: "Two pigments, no white: ultramarine plus yellow into a series of greens, measured and checked."
+      - heading "The math, in three formulas" [level=2]
+      - paragraph: For the curious, the whole engine rests on the Kubelka–Munk model and three short equations, applied at every wavelength across the spectrum.
+      - paragraph:
+        - strong: 1. From a measured swatch to a fingerprint.
+        - text: A reflectance reading
+        - emphasis: R
+        - text: "becomes the pigment's absorption-to-scattering ratio:"
+      - text: K/S =
+      - generic: (1 − R)²
+      - generic: 2R
+      - generic: K is how strongly it absorbs light; S how strongly it scatters.
+      - paragraph:
+        - strong: 2. Mixing.
+        - text: Combine pigments by adding their absorption and scattering, each weighted by its concentration
+        - emphasis: c
+        - text: "in the blend:"
+      - text: K
+      - subscript: mix
+      - text: = Σ c
+      - subscript: i
+      - text: K
+      - subscript: i
+      - text: ·S
+      - subscript: mix
+      - text: = Σ c
+      - subscript: i
+      - text: S
+      - subscript: i
+      - generic: This is the step a 'blend the pixels' tool skips.
+      - paragraph:
+        - strong: 3. Back to a color.
+        - text: "Turn the mixed ratio into the reflectance of an opaque film:"
+      - text: R
+      - subscript: ∞
+      - text: = 1 + (K/S) − √ (K/S)² + 2(K/S)
+      - generic: Then fold that spectrum through daylight and the eye's response to get L*a*b*, and then ΔE, the distance between two colors.
+      - paragraph:
+        - text: That last conversion, from spectrum to CIE XYZ to L*a*b*, is standard colorimetry under a chosen light (we use daylight, D65).
+        - strong: ΔE
+        - text: "is just the distance between two points in that L*a*b* space: roughly 1 is the smallest difference a trained eye can catch. On a paint set we measured end to end ourselves, our mixed colors land within about ΔE 3 of the real swatch, cross-validated, and close to the error you'd introduce mixing by hand."
+      - heading "Checked against the paint, not just calculated" [level=2]
+      - paragraph:
+        - text: A model is only worth as much as the paint it's matched to. So we score every prediction against the real measurement using
+        - strong: ΔE
+        - text: ", the international standard for color difference, and we"
+        - strong: cross-validate
+        - text: ", holding each mix out of the fit so the score reflects genuine prediction, not memorization."
+      - paragraph:
+        - text: Built entirely from our own measurements, the engine predicts these mixes to within
+        - strong: ΔE 3
+        - text: ", close enough that the eye can barely tell the prediction from the real paint. It isn't a marketing claim; it's a check you could repeat with your own swatches."
+      - figure "Three blue + yellow mixes we measured ourselves, beside the engine's prediction. All within ΔE 3, the edge of what the eye can tell apart.":
+        - generic: "Blue : Yellow"
+        - generic: Measured paint
+        - generic: Trycolors prediction
+        - generic: "1 : 3"
+        - generic: "1 : 1"
+        - generic: "3 : 1"
+        - generic: Three blue + yellow mixes we measured ourselves, beside the engine's prediction. All within ΔE 3, the edge of what the eye can tell apart.
+      - paragraph: "The same match shows up wavelength by wavelength: the predicted reflectance curve lands almost on top of the measured one across the whole visible range:"
+      - 'figure "A blue + yellow green: the spectrophotometer reading vs. the model''s prediction."':
+        - list:
+          - text: Measured
+          - text: Trycolors prediction
+        - generic: "A blue + yellow green: the spectrophotometer reading vs. the model's prediction."
+      - heading "Matched to the paint in your hand" [level=2]
+      - paragraph: A paint's name doesn't fully pin down its color. Two tubes sharing a pigment name can differ between brands, and even between a student and professional line. Usually it is a little weaker, occasionally a slightly different undertone. Trycolors works from real measurements of real paints rather than catalog names, so what you see is what that specific paint will do, before you squeeze the tube.
+      - heading "See it on your palette" [level=2]
+      - paragraph: "Pick two paints and watch the mixer predict the real result: muted greens, grayed purples, and all."
+      - link "Open the mixer":
+        - /url: /
+        - text: Open the mixer
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert
+- generic: 10%

@@ -1,0 +1,3 @@
+Browser tab: 1390842933, Title: "Repaint — Reimagine Any Photo with a Limited Palette | Trycolors", URL: "https://trycolors.com/repaint".
+There has been no change in the accessibility tree.
+The focused UI element is 64 button #A1998D REPAINTED RESTORED Match: 99% Used on 17.7% of canvas, Help: #A1998D · 17.7% · ΔE 1.19

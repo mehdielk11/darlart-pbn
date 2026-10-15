@@ -1,0 +1,511 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+    - link "My Palettes":
+      - /url: /user/palettes
+      - text: My Palettes
+    - generic: HM
+    - generic: hassani mostafa
+    - generic: Pro
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - heading "Color mixer online that works like real paint" [level=1]
+    - paragraph: Simulate real paint mixing to get exact colors and recipes. Save your paints and time.
+    - link "Open Color Mixer":
+      - /url: /mixer
+    - link "Get Mix Recipe":
+      - /url: /unmixer
+    - generic: Try without registration
+    - img "Hero image"
+    - 'link "NEW How Trycolors works: the science behind every mix"':
+      - /url: /how-it-works
+      - text: NEW
+      - generic: "How Trycolors works: the science behind every mix"
+    - 'figure "Real paint test: 2 min"':
+      - iframe:
+        - generic "YouTube Video Player"
+        - button "Play video"
+        - button "Hide player controls"
+        - 'link "Trycolors real paint test: avocado, 12 tubes, 1 recipe"':
+          - /url: https://www.youtube.com/watch?v=wdk5IOc7Pvs
+        - link "Trycolors":
+          - /url: /channel/UC02vsV3c8d1w7pqaq0NlYSA
+          - generic: Trycolors
+        - button
+        - generic: Trycolors
+        - generic: 50 subscribers
+        - button "Copy link":
+        - link "Watch on YouTube":
+          - /url: https://www.youtube.com/watch?v=wdk5IOc7Pvs
+          - text: Watch on
+      - generic: "Real paint test: 2 min"
+    - heading "Try it Right Now" [level=2]
+    - paragraph: Mix colors manually or get automatic recipes instantly
+    - heading "Color Mixer" [level=3]
+    - paragraph: Click colored circles to mix colors
+    - generic: "#549A60"
+    - generic: Fruit Salad
+    - button:
+    - generic: Reset
+    - generic: PRO
+    - generic: ADVANCED
+    - generic: Mixer mode
+    - button "1 33%":
+      - generic: "1"
+      - generic: 33%
+    - generic "Cadmium Yellow Light"
+    - 'button "Paint details: Cadmium Yellow Light"':
+      - generic: i
+    - button:
+    - button
+    - generic "Cadmium Red Light"
+    - 'button "Paint details: Cadmium Red Light"':
+      - generic: i
+    - button "1 33%":
+      - generic: "1"
+      - generic: 33%
+    - generic "Ultramarine Blue"
+    - 'button "Paint details: Ultramarine Blue"':
+      - generic: i
+    - button:
+    - button "1 33%":
+      - generic: "1"
+      - generic: 33%
+    - generic "Titanium White"
+    - 'button "Paint details: Titanium White"':
+      - generic: i
+    - button:
+    - button
+    - generic "Carbon Black"
+    - 'button "Paint details: Carbon Black"':
+      - generic: i
+    - link "Open Full Mixer":
+      - /url: /mixer
+    - heading "Color Unmixer" [level=3]
+    - paragraph: Pick a target color and get instant recipe
+    - heading "1. Select Target Color" [level=3]
+    - paragraph: "#2F7F57"
+    - button "Change Color"
+    - heading "2. Choose Starting Palette" [level=3]
+    - generic: Basic
+    - generic: ·
+    - generic: 5 colors
+    - button:
+    - generic: Max Colors
+    - button:
+    - combobox:
+      - generic: "4"
+    - generic: Mixer Mode
+    - button:
+    - combobox:
+      - generic: Advanced
+    - button "Get Mix Recipe":
+      - text: Get Mix Recipe
+    - link "Open Recipes":
+      - /url: /unmixer
+    - heading "Mixing Chart" [level=3]
+    - paragraph: See what every pair of colors makes when mixed
+    - heading "1. Select Palette" [level=3]
+    - generic: Essential
+    - generic: ·
+    - generic: 8 colors
+    - button:
+    - generic: Mixer Mode
+    - button:
+    - combobox:
+      - generic: Advanced
+    - heading "2. Pick Colors" [level=3]
+    - button "Clear all"
+    - button:
+    - button:
+    - button:
+    - button:
+    - button:
+    - button:
+    - button:
+    - button:
+    - button "Generate Chart":
+      - text: Generate Chart
+    - link "Open Mixing Chart":
+      - /url: /color-mixing-chart
+    - heading "Repaint" [level=3]
+    - paragraph: Recreate any photo using a small set of paints
+    - heading "1. Select Image" [level=3]
+    - button "Upload Photo":
+      - generic: Upload Photo
+    - button "Golden Retriever Portrait Example Golden Retriever Portrait":
+      - img "Golden Retriever Portrait"
+      - generic: Example
+      - generic: Golden Retriever Portrait
+    - button "Goldfish Example Goldfish":
+      - img "Goldfish"
+      - generic: Example
+      - generic: Goldfish
+    - button "Starry Night Example Starry Night":
+      - img "Starry Night"
+      - generic: Example
+      - generic: Starry Night
+    - button "The Pine Tree at St. Tropez Example The Pine Tree at St. Tropez":
+      - img "The Pine Tree at St. Tropez"
+      - generic: Example
+      - generic: The Pine Tree at St. Tropez
+    - heading "2. Select Palette" [level=3]
+    - generic: Essential
+    - generic: ·
+    - generic: 8 colors
+    - button:
+    - button "Repaint":
+      - text: Repaint
+    - link "Open Repaint":
+      - /url: /repaint
+    - heading "Paint by Numbers" [level=3]
+    - generic: NEW
+    - paragraph: Print a numbered template from any photo and mix every colour from real tubes
+    - heading "1. Select Image" [level=3]
+    - button "Upload Photo":
+      - generic: Upload Photo
+    - button "Golden Retriever Portrait Example Golden Retriever Portrait":
+      - img "Golden Retriever Portrait"
+      - generic: Example
+      - generic: Golden Retriever Portrait
+    - button "Goldfish Example Goldfish":
+      - img "Goldfish"
+      - generic: Example
+      - generic: Goldfish
+    - button "Starry Night Example Starry Night":
+      - img "Starry Night"
+      - generic: Example
+      - generic: Starry Night
+    - button "The Pine Tree at St. Tropez Example The Pine Tree at St. Tropez":
+      - img "The Pine Tree at St. Tropez"
+      - generic: Example
+      - generic: The Pine Tree at St. Tropez
+    - heading "2. Select Paints" [level=3]
+    - paragraph: Which paints do you have?
+    - button "Liquitex Basics" [pressed]:
+    - button "Winsor & Newton Galeria":
+    - button "Amsterdam":
+    - button "Golden":
+    - button "I use other paints":
+      - generic: I use other paints
+    - paragraph: Untick anything you do not own.
+    - button "Primary Yellow. Leave this paint out" [pressed]:
+      - generic: Primary Yellow410
+    - button "Primary Red. Leave this paint out" [pressed]:
+      - generic: Primary Red415
+    - button "Primary Blue. Leave this paint out" [pressed]:
+      - generic: Primary Blue420
+    - button "Phthalo Green. Leave this paint out" [pressed]:
+      - generic: Phthalo Green317
+    - button "Mars Black. Leave this paint out" [pressed]:
+      - generic: Mars Black276
+    - button "Titanium White. Leave this paint out" [pressed]:
+      - generic: Titanium White432
+    - button "Cadmium Orange Hue. Leave this paint out" [pressed]:
+      - generic: Cadmium Orange Hue720
+    - button "Alizarin Crimson Hue. Leave this paint out" [pressed]:
+      - generic: Alizarin Crimson Hue116
+    - button "Dioxazine Purple. Leave this paint out" [pressed]:
+      - generic: Dioxazine Purple186
+    - button "Light Green Permanent. Leave this paint out" [pressed]:
+      - generic: Light Green Permanent312
+    - button "Burnt Sienna. Leave this paint out" [pressed]:
+      - generic: Burnt Sienna127
+    - button "Burnt Umber. Leave this paint out" [pressed]:
+      - generic: Burnt Umber128
+    - button "Generate template":
+      - text: Generate template
+    - link "Open Paint by Numbers":
+      - /url: /paint-by-numbers
+    - heading "Join 100,000+ Happy Users" [level=2]
+    - paragraph: Trusted worldwide for precise color mixing and creative inspiration
+    - paragraph: Artists • Students • Teachers • Businesses • Hobbyists
+    - heading "Artists & Hobbyists" [level=3]
+    - list:
+      - generic: Save time and materials with precise mixing recipes
+      - generic: Find exact paint matches across 250+ brands
+      - generic: Turn any photo into a paint by numbers template mixed from your own tubes
+    - heading "Students & Teachers" [level=3]
+    - list:
+      - generic: Learn color theory through interactive games
+      - generic: Practice mixing with real-world simulations
+    - heading "Businesses" [level=3]
+    - list:
+      - generic: Integrate color tools into your website
+      - generic: Enhance customer experience with our API
+    - heading "What Artists and Creatives Are Saying" [level=2]
+    - figure "Heather Bradbury Photorealistic Artist & Teacher paintingwithheather.com":
+      - blockquote: “I am really impressed with the Trycolors website. I was trying to find something online that would save me time and help me mix colours more quickly for my students, as well as for an oil painting colour mixing book I was producing. I didn't want to mix up 100s of paints manually, that was going to take me years! Using Trycolors I could select the exact brands and colours I use and teach. What is super unreal about the site is you can load in a photo and sample the colours in it, so you know exactly what colours and the percentages you need. Brilliant! I now promote the website to my students to help them demystify the challenge of learning to mix colours. Thank you Trycolors for making my life so much easier.”
+      - generic: Heather Bradbury
+      - generic: Photorealistic Artist & Teacher
+      - link "paintingwithheather.com":
+        - /url: https://www.paintingwithheather.com/
+        - text: paintingwithheather.com
+    - figure "Jeff Artist":
+      - blockquote: “I bought an annual subscription with you because your mixer tool is brilliant. I'm an artist and for me it's a huge time saver and mental relief to pre-mix rough quantities of paint without having to think much about color theory! Please keep up the good work!”
+      - generic: Jeff
+      - generic: Artist
+    - figure "Spencer Warncke Artist":
+      - blockquote: “I've been looking for a color app for a while that is based on paints and pigments rather than just a straight color model implementation. I have color issues, red-green color blindness, and I have tremendous difficulty figuring out what hues are missing from my mixes. After just a day working with your app I can tell it will make a tremendous difference in my ability to match what I see.”
+      - generic: Spencer Warncke
+      - generic: Artist
+    - button "Previous review":
+    - button "Go to review 1"
+    - button "Go to review 2"
+    - button "Go to review 3"
+    - button "Next review":
+    - heading "Teaching Color Theory?" [level=2]
+    - paragraph: Pro mixing for your whole class, on any device and with no ads. Paid monthly, cancel anytime.
+    - generic: 2,300+ students
+    - generic: "|"
+    - generic: 270+ schools
+    - generic: "|"
+    - generic: 40+ countries
+    - link "Learn More":
+      - /url: /use-cases/e-learning
+    - heading "Key Features" [level=2]
+    - paragraph: Discover powerful tools designed to make color mixing precise and effortless
+    - heading "Color Mixer" [level=3]
+    - paragraph: Select colors from your starting palette, mix them on canvas in different proportions, and save your perfect combinations instantly.
+    - heading "Automatic Mix Recipe" [level=3]
+    - paragraph: Set your target color and let our algorithm calculate the perfect mix recipe automatically.
+    - heading "Color Mixing Chart" [level=3]
+    - paragraph: Generate a complete mixing chart for your palette to see every possible color combination at a glance.
+    - heading "Professional Mixing Mode" [level=3]
+    - paragraph: Enable PRO mode with tinting strength adjustment for the most precise, real-world paint mixing simulation using advanced Kubelka-Munk algorithms.
+    - heading "Customize Your Starting Palette" [level=3]
+    - paragraph: Create your perfect starting palette by selecting from a vast collection of paints or adding custom colors.
+    - heading "Find Similar Paints" [level=3]
+    - paragraph: Discover paints that match your desired color across hundreds of brands with our smart search tool.
+    - heading "Quick Access" [level=3]
+    - link "Color Mixer Real-world accurate color mixing":
+      - /url: /mixer
+      - heading "Color Mixer" [level=4]
+      - paragraph: Real-world accurate color mixing
+    - link "Recipes Get instant mix recipes":
+      - /url: /unmixer
+      - heading "Recipes" [level=4]
+      - paragraph: Get instant mix recipes
+    - link "Repaint PRO Recreate any photo with limited paints":
+      - /url: /repaint
+      - heading "Repaint" [level=4]
+      - generic: PRO
+      - paragraph: Recreate any photo with limited paints
+    - link "Mixing Chart See every color combo at a glance":
+      - /url: /color-mixing-chart
+      - heading "Mixing Chart" [level=4]
+      - paragraph: See every color combo at a glance
+    - link "Paints Browse 250+ paint brands":
+      - /url: /paints
+      - heading "Paints" [level=4]
+      - paragraph: Browse 250+ paint brands
+    - link "Games Play & learn color theory":
+      - /url: /games
+      - heading "Games" [level=4]
+      - paragraph: Play & learn color theory
+    - link "Challenges Compete in color mixing challenges":
+      - /url: /challenges
+      - heading "Challenges" [level=4]
+      - paragraph: Compete in color mixing challenges
+    - paragraph: Learn more about our features
+    - link "Documentation":
+      - /url: https://docs.trycolors.com
+      - text: Documentation
+    - heading "For Business" [level=2]
+    - heading "Integrate Trycolors directly on Your Website" [level=3]
+    - paragraph: Enhance your website with our powerful color mixing tools. Our widgets and API provide seamless integration, allowing your users to experience professional-grade color mixing without leaving your site.
+    - link "Widgets Embed ready-to-use color tools":
+      - /url: /product/widgets
+      - heading "Widgets" [level=3]
+      - paragraph: Embed ready-to-use color tools
+    - link "API Integrate color mixing functionality":
+      - /url: /product/api
+      - heading "API" [level=3]
+      - paragraph: Integrate color mixing functionality
+    - tablist:
+      - tab "Recipes"
+      - tab "Similar paints" [selected]
+      - tab "Game"
+    - tabpanel "Similar paints":
+      - text: Selected Color
+      - paragraph: "#073694"
+      - button "Change Color"
+      - generic: 99% Match
+      - heading "French Ultramarine" [level=3]
+      - paragraph: "#133996"
+      - generic: 97.5% Match
+      - heading "Cobalt Blue" [level=3]
+      - paragraph: "#002E8D"
+      - generic: 96.7% Match
+      - heading "Oriental Blue" [level=3]
+      - paragraph: "#05409E"
+      - generic: 93.1% Match
+      - heading "Cobalt Blue Deep" [level=3]
+      - paragraph: "#18227A"
+      - generic: 91.5% Match
+      - heading "Smalt (Dumontâ€™s Blue) (Hue)" [level=3]
+      - paragraph: "#1F1B85"
+      - generic: 85.9% Match
+      - heading "Winsor Blue (Green Shade)" [level=3]
+      - paragraph: "#001249"
+      - generic: 85.5% Match
+      - heading "Cobalt Turquoise" [level=3]
+      - paragraph: "#005D95"
+      - generic: 85.5% Match
+      - heading "Payneâ€™s Gray" [level=3]
+      - paragraph: "#222D36"
+      - generic: 84.4% Match
+      - heading "Indanthrene Blue" [level=3]
+      - paragraph: "#00005B"
+      - generic: 84.3% Match
+      - heading "Prussian Blue" [level=3]
+      - paragraph: "#0C193A"
+      - generic: 83.3% Match
+      - heading "Winsor Blue (Red Shade)" [level=3]
+      - paragraph: "#000049"
+      - generic: 82.5% Match
+      - heading "Ultramarine (Green Shade)" [level=3]
+      - paragraph: "#00003B"
+      - generic: 81.8% Match
+      - heading "Permanent Mauve" [level=3]
+      - paragraph: "#3B0056"
+      - generic: 81.7% Match
+      - heading "Mauve (Blue Shade)" [level=3]
+      - paragraph: "#62007A"
+      - generic: 80.8% Match
+      - heading "Cobalt Violet" [level=3]
+      - paragraph: "#630073"
+    - heading "Use Cases" [level=3]
+    - link "E-commerce Boost sales with interactive color tools. Allow customers to visualize and customize products with precise color mixing.":
+      - /url: /use-cases/e-commerce
+      - heading "E-commerce" [level=3]
+      - paragraph: Boost sales with interactive color tools. Allow customers to visualize and customize products with precise color mixing.
+    - link "Classroom Pro mixing for your whole class, paid monthly, cancel anytime.":
+      - /url: /use-cases/e-learning
+      - heading "Classroom" [level=3]
+      - paragraph: Pro mixing for your whole class, paid monthly, cancel anytime.
+    - heading "Frequently Asked Questions" [level=2]
+    - heading "How accurate is the color mixing on Trycolors?" [level=3]:
+      - button "How accurate is the color mixing on Trycolors?":
+        - text: How accurate is the color mixing on Trycolors?
+    - heading "Can I simulate mixing paints from specific brands?" [level=3]:
+      - button "Can I simulate mixing paints from specific brands?":
+        - text: Can I simulate mixing paints from specific brands?
+    - heading "What is the 'Similar Paints Search' feature?" [level=3]:
+      - button "What is the 'Similar Paints Search' feature?":
+        - text: What is the 'Similar Paints Search' feature?
+    - heading "Do I need to download any software?" [level=3]:
+      - button "Do I need to download any software?":
+        - text: Do I need to download any software?
+    - heading "Is Trycolors free to use?" [level=3]:
+      - button "Is Trycolors free to use?":
+        - text: Is Trycolors free to use?
+    - heading "What payment methods do you accept?" [level=3]:
+      - button "What payment methods do you accept?":
+        - text: What payment methods do you accept?
+    - heading "What's the difference between PRO and Business plans?" [level=3]:
+      - button "What's the difference between PRO and Business plans?":
+        - text: What's the difference between PRO and Business plans?
+    - heading "Can educators use Trycolors in the classroom?" [level=3]:
+      - button "Can educators use Trycolors in the classroom?":
+        - text: Can educators use Trycolors in the classroom?
+    - heading "Can I import/export color data?" [level=3]:
+      - button "Can I import/export color data?" [expanded] [active]:
+        - text: Can I import/export color data?
+    - region "Can I import/export color data?":
+      - generic: Yes! You can import custom colors via CSV files and export your palettes and color mixes as images or in formats compatible with popular design software.
+    - heading "Can I add my paint brand to Trycolors?" [level=3]:
+      - button "Can I add my paint brand to Trycolors?":
+        - text: Can I add my paint brand to Trycolors?
+    - heading "Is support available if I have questions?" [level=3]:
+      - button "Is support available if I have questions?":
+        - text: Is support available if I have questions?
+    - paragraph: Have more questions? Don't hesitate to reach out to our support team.
+    - link "Contact Us":
+      - /url: /about/contacts
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert

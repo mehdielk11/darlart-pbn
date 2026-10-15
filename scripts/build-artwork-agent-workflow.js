@@ -71,7 +71,7 @@ const excluded = new Set(SETTINGS.exclude.split(",").map((code) => code.trim()).
 const codeToHex = {};
 for (const [hex, value] of Object.entries(palette)) {
     if (!excluded.has(value.code)) {
-        codeToHex[value.code] = hex.toUpperCase();
+        codeToHex[value.code] = (value.hex || hex).toUpperCase();
     }
 }
 const codes = Object.keys(codeToHex).sort();

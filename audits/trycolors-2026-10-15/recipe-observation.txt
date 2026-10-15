@@ -1,0 +1,285 @@
+- main:
+  - complementary:
+    - link "Logo Trycolors":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - link "Mixer":
+      - /url: /mixer
+      - text: Mixer
+    - link "Recipes":
+      - /url: /unmixer
+      - text: Recipes
+    - link "Repaint":
+      - /url: /repaint
+      - text: Repaint
+    - link "Paint by Numbers":
+      - /url: /paint-by-numbers
+      - text: Paint by Numbers
+    - link "Mixing Chart":
+      - /url: /color-mixing-chart
+      - text: Mixing Chart
+    - link "Paints 351":
+      - /url: /paints
+      - text: Paints
+      - generic: "351"
+    - link "Games":
+      - /url: /games
+      - text: Games
+    - link "Challenges":
+      - /url: /challenges
+      - text: Challenges
+    - link "Learn":
+      - /url: /learn
+      - text: Learn
+    - link "How it works":
+      - /url: /how-it-works
+      - text: How it works
+    - link "Feedback":
+      - /url: /about/contacts
+      - text: Feedback
+    - link "Help center":
+      - /url: https://docs.trycolors.com
+      - text: Help center
+    - link "My Palettes":
+      - /url: /user/palettes
+      - text: My Palettes
+    - generic: HM
+    - generic: hassani mostafa
+    - generic: Pro
+  - complementary:
+    - button "Product":
+      - text: Product
+    - link "Pricing":
+      - /url: /about/pricing
+    - button "Resources":
+      - text: Resources
+    - link "Contact Us":
+      - /url: /about/contacts
+    - link "Back to Unmixer":
+      - /url: /unmixer
+      - button "Back to Unmixer":
+        - text: Back to Unmixer
+    - heading "Target" [level=2]
+    - generic: "#59D094"
+    - heading "Starting Palette" [level=2]
+    - heading "Settings" [level=2]
+    - generic: Max 4 colors
+    - generic: "Mixer Mode: PRO Advanced"
+    - heading "Mix Recipe" [level=1]
+    - button:
+    - button "Download PDF":
+      - text: Download PDF
+    - button:
+    - paragraph: Created on October 15, 2026
+    - paragraph: From your palette of 5 colors, we selected 3 colors that best achieve your target color.
+    - generic: "Match: 99.1%"
+    - button "Show the result and the target full screen":
+    - generic: RESULT
+    - generic: "#5FCD92"
+    - generic: TARGET
+    - generic: "#59D094"
+    - generic: Titanium White
+    - generic: "11"
+    - generic: Pebeo / High Viscosity
+    - generic: PW6
+    - generic: "#F4F3F1"
+    - generic: 65.3%
+    - generic: Opaque Primary Yellow
+    - generic: "48"
+    - generic: Pebeo / High Viscosity
+    - generic: PW6, PY74
+    - generic: "#FFE43D"
+    - generic: 29.2%
+    - generic: Opaque Primary Cyan
+    - generic: "49"
+    - generic: Pebeo / High Viscosity
+    - generic: PB15:3, PW6
+    - generic: "#00377D"
+    - generic: 5.4%
+    - region "Scale this recipe":
+      - radiogroup "Units":
+        - radio "Parts" [checked]
+        - radio "Milliliters"
+        - radio "Fluid ounces"
+        - radio "Grams"
+      - button "What is this?":
+      - paragraph: The recipe in parts. Fewer parts are easier to mix, but the color drifts a little from the exact recipe; more parts get closer.
+      - radiogroup "Total parts":
+        - radio "10"
+        - radio "20"
+        - radio "50" [checked]
+        - radio "100"
+      - generic: parts
+      - generic: RESULT
+      - generic: "#58CA91"
+      - generic: TARGET
+      - generic: "#59D094"
+      - generic: "Match: 98.5%"
+      - button "Show the result and the target full screen":
+      - generic: 32 parts Titanium White + 15 parts Opaque Primary Yellow
+      - generic "Titanium White":
+        - generic: "32"
+      - generic: +
+      - generic "Opaque Primary Yellow":
+        - generic: "15"
+      - generic: =
+      - generic "#FAF188"
+      - button "Show this color full screen":
+      - generic: Add 3 parts Opaque Primary Cyan
+      - generic "Titanium White":
+        - generic: "32"
+      - generic: +
+      - generic "Opaque Primary Yellow":
+        - generic: "15"
+      - generic: +
+      - generic "Opaque Primary Cyan":
+        - generic: "3"
+      - generic: =
+      - generic "#58CA91"
+      - button "Show this color full screen":
+    - heading "Practical Use" [level=4]
+    - paragraph: Exact amounts are hard to measure by hand, so this guide rounds the recipe to parts you can scoop.
+    - generic: RESULT
+    - generic: "#59CB90"
+    - generic: TARGET
+    - generic: "#59D094"
+    - generic: "Match: 98.8%"
+    - button "Show the result and the target full screen":
+    - paragraph: You will mix a generous base from Titanium White and Opaque Primary Yellow, then add Opaque Primary Cyan to half of it straight from the tube, a little at a time, until it looks like "stop here" on the line. The animation shows the whole mix; the steps below walk you through it.
+    - paragraph: A part is one squeeze of paint. All parts the same size.
+    - generic "Titanium White"
+    - generic "Titanium White"
+    - generic "Opaque Primary Yellow"
+    - generic: base
+    - generic "Opaque Primary Cyan"
+    - generic: Opaque Primary Cyan
+    - generic: base
+    - generic: →
+    - generic: mix
+    - generic: target
+    - text: matches
+    - button "Play the mix":
+      - generic: Play the mix
+    - progressbar "Mix progress"
+    - generic: "0"
+    - heading "Set your screen" [level=5]
+    - paragraph: Hold a piece of your painting paper, or a white card, against the patch and change your screen brightness until they look the same. Turn auto-brightness off while you mix.
+    - button "Open the patch":
+      - text: Open the patch
+    - generic: "1"
+    - heading "Mix a generous base" [level=5]
+    - paragraph: More than you will need. 2 Titanium White to 1 Opaque Primary Yellow, all parts the same size.
+    - generic "Titanium White"
+    - generic "Titanium White"
+    - generic "Opaque Primary Yellow"
+    - paragraph: One way to group them for an easy mix.
+    - generic: Titanium White
+    - generic: 2 parts
+    - generic: Opaque Primary Yellow
+    - generic: 1 part
+    - generic: When mixed, it should look like this
+    - 'generic "#FBF187, #FAF085 while wet"':
+      - generic: wet
+    - generic "#FAF085":
+      - generic: dry
+      - button "Show the wet and dry colors full screen":
+    - paragraph: Compare your pile with the wet half before you go on. Acrylics dry a little darker; the dry half is the finished color.
+    - generic: "2"
+    - heading "Put out a little Opaque Primary Cyan" [level=5]
+    - paragraph: Straight from the tube. You will add it in tiny amounts; much less than the base.
+    - generic: Opaque Primary Cyan
+    - generic: a little, straight from the tube
+    - generic: "3"
+    - heading "Add Opaque Primary Cyan to the base, a little at a time" [level=5]
+    - paragraph: Cut the base in half and keep one half aside. Add a tiny amount of Opaque Primary Cyan to the other half, less than you think, and mix it in fully. Compare with the line and add another tiny amount until it looks like "stop here". Too far? Add from the half you kept.
+    - generic: base
+    - generic: →
+    - generic: mix
+    - generic: ←
+    - generic: Opaque Primary Cyan
+    - button "Opaque Primary Cyan on its own"
+    - button "1:1, 1 part Opaque Primary Cyan to 1 part base"
+    - generic: 1:1
+    - button "1:2, 1 part Opaque Primary Cyan to 2 parts base"
+    - generic: 1:2
+    - button "1:4, 1 part Opaque Primary Cyan to 4 parts base"
+    - generic: 1:4
+    - button "1:8, 1 part Opaque Primary Cyan to 8 parts base"
+    - generic: 1:8
+    - generic: stop here
+    - button "1:16, 1 part Opaque Primary Cyan to 16 parts base, stop here, the recipe's mix"
+    - generic: 1:16
+    - button "1:25, 1 part Opaque Primary Cyan to 25 parts base"
+    - generic: 1:25
+    - button "1:50, 1 part Opaque Primary Cyan to 50 parts base"
+    - generic: 1:50
+    - button "the base on its own"
+    - button "Show the whole line full screen":
+    - generic: Opaque Primary Cyan
+    - generic: base
+    - paragraph: "Labels are Opaque Primary Cyan : base. \"1:16\" is 1 part Opaque Primary Cyan to 16 parts base. Tap any step to compare."
+    - generic: "4"
+    - heading "Adjust by eye" [level=5]
+    - paragraph: Hold your mix next to the screen. The band on top is the target. Tap the swatch that looks like yours.
+    - paragraph: Acrylics dry a little darker. These swatches show dry paint; let a stroke dry before you judge.
+    - img "target":
+      - generic: target
+      - button "Show all the swatches and the target full screen":
+    - button "less Opaque Primary Cyan"
+    - button "more Opaque Primary Cyan"
+    - text: Tap the swatch that looks most like your mix.
+    - button "None is close, pick my color"
+    - paragraph: The Photo tab uses your camera on a phone.
+    - 'button "Mixing Progression Mix evolution step-by-step Step 1: #F4F3F1 Step 2: #FAF085 Step 3: #00377D Step 4: #9BDC8C Step 5: #77D38E Step 6: #59CB90"':
+      - generic: Mixing Progression
+      - generic: Mix evolution step-by-step
+      - 'generic "Step 1: #F4F3F1"'
+      - 'generic "Step 2: #FAF085"'
+      - 'generic "Step 3: #00377D"'
+      - 'generic "Step 4: #9BDC8C"'
+      - 'generic "Step 5: #77D38E"'
+      - 'generic "Step 6: #59CB90"'
+    - button "Show Mixing Progression":
+    - generic: Did this recipe help?
+    - button:
+    - button:
+    - link "logo":
+      - /url: /
+      - img "Logo"
+      - generic: Trycolors
+    - paragraph: Discover the color you need by seamlessly mixing the colors you already have.
+    - generic: Tools
+    - navigation:
+      - link "Mixer":
+        - /url: /mixer
+      - link "Paints":
+        - /url: /paints
+      - link "Games":
+        - /url: /games
+      - link "Challenges":
+        - /url: /challenges
+      - link "Community palettes":
+        - /url: /palettes
+    - generic: For business
+    - navigation:
+      - link "API":
+        - /url: https://api.trycolors.com
+      - link "Widgets":
+        - /url: /product/widgets
+      - link "For Educators":
+        - /url: /use-cases/e-learning
+    - generic: Support
+    - navigation:
+      - link "Help center":
+        - /url: https://docs.trycolors.com
+      - link "Contact":
+        - /url: /about/contacts
+    - generic: Legal
+    - navigation:
+      - link "Terms of Service":
+        - /url: /about/terms-of-service
+      - link "Privacy Policy":
+        - /url: /about/privacy-policy
+    - generic: © 2012 - 2026 Trycolors. All rights reserved.
+- alert
