@@ -147,6 +147,7 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     });
     // very speckled artworks (heavily textured) would take many minutes in the facet reduction: see src/core/despeckle.ts
     settings.despeckleTinyAreas = true;
+    settings.preservePaletteColors = request.requireExactColors === true;
     report("prepare", 1);
 
     const result = await runPipeline(prepared.image, settings, {

@@ -27,9 +27,12 @@ painting. Catalog/customer guides retain A4 pages. Paint packing calculations co
 
 ## Exact-color holds
 
-Template cleanup can remove an artwork's tiny colors. **18 is an exact requirement, not a maximum.** A template
-using fewer colors fails validation before production files are accepted. It is held for review, not silently
-relabeled and not regenerated indefinitely. This policy was explicitly selected during implementation.
+**18 is an exact requirement, not a maximum.** Strict generation selects the exact requested palette count,
+then recovers painted areas of any selected color erased by cleanup before tracing borders and placing labels.
+This preserves real numbered regions, including small ones, rather than adding unused paints to the legend.
+Classic generation does not enable this preservation mode. The final exact-count assertion remains in place
+to detect invalid inputs or a generation error; it no longer rejects a valid 18-paint raster just because cleanup
+erased a color. Historical review holds need one explicit migration retry after deploying this server change.
 
 Drive folder `appProperties` identify ownership and state without changing names:
 

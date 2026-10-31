@@ -118,7 +118,7 @@ export async function runPipeline(image: RGBAImage, settings: Settings, callback
             correctTones(source, 4);
         }
         report("kmeans", 0.1);
-        const match = matchToPalette(source, 4, settings.kMeansNrOfClusters, palette);
+        const match = matchToPalette(source, 4, settings.kMeansNrOfClusters, palette, { exactCount: settings.preservePaletteColors });
         for (let p = 0, o = 0; p < match.paintOfPixel.length; p++, o += 4) {
             const rgb = palette[match.paintOfPixel[p]];
             kmeansImage.data[o] = rgb[0];
@@ -137,6 +137,18 @@ export async function runPipeline(image: RGBAImage, settings: Settings, callback
     // build color map
     const colormapResult = ColorReducer.createColorMap(kmeansImage as ImageData);
     state.colormapResult = colormapResult;
+
+    // Cleanup may erase all regions of a rare paint. Retain the quantized raster
+    // so strict kits can recover actual painted regions, not unused legend entries.
+    const originalColors = settings.preservePaletteColors ? new Uint8Array(image.width * image.height) : null;
+    const anchors = new Map<number, number>();
+    if (originalColors) {
+        for (let y = 0, p = 0; y < image.height; y++) for (let x = 0; x < image.width; x++, p++) {
+            const color = colormapResult.imgColorIndices.get(x, y);
+            originalColors[p] = color;
+            if (!anchors.has(color)) anchors.set(color, p);
+        }
+    }
 
     let facetResult: FacetResult = new FacetResult();
     const buildAndReduceFacets = async () => {
@@ -169,6 +181,21 @@ export async function runPipeline(image: RGBAImage, settings: Settings, callback
             // clean up narrow pixel strips; imgColorIndices get updated as the facets are reduced, so do a few runs
             await ColorReducer.processNarrowPixelStripCleanup(colormapResult);
             await buildAndReduceFacets();
+        }
+    }
+
+    if (originalColors) {
+        const used = new Set(facetResult.facets.filter((f) => f != null).map((f) => f!.color));
+        const missing = new Set([...anchors.keys()].filter((color) => !used.has(color)));
+        if (missing.size) {
+            for (let y = 0, p = 0; y < image.height; y++) for (let x = 0; x < image.width; x++, p++) {
+                if (missing.has(originalColors[p])) colormapResult.imgColorIndices.set(x, y, originalColors[p]);
+            }
+            // Restored areas can cover another paint's last surviving pixel.
+            // Distinct original anchors make all selected paints survive together.
+            for (const [color, p] of anchors) colormapResult.imgColorIndices.set(p % image.width, Math.floor(p / image.width), color);
+            facetResult = await FacetCreator.getFacets(image.width, image.height, colormapResult.imgColorIndices);
+            state.facetResult = facetResult;
         }
     }
 

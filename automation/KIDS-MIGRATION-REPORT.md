@@ -1,5 +1,26 @@
 # Kids rollout handoff — 31 October 2026
 
+## Work status
+
+This is a manually updated status report, not a live dashboard. Migration totals
+below are confirmed by the user's Ubuntu terminal output on 31 October 2026.
+
+| Work | Status |
+| --- | --- |
+| Separate Kids workflow, form, existing price workbook and Drive structure | Deployed |
+| Ubuntu repository update to 93d85e1, server build and restart | Completed by user; service active |
+| Existing Kids migration | 14 complete; 7 held; no unfinished migrations |
+| GitGuardian incidents 39362404, 39362405, 39362406 | Verified credential record IDs; marked ignored / false positive |
+| Preserve all selected 18 paints through cleanup instead of holding for color review | Implemented locally; awaiting user deployment |
+| Tests for the new preservation behavior | Passed: 38 total tests; regression confirms 18 distinct painted colors and 18 template labels |
+| Push and deploy the preservation change | Pending; user controls deployment |
+| Retry the seven held designs using the new behavior | Pending deployment |
+| Diagnose canceled form executions 14634 and 14639 | Unresolved; last executed node not yet identified |
+
+No background work is currently being performed by Codex. No Ubuntu access is
+authorized by this report. Subsequent implementation is local until the user
+explicitly requests remote actions.
+
 The separate Kids workflow is published and its upload form is live:
 https://n8n-vm.taildc9f8f.ts.net/form/darlart-kids-upload
 
@@ -9,7 +30,7 @@ Numeric Drive folder names and SKU format are retained inside Artwork Agent.
 
 ## Latest confirmed migration status
 
-12 completed: 1036, 1041, 1053, 1054, 1056, 1090, 1108, 1109, 1140, 1143, 1145, 1150.
+14 completed: 1036, 1041, 1053, 1054, 1056, 1090, 1108, 1109, 1140, 1143, 1145, 1146, 1149, 1150.
 
 7 held, with original listings and production assets unchanged:
 
@@ -23,33 +44,36 @@ Numeric Drive folder names and SKU format are retained inside Artwork Agent.
 | 1039 | Sunlit Red Lighthouse | 17 |
 | 1040 | Rowing Among Lilies | 17 |
 
-2 remain in the current serial batch: 1146 and 1149. This is a progress snapshot,
-not a claim that the batch has finished. Server journals are authoritative:
+The user's latest migration run confirms all other products already migrated.
+Server journals are authoritative:
 `/home/n8n/.n8n/backups/kids-migration-2026-10-31/<folder>.json`.
 A `completedAt` value means complete even if a historical retry error remains.
 
 Existing artwork is recolored with the Ubuntu PBN tool; migration does not ask AI
-to redraw it. Exact-color failures remain held, as requested. Completed products
+to redraw it. Exact-color failures remain held under the previous policy. The
+user now requests exactly 18 paints without color-review holds; that change is local and not yet deployed. Completed products
 retain product IDs and URLs; replaced Drive assets are archived in each original
 folder under `Archive/classic-before-kids`.
 
 ## Verification already completed
 
-37 tests passed. A complete form-to-Shopify test produced an 18-paint kit at 189 MAD.
+37 tests passed for the deployed implementation, not the pending preservation change.
+A form-to-Shopify test produced an 18-paint kit at 189 MAD.
 Its temporary product 1208 was subsequently archived and excluded from processing.
 The production form and a migrated storefront product were checked in Chrome.
+However, form executions 14634 and 14639 remained open for over 30 minutes and
+were canceled by the user. End-to-end execution termination is not verified.
 
 ## Resume without repeating completed work
 
-First check whether a migration is still running. Do not launch a second batch.
-If the current batch has ended with unfinished products, run on the server:
+The current bulk command is documented here for reference:
 
 ```bash
 sudo -H -u n8n node /opt/pbn/scripts/ops/migrate-kids.cjs --all
 ```
 
-This resumes journals, skips completed products and leaves exact-color review holds
-alone. No workflow redesign or further feature work is needed. After the last two
-finish, read their journals and update these counts. Do not loosen the 18-paint gate.
+This command skips completed products and leaves exact-color review holds alone.
+It will not finish the seven remaining designs under the current implementation.
+Implement and validate paint preservation before retrying those designs.
 
 Implementation and operating details: [KIDS-AGENT.md](KIDS-AGENT.md).

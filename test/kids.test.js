@@ -10,6 +10,32 @@ const workflow = buildKidsWorkflow();
 const runCode = (name, input, context = {}) => new AsyncFunction("$input", "$", workflow.nodes.find((n) => n.name === name).parameters.jsCode)(
     { first: () => ({ json: input }) }, (node) => ({ first: () => ({ json: context[node] || {} }) }));
 
+test("strict kits retain 18 actually painted colors when cleanup removes rare regions", async () => {
+    const { runPipeline } = require("../server/dist/src/core/pipeline");
+    const { buildSettings, parseCustomColors } = require("../server/dist/src/core/settings");
+    const { buildSvgString } = require("../server/dist/src/core/svg");
+    const colors = parseCustomColors(fs.readFileSync(path.join(__dirname, "../server/palettes/darlart-v3.json"), "utf8")).restrictions.slice(0, 18);
+    const image = { width: 120, height: 150, data: new Uint8ClampedArray(120 * 150 * 4) };
+    for (let p = 0; p < 120 * 150; p++) image.data.set([...colors[0], 255], p * 4);
+    for (let c = 1; c < 18; c++) {
+        const x = 5 + (c % 6) * 18, y = 5 + Math.floor(c / 6) * 40;
+        for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) image.data.set([...colors[c], 255], ((y + dy) * 120 + x + dx) * 4);
+    }
+    const settings = buildSettings({ colors: 18, difficulty: "hard", customColors: JSON.stringify(colors.map(rgb => ({ rgb }))) });
+    const classic = await runPipeline(image, settings);
+    assert.ok(classic.colorsByIndex.length < 18, "fixture reproduces cleanup color loss");
+    settings.preservePaletteColors = true;
+    const strict = await runPipeline(image, settings);
+    assert.equal(strict.colorsByIndex.length, 18);
+    assert.equal(new Set(strict.colorsByIndex.map(c => c.join(","))).size, 18);
+    const counts = new Map();
+    for (const f of strict.facetResult.facets) if (f) counts.set(f.color, (counts.get(f.color) || 0) + f.pointCount);
+    assert.equal(counts.size, 18);
+    assert.ok([...counts.values()].every(n => n > 0));
+    const svg = buildSvgString(strict.facetResult, strict.colorsByIndex, { labels: true });
+    assert.equal(new Set([...svg.matchAll(/>(\d+)<\/text>/g)].map(m => m[1])).size, 18);
+});
+
 test("Kids graph has valid code, connections and stage-local node references", () => {
     assert.deepEqual(buildKidsWorkflow(), workflow, "rebuilding preserves node identities");
     const names = new Set(workflow.nodes.map((n) => n.name));
