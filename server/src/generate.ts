@@ -33,6 +33,12 @@ export interface GenerateRequest {
     customColors: string;
     orderId: string;
     randomSeed?: number;
+    /** Strict production jobs fail rather than silently shipping fewer paints after cleanup. */
+    requireExactColors?: boolean;
+    /** Limit the packing guide to the sizes actually sold for this product. */
+    paintCanvasSizes?: string[];
+    /** Emit physical dimensions for the painting area of the canvas SVG. */
+    physicalSvg?: boolean;
 }
 
 export interface OutputFile {
@@ -147,6 +153,10 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
         onProgress: (step, progress) => report(step, progress),
     });
 
+    if (request.requireExactColors && result.colorsByIndex.length !== request.colors) {
+        throw new Error(`Exact color validation failed: requested ${request.colors}, used ${result.colorsByIndex.length} after region cleanup. Review this artwork; no production files were accepted.`);
+    }
+
     report("output", 0);
     await fs.mkdir(request.outputDir, { recursive: true });
     // digital orders are named by their print format ("1042 24 medium A3"), canvases by their size ("1042 24 medium 40x50")
@@ -169,7 +179,10 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
 
     // Painting guide: colored page with its numbers, the palette, then the paints and pots to pack for every canvas size
     // sold (the template is printed at those sizes: same shape, so the same shares of the canvas)
-    const paintPlans = planPaintsForSizes(result.facetResult, result.colorsByIndex.length, prepared.canvas, config.paint);
+    const paintSettings = request.paintCanvasSizes
+        ? { ...config.paint, canvasSizes: request.paintCanvasSizes }
+        : config.paint;
+    const paintPlans = planPaintsForSizes(result.facetResult, result.colorsByIndex.length, prepared.canvas, paintSettings);
     const paintingDoc = buildPaintingPdf(jsPDF as unknown as JsPdfConstructor, result, { paperSize: request.paperSize, paintPlans, reference });
     await writeOutput(OUTPUT_FILES.paintingPdf, "-painting.pdf", Buffer.from(paintingDoc.output("arraybuffer")));
     report("output", 0.5);
@@ -189,6 +202,7 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
         fontFamily: "Tahoma, 'DejaVu Sans', Arial, sans-serif",
         // the sheet's reference in a band under the artwork, so printed sheets can be told apart (1097_36)
         footerText: reference || undefined,
+        physicalCanvas: request.physicalSvg ? prepared.canvas : undefined,
     }));
     report("output", 0.6);
 
@@ -257,7 +271,7 @@ export async function generate(request: GenerateRequest, onProgress: (step: Prog
     }));
     const paints = {
         kits: paintPlans.map((plan) => ({ canvas: plan.label, sameShape: plan.sameShape, totalMl: plan.totalMl, totalPackedMl: plan.totalPackedMl, pots: plan.potsBySize })),
-        settings: config.paint,
+        settings: paintSettings,
     };
     const colorsUsed = pointsByColor.filter((points: number) => points > 0).length;
 

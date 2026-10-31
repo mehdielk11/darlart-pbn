@@ -538,7 +538,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "// The Uploader's products only: handle \"<name>-<folder>\" and every SKU starting with the folder number\nconst previous = $('Next page').first().json.products;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst mine = page.nodes.filter((p) => {\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    return m && p.variants.nodes.length && p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"));\n}).map((p) => ({ ...p, folder: /-(\\d{4,})$/.exec(p.handle)[1] }));\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.concat(mine) } }];"
+        "jsCode": "// The Uploader's products only: handle \"<name>-<folder>\" and every SKU starting with the folder number\nconst previous = $('Next page').first().json.products;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst mine = page.nodes.filter((p) => {\n    // Kids are owned by the independent Kids workflow.\n    if ((p.tags || []).includes(\"kids-kits\")) return false;\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    return m && p.variants.nodes.length && p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"));\n}).map((p) => ({ ...p, folder: /-(\\d{4,})$/.exec(p.handle)[1] }));\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.concat(mine) } }];"
       }
     },
     {

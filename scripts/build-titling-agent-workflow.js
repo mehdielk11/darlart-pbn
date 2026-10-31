@@ -421,5 +421,6 @@ connect("Folders to title?", "Locks to delete", 1);
 
 const workflow = { name: "Darl'Art Titling Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-titling-agent.json");
+require("./lib/kids-guards").applyClassicKidsGuards(workflow);
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

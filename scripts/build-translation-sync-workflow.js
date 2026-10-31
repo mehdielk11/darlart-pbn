@@ -337,5 +337,6 @@ const workflow = {
     pinData: {},
 };
 const out = path.join(root, "automation/n8n-darlart-translation-sync.json");
+require("./lib/kids-guards").applyClassicKidsGuards(workflow);
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

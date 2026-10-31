@@ -210,6 +210,25 @@ export function parseJobOptions(fields: Fields): { options: JobOptions; callback
         errors.push("callbackUrl must be an http(s) URL");
     }
 
+    const flag = (name: string): boolean | undefined => {
+        const value = fields[name];
+        if (value === undefined || value === null || value === "") { return undefined; }
+        if (value === true || value === "true") { return true; }
+        if (value === false || value === "false") { return false; }
+        errors.push(`${name} must be true or false`);
+        return undefined;
+    };
+    const requireExactColors = flag("requireExactColors");
+    const physicalSvg = flag("physicalSvg");
+    let paintCanvasSizes: string[] | undefined;
+    if (fields.paintCanvasSizes !== undefined) {
+        const value = fields.paintCanvasSizes;
+        paintCanvasSizes = Array.isArray(value) ? value.map(String) : String(value).split(",").map((s) => s.trim());
+        if (!paintCanvasSizes.length || paintCanvasSizes.length > 20 || paintCanvasSizes.some((s) => !parseCanvasSize(s))) {
+            errors.push("paintCanvasSizes must contain 1 to 20 valid canvas sizes");
+        }
+    }
+
     if (errors.length > 0) {
         throw new HttpError(400, "Invalid request", errors);
     }
@@ -225,6 +244,9 @@ export function parseJobOptions(fields: Fields): { options: JobOptions; callback
             paletteId,
             orderId,
             randomSeed,
+            requireExactColors,
+            paintCanvasSizes,
+            physicalSvg,
         },
         callbackUrl,
     };

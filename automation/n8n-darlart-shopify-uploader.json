@@ -594,7 +594,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,mimeType,modifiedTime)"
+              "value": "files(appProperties,id,name,mimeType,modifiedTime)"
             },
             {
               "name": "orderBy",
@@ -632,7 +632,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()));\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()) && (f.appProperties || {}).darlart_family !== \"kids\");\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
       }
     },
     {

@@ -23,6 +23,8 @@ export interface SvgOptions {
     labelContrast?: boolean;
     /** Text in a band under the artwork (the sheet's reference, e.g. 1097_36): the artwork keeps its size and place */
     footerText?: string;
+    /** Painting size; a reference footer is additional paper below this rectangle. */
+    physicalCanvas?: { widthCm: number; heightCm: number };
 }
 
 /** Numbers stay readable on any fill: white on a dark region, the normal color on a light one */
@@ -91,7 +93,12 @@ export function buildSvgString(facetResult: FacetResult, colorsByIndex: RGB[], o
     const parts: string[] = [];
     // the band goes below the artwork: the artwork's own coordinates don't change
     const bandHeight = options.footerText ? Math.round(sizeMultiplier * facetResult.height * 0.015) + 16 : 0;
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${sizeMultiplier * facetResult.width}" height="${sizeMultiplier * facetResult.height + bandHeight}">`);
+    const outputWidth = sizeMultiplier * facetResult.width;
+    const outputHeight = sizeMultiplier * facetResult.height + bandHeight;
+    const physical = options.physicalCanvas;
+    parts.push(physical
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="${physical.widthCm}cm" height="${physical.heightCm * outputHeight / (sizeMultiplier * facetResult.height)}cm" viewBox="0 0 ${outputWidth} ${outputHeight}" data-painting-width-cm="${physical.widthCm}" data-painting-height-cm="${physical.heightCm}">`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="${outputWidth}" height="${outputHeight}">`);
     if (options.background) {
         parts.push(`<rect width="100%" height="100%" fill="${options.background}"></rect>`);
     }

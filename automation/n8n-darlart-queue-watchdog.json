@@ -146,7 +146,7 @@
             },
             {
               "name": "fields",
-              "value": "files(id,name,mimeType,description,createdTime,modifiedTime)"
+              "value": "files(appProperties,id,name,mimeType,description,createdTime,modifiedTime)"
             },
             {
               "name": "orderBy",
@@ -314,7 +314,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($('List Artwork Agent').first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
+        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($('List Artwork Agent').first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && (f.appProperties || {}).darlart_family !== \"kids\" && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
       },
       "executeOnce": true
     },
