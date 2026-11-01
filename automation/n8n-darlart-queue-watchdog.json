@@ -35,42 +35,14 @@
     {
       "id": "dd000003-0000-4000-8000-000000000000",
       "name": "Settings",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         220,
         100
       ],
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "set0",
-              "name": "agentFolderId",
-              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set1",
-              "name": "queueFolderId",
-              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "recentDays",
-              "value": 7,
-              "type": "number"
-            },
-            {
-              "id": "set3",
-              "name": "backoffMinutes",
-              "value": 30,
-              "type": "number"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst base = {\"agentFolderId\":\"1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH\",\"queueFolderId\":\"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\",\"recentDays\":7,\"backoffMinutes\":30};\nconst config = {\"queueFolderId\":\"1Botmw2f1ip61J_5PBkyvOlkYjRLHH3kl\",\"doneFolderId\":\"19Ru3ux6Cco74DfsOzT2SmltmYVFGEk8b\",\"refFolderId\":\"1EaCP2LkIJv6Csi9Rtai-bbhRNaFbhc3T\",\"failedFolderId\":\"1KqDreO51jl7jj4l-fy69tCM_cDIe8AhY\",\"canvasSize\":\"24x30\",\"version\":\"shared-kids-v1\"};\nreturn [{ json: resolveStageSettings(base, $input.first().json || {}, config) }];"
       },
       "executeOnce": true
     },
@@ -314,7 +286,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($('List Artwork Agent').first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && (f.appProperties || {}).darlart_family !== \"kids\" && new Date(f.createdTime).getTime() >= since)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}// Numbered folders created in the last recentDays days, oldest first (one empty item when there is none)\nconst settings = $('Settings').first().json;\nconst since = Date.now() - Number(settings.recentDays) * 86400000;\nconst folders = ($('List Artwork Agent').first().json.files || [])\n    .filter((f) => f.mimeType === \"application/vnd.google-apps.folder\" && /^\\d+$/.test(String(f.name).trim()) && folderContext(f).family === settings.family && folderContext(f).eligible)\n    .sort((a, b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } })) : [{ json: { none: true } }];"
       },
       "executeOnce": true
     },
@@ -378,7 +350,7 @@
         100
       ],
       "parameters": {
-        "jsCode": "// Which stages have waiting work, no fresh lock and no recent failure\nconst settings = $('Settings').first().json;\nconst STAGES = {\"worker\":{\"workflowId\":\"dO8EdyDM4ua2hRrA\",\"lock\":\"_artwork-worker.lock\",\"staleMinutes\":20},\"titling\":{\"workflowId\":\"tOSHbCt7hJ6ORh8a\",\"lock\":\"_titling-agent.lock\",\"staleMinutes\":15},\"print\":{\"workflowId\":\"ytxV3m341mDLCdt4\",\"lock\":\"_print-agent.lock\",\"staleMinutes\":20},\"uploader\":{\"workflowId\":\"XAwk67SiWmvVSu1d\",\"lock\":\"_shopify-uploader.lock\",\"staleMinutes\":20}};\nconst now = Date.now();\nconst queueFiles = $('List queue').first().json.files || [];\nconst rootFiles = $('List Artwork Agent').first().json.files || [];\nconst age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;\n// a lock's own stale time is in its description (\"staleMinutes=20\"); older locks use the stage's value\nconst staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || \"\"); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };\nconst cleared = $('Locks of finished runs').isExecuted ? $('Locks of finished runs').all().map((item) => item.json.id).filter(Boolean) : [];\nconst locked = (stage) => [...queueFiles, ...rootFiles].some((f) => f.name.startsWith(STAGES[stage].lock + \"-\") && age(f) < staleOf(f, stage) && !cleared.includes(f.id));\nconst failedRecently = (stage) => rootFiles.some((f) => f.name === \"_failed-\" + stage && age(f) < Number(settings.backoffMinutes));\n\nconst pending = { worker: [], titling: [], print: [], uploader: [] };\npending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_\\d{2}\\.(jpg|png|webp)$/.test(f.name)).map((f) => f.name);\n// no reference left but a batch manifest still there: the worker finishes the batch (moves it to Done)\nif (!pending.worker.length) pending.worker = queueFiles.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name) && age(f) > 10).map((f) => f.name);\nconst folders = $('Recent folders').all();\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const names = (item.json.files || []).map((f) => f.name);\n    const art = names.find((n) => /^.+_art\\.png$/.test(n));\n    if (!art) return;\n    const stamp = art.slice(0, -\"_art.png\".length);\n    const has = (suffix) => names.includes(stamp + suffix);\n    // folders the Titling Agent or the Shopify Uploader gave up on (3 tries) are not waiting for them any more\n    const gaveUp = (prefix) => names.includes(prefix + \"gave-up\") || names.filter((n) => n.startsWith(prefix + \"try-\")).length >= 3;\n    if (!has(\"_product.json\") && !gaveUp(\"_titling-\")) pending.titling.push(folder.name);\n    // a folder the Print Agent gave up on (3 runs with failed jobs) is not waiting for it any more\n    const givenUp = names.filter((n) => n.startsWith(stamp + \"_print-failed-\")).length >= 3;\n    if ((!has(\"_featured.png\") || !has(\"_mockup.png\")) && !givenUp) pending.print.push(folder.name);\n    if (has(\"_product.json\") && has(\"_featured.png\") && has(\"_mockup.png\") && !has(\"_shopify.json\") && !gaveUp(\"_upload-\")) pending.uploader.push(folder.name);\n});\n\nconst start = [];\nfor (const stage of Object.keys(STAGES)) {\n    if (!pending[stage].length) continue;\n    if (locked(stage) || failedRecently(stage)) continue;\n    start.push({ json: { stage, workflowId: STAGES[stage].workflowId, waiting: pending[stage].slice(0, 20) } });\n}\nreturn start;"
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}// Which stages have waiting work, no fresh lock and no recent failure\nconst settings = $('Settings').first().json;\nconst STAGES = {\"worker\":{\"workflowId\":\"dO8EdyDM4ua2hRrA\",\"lock\":\"_artwork-worker.lock\",\"staleMinutes\":20},\"titling\":{\"workflowId\":\"tOSHbCt7hJ6ORh8a\",\"lock\":\"_titling-agent.lock\",\"staleMinutes\":15},\"print\":{\"workflowId\":\"ytxV3m341mDLCdt4\",\"lock\":\"_print-agent.lock\",\"staleMinutes\":20},\"uploader\":{\"workflowId\":\"XAwk67SiWmvVSu1d\",\"lock\":\"_shopify-uploader.lock\",\"staleMinutes\":20}};\nconst now = Date.now();\nconst queueFiles = $('List queue').first().json.files || [];\nconst rootFiles = $('List Artwork Agent').first().json.files || [];\nconst age = (f) => (now - new Date(f.modifiedTime || f.createdTime).getTime()) / 60000;\n// a lock's own stale time is in its description (\"staleMinutes=20\"); older locks use the stage's value\nconst staleOf = (f, stage) => { const m = /staleMinutes=(\\d+)/.exec(f.description || \"\"); return m ? Number(m[1]) : STAGES[stage].staleMinutes; };\nconst cleared = $('Locks of finished runs').isExecuted ? $('Locks of finished runs').all().map((item) => item.json.id).filter(Boolean) : [];\nconst locked = (stage) => [...queueFiles, ...rootFiles, ...($(\"List allocation locks\").first().json.files || [])].some((f) => f.name.startsWith(STAGES[stage].lock + \"-\") && age(f) < staleOf(f, stage) && !cleared.includes(f.id));\nconst failedRecently = (stage) => rootFiles.some((f) => f.name === \"_failed-\" + (settings.family === \"kids\" ? \"kids-\" : \"\") + stage && age(f) < Number(settings.backoffMinutes));\n\nconst pending = { worker: [], titling: [], print: [], uploader: [] };\npending.worker = queueFiles.filter(f => parseQueueName(f.name)).map(f => f.name);\n// no reference left but a batch manifest still there: the worker finishes the batch (moves it to Done)\nif (!pending.worker.length) pending.worker = queueFiles.filter(f => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?_batch[.]json$/.test(f.name) && age(f) > 10).map(f => f.name);\nconst folders = $('Recent folders').all();\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const names = (item.json.files || []).map((f) => f.name);\n    const art = names.find((n) => /^.+_art\\.png$/.test(n));\n    if (!art) return;\n    const stamp = art.slice(0, -\"_art.png\".length);\n    const has = (suffix) => names.includes(stamp + suffix);\n    // folders the Titling Agent or the Shopify Uploader gave up on (3 tries) are not waiting for them any more\n    const gaveUp = (prefix) => names.includes(prefix + \"gave-up\") || names.filter((n) => n.startsWith(prefix + \"try-\")).length >= 3;\n    if (!has(\"_product.json\") && !gaveUp(\"_titling-\")) pending.titling.push(folder.name);\n    // a folder the Print Agent gave up on (3 runs with failed jobs) is not waiting for it any more\n    const givenUp = names.filter((n) => n.startsWith(stamp + \"_print-failed-\")).length >= 3;\n    if ((!has(\"_shopify.json\") || !has(\"_featured.png\") || !has(\"_mockup.png\")) && !givenUp) pending.print.push(folder.name);\n    if (has(\"_product.json\") && has(\"_featured.png\") && has(\"_mockup.png\") && !has(\"_shopify.json\") && !gaveUp(\"_upload-\")) pending.uploader.push(folder.name);\n});\n\nconst start = [];\nfor (const stage of Object.keys(STAGES)) {\n    if (!pending[stage].length) continue;\n    if (locked(stage) || failedRecently(stage)) continue;\n    start.push({ json: { stage, workflowId: STAGES[stage].workflowId, waiting: pending[stage].slice(0, 20) } });\n}\nreturn start;"
       }
     },
     {
@@ -403,6 +375,117 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "023559359ae0db46fd8bb7e7434e1b2e",
+      "name": "Context for Start stage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1430,
+        100
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "ece6b6f964d805563384e31b969a4f8b",
+      "name": "When called",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -700,
+        400
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "bd9080415eab0f9e9e9c8a7553780074",
+      "name": "Dispatch product families",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { family: \"classic\" } }, { json: { family: \"kids\" } }];"
+      }
+    },
+    {
+      "id": "3ba02b5a699f7af2872ed66ee512d4e5",
+      "name": "Run shared family stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -450,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "7ba1c01b66a254893234ff5fa74daf8d",
+      "name": "List allocation locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        590,
+        280
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ \"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\" }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -410,7 +493,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -421,7 +504,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -443,7 +526,7 @@
       "main": [
         [
           {
-            "node": "List Artwork Agent",
+            "node": "List allocation locks",
             "type": "main",
             "index": 0
           }
@@ -567,7 +650,51 @@
       "main": [
         [
           {
+            "node": "Context for Start stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Start stage": {
+      "main": [
+        [
+          {
             "node": "Start stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When called": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch product families": {
+      "main": [
+        [
+          {
+            "node": "Run shared family stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List allocation locks": {
+      "main": [
+        [
+          {
+            "node": "List Artwork Agent",
             "type": "main",
             "index": 0
           }
@@ -579,8 +706,10 @@
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
     "errorWorkflow": "aokToPHKOa4MciN1",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all"
   },
-  "pinData": {}
+  "pinData": {},
+  "active": false
 }

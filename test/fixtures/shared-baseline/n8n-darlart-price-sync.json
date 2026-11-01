@@ -1,0 +1,1447 @@
+{
+  "name": "Darl'Art Price Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtMinute": 20
+            }
+          ]
+        }
+      },
+      "id": "686a2e34-5f95-4d7d-878e-0909664b8215",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4f76e513-f1f6-4c33-b3a5-44046e804e54",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "pricesSheetId",
+              "value": "1iv2qOUSHPMWgdlZ5ZoCxx9WPljK9V3eWKZp7cYlB9Pk",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "shopDomain",
+              "value": "smgi0i-0a.myshopify.com",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "apiVersion",
+              "value": "2026-07",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "sizes",
+              "value": "20x25,32x40,40x50",
+              "type": "string"
+            },
+            {
+              "id": "set5",
+              "name": "compareAtMultiplier",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "set6",
+              "name": "telegramChatId",
+              "value": "-1003952514058",
+              "type": "string"
+            },
+            {
+              "id": "set7",
+              "name": "canvasTranslations",
+              "value": "{\"Rolled Canvas\":{\"fr\":\"Toile roulée\",\"ar\":\"قماش ملفوف\"},\"Stretched Canvas\":{\"fr\":\"Toile tendue\",\"ar\":\"قماش مشدود\"}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "206ee09a-0254-4db8-a0af-1896d6ccdac8",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        112
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_price-sync.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "7f38e35a-2efb-4524-98e3-3e0fbcc7b5a1",
+      "name": "List locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        -304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Another run holds a fresh lock (refreshed within its stale time, kept in its description)\nconst OWN = 5;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst locks = $input.first().json.files || [];\nconst fresh = locks.filter(isFresh);\nconst stale = locks.filter((l) => !fresh.includes(l)).map((l) => l.id);\nreturn [{ json: { free: fresh.length === 0, fresh: fresh.length, stale } }];"
+      },
+      "id": "2b819548-0cc3-4bf6-a5de-b6b95fa91992",
+      "name": "Lock state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockfree",
+              "leftValue": "={{ $json.free }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "33af18dd-9157-4cb2-ba87-9c4a8ee0bcda",
+      "name": "Lock free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,createdTime",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: '_price-sync.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (5) }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "0d15da2e-eda4-4d8e-abf1-ebe24f3e9f80",
+      "name": "Create lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1104,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name contains '_price-sync.lock' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description,createdTime,modifiedTime)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "dcdfc159-fd51-458d-a2b3-7a7d665c3be6",
+      "name": "List locks again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        -384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Two runs can create a lock at the same moment: the oldest fresh lock wins, the other run steps back\nconst mine = $('Create lock').last().json;\nconst OWN = 5;\nconst staleMs = (l) => { const m = /staleMinutes=(\\d+)/.exec(l.description || \"\"); return (m ? Number(m[1]) : OWN) * 60000; };\nconst isFresh = (l) => Date.now() - new Date(l.modifiedTime || l.createdTime).getTime() < staleMs(l);\nconst fresh = ($input.first().json.files || [])\n    .filter((l) => l.id === mine.id || isFresh(l))\n    .sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : a.id < b.id ? -1 : 1));\nreturn [{ json: { won: fresh.length > 0 && fresh[0].id === mine.id, lockId: mine.id } }];"
+      },
+      "id": "eef599e0-0bac-4942-9126-964ca83f1dda",
+      "name": "Won the lock?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Lockwon",
+              "leftValue": "={{ $json.won }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa8f8493-686a-4cc7-9900-13db15ff5a85",
+      "name": "Lock won?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.lockId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "5937b84e-872b-4d64-bd02-65d20a9e8e47",
+      "name": "Step back (drop my lock)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1984,
+        -240
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn [{ json: { retry: attempt <= 3, attempt } }];"
+      },
+      "id": "777ecfb8-fcb4-45a7-8dc7-94353ef885ff",
+      "name": "Busy: try again?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Retry",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "38322d1b-892e-439c-85ed-7b7dce68b3dd",
+      "name": "Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "id": "b11aa643-d8ce-4b00-9303-663d1aa6930f",
+      "name": "Wait before retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1552,
+        -16
+      ],
+      "webhookId": "c41a8dd8-b3f0-4611-b029-8eea6c55d05b"
+    },
+    {
+      "parameters": {},
+      "id": "8657bdb0-2bad-42c0-a6a5-44a6ad16f682",
+      "name": "Busy: another run is working",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Settings').first().json.pricesSheetId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,mimeType,modifiedTime,trashed"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "55e37314-d965-4c5c-8369-5a1ecc0e25dd",
+      "name": "Find prices sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const file = $input.first().json;\nif (!file.id || file.trashed) throw new Error(\"The prices sheet (pricesSheetId in Settings) is missing or in the trash\");\nif (file.mimeType !== \"application/vnd.google-apps.spreadsheet\") throw new Error(file.name + \" is not a Google Sheet: pricesSheetId must point to the prices spreadsheet\");\nreturn [{ json: { id: file.id, name: file.name, modifiedTime: file.modifiedTime } }];"
+      },
+      "id": "0673d8dd-195d-4f69-ac24-91c122af895a",
+      "name": "Prices file",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/export?mimeType=text/csv",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "2e6e53a8-ee9a-4506-9a5d-e62f9629d967",
+      "name": "Export prices sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2448,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits.\n// A price of 0 means \"not sold\": no variant for that combination (the product page shows it greyed out).\nconst settings = $('Settings').first().json;\nconst file = $('Prices file').first().json;\nconst text = String($input.first().json.data || \"\").replace(/^\\uFEFF/, \"\");\n// empty rows of the sheet export as \",,,\" lines\nconst lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;\"\\s]/g, \"\"));\n// one CSV line into cells; a quoted cell may hold a comma (e.g. \"179,00\" in a French-format sheet)\nconst split = (line) => {\n    const cells = [];\n    let cell = \"\";\n    let quoted = false;\n    for (let i = 0; i < line.length; i++) {\n        const ch = line[i];\n        if (quoted) {\n            if (ch === '\"' && line[i + 1] === '\"') { cell += '\"'; i++; }\n            else if (ch === '\"') quoted = false;\n            else cell += ch;\n        } else if (ch === '\"') quoted = true;\n        else if (ch === \",\" || ch === \";\") { cells.push(cell.trim()); cell = \"\"; }\n        else cell += ch;\n    }\n    cells.push(cell.trim());\n    return cells;\n};\nconst header = split(lines.shift() || \"\").map((h) => h.toLowerCase().replace(/\\s+/g, \"_\"));\nconst col = (name) => header.indexOf(name);\nfor (const name of [\"canvas_type\", \"size\", \"colors\", \"price\"]) {\n    if (col(name) < 0) throw new Error(file.name + \": missing column \" + name + \" (columns: canvas_type,size,colors,price)\");\n}\n// \"179\", \"179.00\", \"179,00\" or \"179,00 MAD\"; an empty price cell counts as 0 (not sold)\nconst money = (value) => Number(String(value).replace(/[^\\d,.-]/g, \"\").replace(\",\", \".\") || \"0\");\nconst normSize = (value) => String(value || \"\").toLowerCase().trim().replace(/\\s*cm$/, \"\").replace(/\\s*[x×]\\s*/, \"x\");\nconst soldSizes = String(settings.sizes || \"\").split(\",\").map(normSize).filter(Boolean);\nconst rows = [];\nconst seen = new Set();\nlines.forEach((line, i) => {\n    const cells = split(line);\n    const size = normSize(cells[col(\"size\")]);\n    if (soldSizes.length && !soldSizes.includes(size)) return; // not a size the store sells\n    let canvasType = cells[col(\"canvas_type\")];\n    if (!/canvas$/i.test(canvasType)) canvasType += \" Canvas\"; // \"Rolled\" -> \"Rolled Canvas\", the store's wording\n    const colors = String(parseInt(cells[col(\"colors\")], 10));\n    const price = money(cells[col(\"price\")]);\n    const compareCell = col(\"compare_at_price\") >= 0 ? cells[col(\"compare_at_price\")] : \"\";\n    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);\n    const where = file.name + \" line \" + (i + 2);\n    if (!/^\\d+x\\d+$/.test(size)) throw new Error(where + \": size must look like 30x40\");\n    if (colors === \"NaN\") throw new Error(where + \": colors must be a number\");\n    if (!(price >= 0)) throw new Error(where + \": price must be a number (0 = not sold)\");\n    const key = size + \"|\" + canvasType + \"|\" + colors;\n    if (seen.has(key)) throw new Error(where + \": \" + key.replace(/\\|/g, \" / \") + \" is listed twice\");\n    seen.add(key);\n    const sold = price > 0;\n    rows.push({ key, size, canvasType, colors, sold, price: price.toFixed(2), compareAtPrice: sold && compareAt > price ? compareAt.toFixed(2) : null });\n});\nif (!rows.length) throw new Error(file.name + \" has no prices\" + (soldSizes.length ? \" for the sizes in Settings (\" + soldSizes.join(\", \") + \")\" : \"\"));\nconst missing = soldSizes.filter((s) => !rows.some((r) => r.size === s));\nif (missing.length) throw new Error(file.name + \" has no prices for \" + missing.join(\", \") + \" (sizes in Settings; a price of 0 marks a combination not sold)\");\nconst soldRows = rows.filter((r) => r.sold);\nif (!soldRows.length) throw new Error(file.name + \": every price is 0, a product needs at least one combination for sale\");\nif (soldRows.length > 100) throw new Error(file.name + \": Shopify allows 100 variants per product, the sheet has \" + soldRows.length + \" prices above 0\");\n\nconst area = (s) => s.split(\"x\").reduce((a, b) => a * Number(b), 1);\nconst unique = (values) => [...new Set(values)];\nconst order = (list) => {\n    const sizes = unique(list.map((r) => r.size)).sort((a, b) => area(a) - area(b));\n    const canvasTypes = unique(list.map((r) => r.canvasType)).sort();\n    const colors = unique(list.map((r) => r.colors)).sort((a, b) => a - b);\n    list.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);\n    return { sizes, canvasTypes, colors };\n};\norder(rows);\n// the options list only the values that have a combination for sale (Shopify has no option value without a variant)\nconst values = order(soldRows);\nconst productOptions = [\n    { name: \"Size\", position: 1, values: values.sizes.map((name) => ({ name })) },\n    { name: \"Canvas Type\", position: 2, values: values.canvasTypes.map((name) => ({ name })) },\n    { name: \"Colors\", position: 3, values: values.colors.map((name) => ({ name })) },\n];\nconst variants = soldRows.map((r, i) => ({\n    optionValues: [\n        { optionName: \"Size\", name: r.size },\n        { optionName: \"Canvas Type\", name: r.canvasType },\n        { optionName: \"Colors\", name: r.colors },\n    ],\n    price: r.price,\n    compareAtPrice: r.compareAtPrice,\n    position: i + 1,\n    inventoryPolicy: \"DENY\",\n    inventoryItem: { tracked: false, requiresShipping: true },\n}));\nreturn [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, notSold: rows.length - soldRows.length, productOptions, variants, rows } }];"
+      },
+      "id": "3d2daebe-4b6c-4f6a-af4e-f0ddb0f58f02",
+      "name": "Prices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// First page, or the next one after the last page read\nif ($runIndex === 0) return [{ json: { cursor: null, products: [] } }];\nconst last = $('Collect products').first().json;\nreturn [{ json: { cursor: last.cursor, products: last.products } }];"
+      },
+      "id": "54b1f981-30ef-4afb-845a-63f9a2bb18d3",
+      "name": "Next page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n    query: \"query Page($after: String) { products(first: 10, after: $after, query: \\\"product_type:'Paint by Numbers Kit'\\\") { pageInfo { hasNextPage endCursor } nodes { id title handle tags options { name position optionValues { id name fr: translations(locale: \\\"fr\\\") { key value } ar: translations(locale: \\\"ar\\\") { key value } } } variants(first: 60) { nodes { id sku price compareAtPrice selectedOptions { name value } } } } } }\",\n    variables: { after: $json.cursor }\n}) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "c93535e2-6606-4303-ae2b-7db14b7bef69",
+      "name": "Products page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3104,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// The Uploader's products only: handle \"<name>-<folder>\" and every SKU starting with the folder number\nconst previous = $('Next page').first().json.products;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst mine = page.nodes.filter((p) => {\n    // Kids are owned by the independent Kids workflow.\n    if ((p.tags || []).includes(\"kids-kits\")) return false;\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    return m && p.variants.nodes.length && p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"));\n}).map((p) => ({ ...p, folder: /-(\\d{4,})$/.exec(p.handle)[1] }));\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.concat(mine) } }];"
+      },
+      "id": "39ee6109-1b5f-49bc-a349-05a8d4cd935e",
+      "name": "Collect products",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Morepages",
+              "leftValue": "={{ $json.more }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8992d41a-a2ae-4092-92b6-02636caef7e8",
+      "name": "More pages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3552,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Canvas option values without their French / Arabic name (from canvasTranslations in Settings)\nconst wanted = JSON.parse($('Settings').first().json.canvasTranslations || \"{}\");\nconst todo = [];\nfor (const p of $input.first().json.products) {\n    for (const opt of p.options) {\n        if (opt.name !== \"Canvas Type\") continue;\n        for (const v of opt.optionValues) {\n            const want = wanted[v.name];\n            if (!want) continue;\n            const have = { fr: ((v.fr || [])[0] || {}).value, ar: ((v.ar || [])[0] || {}).value };\n            const locales = Object.keys(want).filter((l) => have[l] !== want[l]);\n            if (locales.length) todo.push({ id: v.id, name: v.name, folder: p.folder, translations: locales.map((l) => ({ locale: l, value: want[l] })) });\n        }\n    }\n}\nreturn [{ json: { todo, ids: todo.map((t) => t.id) } }];"
+      },
+      "id": "1b2cf533-8e2a-493a-9d2c-517fc625e536",
+      "name": "Missing translations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        -128
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Translationstoadd",
+              "leftValue": "={{ $json.todo.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a63da52c-3df2-4924-b283-3732d01f8947",
+      "name": "Translations to add?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3984,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n    query: \"query D($ids: [ID!]!) { translatableResourcesByIds(first: 100, resourceIds: $ids) { nodes { resourceId translatableContent { key digest } } } }\",\n    variables: { ids: $json.ids.slice(0, 100) }\n}) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "4a01a2c0-1e7c-41f9-8d02-b14ad0d2d600",
+      "name": "Translation digests",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4208,
+        -208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// One request registering every missing name (a value's digest proves which English text it translates)\nconst todo = $('Missing translations').first().json.todo;\nconst nodes = ((($input.first().json.data || {}).translatableResourcesByIds) || {}).nodes || [];\nconst vars = [];\nconst parts = [];\nconst variables = {};\ntodo.forEach((t, i) => {\n    const node = nodes.find((n) => n.resourceId === t.id);\n    const digest = node && (node.translatableContent.find((c) => c.key === \"name\") || {}).digest;\n    if (!digest) return;\n    vars.push(\"$r\" + i + \": ID!\", \"$t\" + i + \": [TranslationInput!]!\");\n    parts.push(\"t\" + i + \": translationsRegister(resourceId: $r\" + i + \", translations: $t\" + i + \") { userErrors { field message } }\");\n    variables[\"r\" + i] = t.id;\n    variables[\"t\" + i] = t.translations.map((x) => ({ locale: x.locale, key: \"name\", value: x.value, translatableContentDigest: digest }));\n});\nif (!parts.length) return [{ json: { none: true } }];\nreturn [{ json: { count: parts.length, body: { query: \"mutation R(\" + vars.join(\", \") + \") { \" + parts.join(\" \") + \" }\", variables } } }];"
+      },
+      "id": "e85695ad-1def-4bb5-961e-3c2c56438720",
+      "name": "Translations request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4432,
+        -208
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anytranslation",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "def51d46-08e7-4479-a4e3-72e6341f24b0",
+      "name": "Any translation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4640,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "d366ca75-8084-4a60-9ef8-59eb811dfd8e",
+      "name": "Save translations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4864,
+        -288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Per product: variants to update (price), delete (price 0 in the sheet) and create (price above 0 again)\nconst prices = $('Prices').first().json;\nconst products = $('Collect products').first().json.products;\nconst byKey = {};\nfor (const row of prices.rows) byKey[row.key] = row;\nconst optionOf = (v, name) => (v.selectedOptions.find((o) => o.name === name) || {}).value;\nconst keyOf = (v) => optionOf(v, \"Size\") + \"|\" + optionOf(v, \"Canvas Type\") + \"|\" + optionOf(v, \"Colors\");\nconst money = (x) => (x === null || x === undefined || x === \"\" ? null : Number(x).toFixed(2));\n// a product tagged \"sale-<percent>\" (e.g. sale-50) shows a compare-at (\"before\") price that makes that discount:\n// price / (1 - percent), rounded to a whole number (249 with sale-50 -> 498). Without the tag: the sheet's value\n// (compare_at_price column, or price x compareAtMultiplier), none when both are empty/0.\nconst saleOf = (p) => { for (const t of p.tags || []) { const m = /^sale-(\\d{1,2})$/i.exec(String(t).trim()); if (m && Number(m[1]) > 0) return Number(m[1]); } return 0; };\nconst compareFor = (row, sale) => (sale ? Math.round(Number(row.price) / (1 - sale / 100)).toFixed(2) : row.compareAtPrice);\nconst out = [];\nfor (const p of products) {\n    const sale = saleOf(p);\n    const existing = {};\n    for (const v of p.variants.nodes) existing[keyOf(v)] = v;\n    const update = [];\n    const remove = [];\n    const create = [];\n    for (const [key, v] of Object.entries(existing)) {\n        const row = byKey[key];\n        if (!row) continue; // not in the sheet (another size...): left alone\n        if (!row.sold) { remove.push({ id: v.id, key }); continue; }\n        const compareAtPrice = compareFor(row, sale);\n        if (money(v.price) !== row.price || money(v.compareAtPrice) !== compareAtPrice) {\n            update.push({ id: v.id, price: row.price, compareAtPrice, key, was: money(v.price), wasBefore: money(v.compareAtPrice) });\n        }\n    }\n    for (const row of prices.rows) {\n        if (!row.sold || existing[row.key]) continue;\n        create.push({\n            optionValues: [{ optionName: \"Size\", name: row.size }, { optionName: \"Canvas Type\", name: row.canvasType }, { optionName: \"Colors\", name: row.colors }],\n            price: row.price,\n            compareAtPrice: compareFor(row, sale),\n            inventoryPolicy: \"DENY\",\n            inventoryItem: { tracked: false, requiresShipping: true, sku: p.folder + row.size.replace(\"x\", \"\") + row.colors + row.canvasType.charAt(0).toUpperCase() },\n        });\n    }\n    if (!update.length && !remove.length && !create.length) continue;\n    // a product always keeps at least one variant: if the sheet would leave none, nothing is deleted\n    const kept = Object.keys(existing).length - remove.length + create.length;\n    const removeNow = kept > 0 ? remove : [];\n    // new values go back to their place: options in the sheet's order, only the values the product will have\n    const after = new Set(Object.keys(existing).filter((k) => !removeNow.some((r) => r.key === k)).concat(create.map((c) => c.optionValues.map((o) => o.name).join(\"|\"))));\n    const valuesOf = (i) => [...new Set(prices.rows.map((r) => r.key.split(\"|\")[i]))].filter((value) => [...after].some((k) => k.split(\"|\")[i] === value)).map((name) => ({ name }));\n    const reorder = create.length ? [{ name: \"Size\", values: valuesOf(0) }, { name: \"Canvas Type\", values: valuesOf(1) }, { name: \"Colors\", values: valuesOf(2) }] : [];\n    const vars = [];\n    const parts = [];\n    if (create.length) { vars.push(\"$c: [ProductVariantsBulkInput!]!\"); parts.push(\"c: productVariantsBulkCreate(productId: $p, variants: $c) { userErrors { field message } }\"); }\n    if (update.length) { vars.push(\"$u: [ProductVariantsBulkInput!]!\"); parts.push(\"u: productVariantsBulkUpdate(productId: $p, variants: $u) { userErrors { field message } }\"); }\n    if (removeNow.length) { vars.push(\"$d: [ID!]!\"); parts.push(\"d: productVariantsBulkDelete(productId: $p, variantsIds: $d) { userErrors { field message } }\"); }\n    if (reorder.length) { vars.push(\"$o: [OptionReorderInput!]!\"); parts.push(\"o: productOptionsReorder(productId: $p, options: $o) { userErrors { field message } }\"); }\n    out.push({ json: {\n        productId: p.id,\n        folder: p.folder,\n        title: p.title,\n        sale,\n        summary: { updated: update.map((u) => u.key + \" \" + u.was + \" -> \" + u.price + (u.wasBefore !== u.compareAtPrice ? \" (before-price \" + (u.wasBefore || \"none\") + \" -> \" + (u.compareAtPrice || \"none\") + \")\" : \"\")), removed: removeNow.map((r) => r.key), created: create.map((c) => c.optionValues.map((o) => o.name).join(\"|\")), keptAll: remove.length !== removeNow.length },\n        body: {\n            query: \"mutation Sync($p: ID!\" + (vars.length ? \", \" + vars.join(\", \") : \"\") + \") { \" + parts.join(\" \") + \" }\",\n            variables: { p: p.id, c: create, u: update.map((u) => ({ id: u.id, price: u.price, compareAtPrice: u.compareAtPrice })), d: removeNow.map((r) => r.id), o: reorder },\n        },\n    } });\n}\nreturn out.length ? out : [{ json: { none: true, checked: products.length } }];"
+      },
+      "id": "47dadbf8-0774-42bd-83a5-1b0604cc2930",
+      "name": "Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        192
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingtochange",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7235bf27-4efa-4f21-93b7-90a65ff471a3",
+      "name": "Anything to change?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3984,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "1da0c9e5-e5d2-4a98-bd01-78b659b14d98",
+      "name": "Apply changes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4208,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// One message: what changed per product, and any error Shopify returned\nconst changes = $('Changes').all().map((item) => item.json);\nconst answers = $input.all().map((item) => item.json);\nconst lines = [];\nlet failed = 0;\nchanges.forEach((c, i) => {\n    const a = answers[i] || {};\n    const errors = [];\n    if (a.error) errors.push(String(a.error.message || a.error));\n    for (const e of a.errors || []) errors.push(e.message);\n    for (const part of Object.values(a.data || {})) for (const e of (part && part.userErrors) || []) errors.push(e.message);\n    const s = c.summary;\n    const bits = [];\n    if (s.updated.length) bits.push(s.updated.length + \" price\" + (s.updated.length === 1 ? \"\" : \"s\") + \" updated\");\n    if (s.removed.length) bits.push(s.removed.length + \" not sold (removed)\");\n    if (s.created.length) bits.push(s.created.length + \" back on sale\");\n    if (s.keptAll) bits.push(\"nothing removed: every price of this product is 0 in the sheet\");\n    lines.push(\"- \" + c.folder + \" \" + c.title + \": \" + bits.join(\", \") + (errors.length ? \" | ERROR: \" + errors.join(\"; \").slice(0, 300) : \"\"));\n    if (errors.length) failed++;\n});\nconst tr = $('Save translations').isExecuted ? $('Save translations').first().json : null;\nif (tr) {\n    const errs = [];\n    if (tr.error) errs.push(String(tr.error.message || tr.error));\n    for (const e of tr.errors || []) errs.push(e.message);\n    for (const part of Object.values(tr.data || {})) for (const e of (part && part.userErrors) || []) errs.push(e.message);\n    if (errs.length) { lines.push(\"- translations: ERROR \" + errs.join(\"; \").slice(0, 300)); failed++; }\n}\nconst head = \"Price Sync: \" + changes.length + \" product\" + (changes.length === 1 ? \"\" : \"s\") + \" brought in line with the prices sheet\" + (failed ? \", \" + failed + \" with errors (retried next hour)\" : \"\");\nreturn [{ json: { failed, text: [head, ...lines].join(\"\\n\").slice(0, 4000) } }];"
+      },
+      "id": "6b470146-b563-4fa7-8fe3-ddb4fa83b1c8",
+      "name": "Sync report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4432,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2f17dac8-9fab-4460-ba29-9d83309927cf",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4640,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2f97d423-dde3-4d3c-92fc-7083f62a19ca",
+      "name": "Telegram: sync report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4864,
+        32
+      ],
+      "webhookId": "41522079-944f-4e78-a310-a6f1ee603c37",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// My lock, plus locks left behind by crashed runs\nconst processed = false;\nconst ids = [$('Won the lock?').first().json.lockId, ...$('Lock state').first().json.stale];\nreturn ids.map((id) => ({ json: { id, processed: !!processed } }));"
+      },
+      "id": "0a17f2d2-9755-4796-897d-a46ce0bdc968",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5088,
+        272
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f7a40a42-7b8a-4ff9-8f1d-de416accc2e8",
+      "name": "Release lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5312,
+        272
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Startagain",
+              "leftValue": "={{ $('Locks to delete').first().json.processed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "69fb21d4-895a-4a91-b547-d38ec23e4440",
+      "name": "Start again?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5520,
+        272
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "489af709-ed52-4e3c-b983-f57b2df73db9",
+      "name": "Start next run",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5744,
+        192
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks": {
+      "main": [
+        [
+          {
+            "node": "Lock state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock state": {
+      "main": [
+        [
+          {
+            "node": "Lock free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock free?": {
+      "main": [
+        [
+          {
+            "node": "Create lock",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create lock": {
+      "main": [
+        [
+          {
+            "node": "List locks again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List locks again": {
+      "main": [
+        [
+          {
+            "node": "Won the lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Won the lock?": {
+      "main": [
+        [
+          {
+            "node": "Lock won?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock won?": {
+      "main": [
+        [
+          {
+            "node": "Find prices sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step back (drop my lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step back (drop my lock)": {
+      "main": [
+        [
+          {
+            "node": "Busy: try again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busy: try again?": {
+      "main": [
+        [
+          {
+            "node": "Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "node": "Wait before retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Busy: another run is working",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retry": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "List locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find prices sheet": {
+      "main": [
+        [
+          {
+            "node": "Prices file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prices file": {
+      "main": [
+        [
+          {
+            "node": "Export prices sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export prices sheet": {
+      "main": [
+        [
+          {
+            "node": "Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prices": {
+      "main": [
+        [
+          {
+            "node": "Next page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next page": {
+      "main": [
+        [
+          {
+            "node": "Products page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Products page": {
+      "main": [
+        [
+          {
+            "node": "Collect products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect products": {
+      "main": [
+        [
+          {
+            "node": "More pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More pages?": {
+      "main": [
+        [
+          {
+            "node": "Next page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Missing translations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Missing translations": {
+      "main": [
+        [
+          {
+            "node": "Translations to add?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translations to add?": {
+      "main": [
+        [
+          {
+            "node": "Translation digests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translation digests": {
+      "main": [
+        [
+          {
+            "node": "Translations request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translations request": {
+      "main": [
+        [
+          {
+            "node": "Any translation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any translation?": {
+      "main": [
+        [
+          {
+            "node": "Save translations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save translations": {
+      "main": [
+        [
+          {
+            "node": "Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Changes": {
+      "main": [
+        [
+          {
+            "node": "Anything to change?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to change?": {
+      "main": [
+        [
+          {
+            "node": "Apply changes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply changes": {
+      "main": [
+        [
+          {
+            "node": "Sync report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync report": {
+      "main": [
+        [
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: sync report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lock": {
+      "main": [
+        [
+          {
+            "node": "Start again?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start again?": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: sync report": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca",
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "d4c66773-0467-46f9-bba6-c8ed0f8d7bee",
+  "id": "HbKP2SZ1ZF4ZhgCf",
+  "tags": []
+}

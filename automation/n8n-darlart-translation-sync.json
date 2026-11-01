@@ -49,66 +49,14 @@
     {
       "id": "fe000004-0000-4000-8000-000000000000",
       "name": "Settings",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         220,
         200
       ],
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "set0",
-              "name": "agentFolderId",
-              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set1",
-              "name": "shopDomain",
-              "value": "smgi0i-0a.myshopify.com",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "apiVersion",
-              "value": "2026-07",
-              "type": "string"
-            },
-            {
-              "id": "set3",
-              "name": "locales",
-              "value": "fr,ar",
-              "type": "string"
-            },
-            {
-              "id": "set4",
-              "name": "model",
-              "value": "gpt-5-mini",
-              "type": "string"
-            },
-            {
-              "id": "set5",
-              "name": "maxPerRun",
-              "value": 10,
-              "type": "number"
-            },
-            {
-              "id": "set6",
-              "name": "maxTries",
-              "value": 3,
-              "type": "number"
-            },
-            {
-              "id": "set7",
-              "name": "telegramChatId",
-              "value": "-1003952514058",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst base = {\"agentFolderId\":\"1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH\",\"shopDomain\":\"smgi0i-0a.myshopify.com\",\"apiVersion\":\"2026-07\",\"locales\":\"fr,ar\",\"model\":\"gpt-5-mini\",\"maxPerRun\":10,\"maxTries\":3,\"telegramChatId\":\"-1003952514058\"};\nconst config = {\"queueFolderId\":\"1Botmw2f1ip61J_5PBkyvOlkYjRLHH3kl\",\"doneFolderId\":\"19Ru3ux6Cco74DfsOzT2SmltmYVFGEk8b\",\"refFolderId\":\"1EaCP2LkIJv6Csi9Rtai-bbhRNaFbhc3T\",\"failedFolderId\":\"1KqDreO51jl7jj4l-fy69tCM_cDIe8AhY\",\"canvasSize\":\"24x30\",\"version\":\"shared-kids-v1\"};\nreturn [{ json: resolveStageSettings(base, $input.first().json || {}, config) }];"
       },
       "executeOnce": true
     },
@@ -220,7 +168,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_translation-sync.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (15) }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_translation-sync.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: ('staleMinutes=' + (15)) + \";family=\" + $(\"Settings\").first().json.family }) }}",
         "options": {
           "timeout": 30000
         }
@@ -464,7 +412,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// The Uploader's products only (handle \"<name>-<folder>\", SKUs starting with the folder number), and per product\n// the keys and languages that need a translation: none yet, or an outdated one. A product that failed maxTries times\n// is skipped until its English text changes (its tries are kept with a fingerprint of that text).\nconst settings = $('Settings').first().json;\nconst locales = String(settings.locales || \"fr,ar\").split(\",\").map((l) => l.trim()).filter(Boolean);\nconst KEYS = [\"title\",\"body_html\"];\nconst maxTries = Number(settings.maxTries) || 3;\nconst previous = $('Next page').first().json;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst fingerprint = (text) => { let h = 5381; for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0; return h.toString(16) + \"-\" + text.length; };\nconst todo = [];\nlet givenUp = previous.givenUp || 0;\nfor (const p of page.nodes) {\n    // Kids are owned by the independent Kids workflow.\n    if ((p.tags || []).includes(\"kids-kits\")) continue;\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    if (!m || !p.variants.nodes.length || !p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"))) continue;\n    // an empty description has nothing to translate\n    const keys = KEYS.filter((key) => key !== \"body_html\" || String(p.descriptionHtml || \"\").trim() !== \"\");\n    const need = {};\n    for (const locale of locales) {\n        const have = p[\"t_\" + locale.replace(/\\W/g, \"_\")] || [];\n        const missing = keys.filter((key) => { const t = have.find((x) => x.key === key); return !t || t.outdated; });\n        if (missing.length) need[locale] = missing;\n    }\n    if (!Object.keys(need).length) continue;\n    const hash = fingerprint(p.title + \"\\n\" + (p.descriptionHtml || \"\"));\n    let tries = 0;\n    try { const t = JSON.parse((p.tries && p.tries.value) || \"{}\"); if (t.hash === hash) tries = Number(t.tries) || 0; } catch (e) {}\n    if (tries >= maxTries) { givenUp++; continue; }\n    todo.push({ id: p.id, folder: m[1], title: p.title, need, hash, tries });\n}\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.products.concat(todo), givenUp } }];"
+        "jsCode": "// The Uploader's products only (handle \"<name>-<folder>\", SKUs starting with the folder number), and per product\n// the keys and languages that need a translation: none yet, or an outdated one. A product that failed maxTries times\n// is skipped until its English text changes (its tries are kept with a fingerprint of that text).\nconst settings = $('Settings').first().json;\nconst locales = String(settings.locales || \"fr,ar\").split(\",\").map((l) => l.trim()).filter(Boolean);\nconst KEYS = [\"title\",\"body_html\"];\nconst maxTries = Number(settings.maxTries) || 3;\nconst previous = $('Next page').first().json;\nconst response = $input.first().json;\nif (response.errors) throw new Error(\"Shopify: \" + JSON.stringify(response.errors).slice(0, 300));\nconst page = response.data.products;\nconst fingerprint = (text) => { let h = 5381; for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0; return h.toString(16) + \"-\" + text.length; };\nconst todo = [];\nlet givenUp = previous.givenUp || 0;\nfor (const p of page.nodes) {\n    // Select the execution's product family.\n    if (((p.tags || []).includes(\"kids-kits\") ? \"kids\" : \"classic\") !== settings.family) continue;\n    const m = /-(\\d{4,})$/.exec(p.handle);\n    if (!m || !p.variants.nodes.length || !p.variants.nodes.every((v) => new RegExp(\"^\" + m[1] + \"\\\\d+[RS]$\").test(v.sku || \"\"))) continue;\n    // an empty description has nothing to translate\n    const keys = KEYS.filter((key) => key !== \"body_html\" || String(p.descriptionHtml || \"\").trim() !== \"\");\n    const need = {};\n    for (const locale of locales) {\n        const have = p[\"t_\" + locale.replace(/\\W/g, \"_\")] || [];\n        const missing = keys.filter((key) => { const t = have.find((x) => x.key === key); return !t || t.outdated; });\n        if (missing.length) need[locale] = missing;\n    }\n    if (!Object.keys(need).length) continue;\n    const hash = fingerprint(p.title + \"\\n\" + (p.descriptionHtml || \"\"));\n    let tries = 0;\n    try { const t = JSON.parse((p.tries && p.tries.value) || \"{}\"); if (t.hash === hash) tries = Number(t.tries) || 0; } catch (e) {}\n    if (tries >= maxTries) { givenUp++; continue; }\n    todo.push({ id: p.id, folder: m[1], title: p.title, need, hash, tries });\n}\nreturn [{ json: { cursor: page.pageInfo.endCursor, more: page.pageInfo.hasNextPage, products: previous.products.concat(todo), givenUp } }];"
       }
     },
     {
@@ -878,7 +826,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "fe000036-0000-4000-8000-000000000000",
@@ -971,6 +922,54 @@
       },
       "executeOnce": true,
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a4e47b862baf4821a9edfa724edb8049",
+      "name": "Context for Start next run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5850,
+        320
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "bd9080415eab0f9e9e9c8a7553780074",
+      "name": "Dispatch product families",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { family: \"classic\" } }, { json: { family: \"kids\" } }];"
+      }
+    },
+    {
+      "id": "3ba02b5a699f7af2872ed66ee512d4e5",
+      "name": "Run shared family stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -450,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
     }
   ],
   "connections": {
@@ -978,7 +977,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -989,7 +988,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -1426,7 +1425,7 @@
       "main": [
         [
           {
-            "node": "Start next run",
+            "node": "Context for Start next run",
             "type": "main",
             "index": 0
           }
@@ -1443,14 +1442,38 @@
           }
         ]
       ]
+    },
+    "Context for Start next run": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch product families": {
+      "main": [
+        [
+          {
+            "node": "Run shared family stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
     "errorWorkflow": "aokToPHKOa4MciN1",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all"
   },
-  "pinData": {}
+  "pinData": {},
+  "active": false
 }

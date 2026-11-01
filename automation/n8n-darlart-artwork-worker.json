@@ -28,132 +28,14 @@
     {
       "id": "ab000003-0000-4000-8000-000000000000",
       "name": "Settings",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         220,
         200
       ],
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "set0",
-              "name": "colors",
-              "value": 48,
-              "type": "number"
-            },
-            {
-              "id": "set1",
-              "name": "exclude",
-              "value": "",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "paletteId",
-              "value": "darlart-v3",
-              "type": "string"
-            },
-            {
-              "id": "set3",
-              "name": "pbnApiUrl",
-              "value": "http://127.0.0.1:3000",
-              "type": "string"
-            },
-            {
-              "id": "set4",
-              "name": "refFolderId",
-              "value": "1iGdgyIplbyQx52QOK1jUcwOuwuYTlWM-",
-              "type": "string"
-            },
-            {
-              "id": "set5",
-              "name": "queueFolderId",
-              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
-              "type": "string"
-            },
-            {
-              "id": "set6",
-              "name": "doneFolderId",
-              "value": "1qph_ttrwCa303b2GxsHGpdLujqUm2y_B",
-              "type": "string"
-            },
-            {
-              "id": "set7",
-              "name": "failedFolderId",
-              "value": "1CbfwyL5REPwYkSFEgR4iQpQSK38TZ89U",
-              "type": "string"
-            },
-            {
-              "id": "set8",
-              "name": "agentFolderId",
-              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set9",
-              "name": "firstFolderNumber",
-              "value": 1001,
-              "type": "number"
-            },
-            {
-              "id": "set10",
-              "name": "imageModel",
-              "value": "gpt-image-2",
-              "type": "string"
-            },
-            {
-              "id": "set11",
-              "name": "imageQuality",
-              "value": "medium",
-              "type": "string"
-            },
-            {
-              "id": "set12",
-              "name": "canvasSize",
-              "value": "60x75",
-              "type": "string"
-            },
-            {
-              "id": "set13",
-              "name": "orientation",
-              "value": "auto",
-              "type": "string"
-            },
-            {
-              "id": "set14",
-              "name": "imageSize",
-              "value": "1024x1280",
-              "type": "string"
-            },
-            {
-              "id": "set15",
-              "name": "maxTries",
-              "value": 3,
-              "type": "number"
-            },
-            {
-              "id": "set16",
-              "name": "lockStaleMinutes",
-              "value": 20,
-              "type": "number"
-            },
-            {
-              "id": "set17",
-              "name": "telegramChatId",
-              "value": "-1003952514058",
-              "type": "string"
-            },
-            {
-              "id": "set18",
-              "name": "timezone",
-              "value": "Africa/Casablanca",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst base = {\"colors\":48,\"exclude\":\"\",\"paletteId\":\"darlart-v3\",\"pbnApiUrl\":\"http://127.0.0.1:3000\",\"refFolderId\":\"1iGdgyIplbyQx52QOK1jUcwOuwuYTlWM-\",\"queueFolderId\":\"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\",\"doneFolderId\":\"1qph_ttrwCa303b2GxsHGpdLujqUm2y_B\",\"failedFolderId\":\"1CbfwyL5REPwYkSFEgR4iQpQSK38TZ89U\",\"agentFolderId\":\"1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH\",\"firstFolderNumber\":1001,\"imageModel\":\"gpt-image-2\",\"imageQuality\":\"medium\",\"canvasSize\":\"60x75\",\"orientation\":\"auto\",\"imageSize\":\"1024x1280\",\"maxTries\":3,\"lockStaleMinutes\":20,\"telegramChatId\":\"-1003952514058\",\"timezone\":\"Africa/Casablanca\"};\nconst config = {\"queueFolderId\":\"1Botmw2f1ip61J_5PBkyvOlkYjRLHH3kl\",\"doneFolderId\":\"19Ru3ux6Cco74DfsOzT2SmltmYVFGEk8b\",\"refFolderId\":\"1EaCP2LkIJv6Csi9Rtai-bbhRNaFbhc3T\",\"failedFolderId\":\"1KqDreO51jl7jj4l-fy69tCM_cDIe8AhY\",\"canvasSize\":\"24x30\",\"version\":\"shared-kids-v1\"};\nreturn [{ json: resolveStageSettings(base, $input.first().json || {}, config) }];"
       },
       "executeOnce": true
     },
@@ -175,7 +57,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
+              "value": "='{{ \"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\" }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
             },
             {
               "name": "fields",
@@ -265,7 +147,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_artwork-worker.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.queueFolderId], description: 'staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes)) }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_artwork-worker.lock-' + $execution.id, mimeType: 'text/plain', parents: [\"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\"], description: ('staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes))) + \";family=\" + $(\"Settings\").first().json.family }) }}",
         "options": {
           "timeout": 30000
         }
@@ -289,7 +171,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
+              "value": "='{{ \"13fjEqSw2tqYfKwn23RPDdItLigrRvjTb\" }}' in parents and name contains '_artwork-worker.lock' and trashed = false"
             },
             {
               "name": "fields",
@@ -515,7 +397,7 @@
         40
       ],
       "parameters": {
-        "jsCode": "// The oldest queued reference (<batchId>_<nn>.<ext>, oldest batch first) and its batch manifest\nconst files = $input.first().json.files || [];\nconst images = files.filter((f) => new RegExp(\"^\\\\d{4}-\\\\d{2}-\\\\d{2}_\\\\d{2}-\\\\d{2}-\\\\d{2}_\\\\d{2}\\\\.(jpg|png|webp)$\").test(f.name)).sort((a, b) => (a.name < b.name ? -1 : 1));\nif (!images.length) return [{ json: { none: true } }];\nconst image = images[0];\nconst batchId = image.name.slice(0, 19);\nconst manifest = files.find((f) => f.name === batchId + \"_batch.json\");\nreturn [{ json: { none: false, fileId: image.id, queueName: image.name, extension: image.name.split(\".\").pop(), batchId, manifestId: manifest ? manifest.id : \"\", remaining: images.length - 1 } }];"
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst files = $input.first().json.files || [];\nconst images = files.filter(f => parseQueueName(f.name)).sort((a,b) => a.name.localeCompare(b.name));\nif (!images.length) return [{ json: { none: true } }];\nconst image = images[0], parsed = parseQueueName(image.name);\nconst manifest = files.find(f => f.name === parsed.batchId + '_batch.json');\nif (!manifest) throw new Error('Queued reference has no durable batch manifest');\nreturn [{ json: { none: false, fileId: image.id, queueName: image.name, extension: parsed.extension,\n    batchId: parsed.batchId, manifestId: manifest.id, remaining: images.length - 1 } }];"
       }
     },
     {
@@ -844,7 +726,7 @@
         -120
       ],
       "parameters": {
-        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed. The artwork keeps the\n// reference's shape: landscape (5:4) for a reference wider than tall, portrait (4:5) otherwise (a square one too).\nconst settings = $('Settings').first().json;\nconst size = $('Measure reference').first().json;\nif (!size.width || !size.height) throw new Error(\"Could not read the reference's size: \" + JSON.stringify(size).slice(0, 200));\nconst setting = String(settings.orientation || \"auto\").toLowerCase();\nconst orientation = setting === \"portrait\" || setting === \"landscape\" ? setting : size.width > size.height ? \"landscape\" : \"portrait\";\nconst [a, b] = String(settings.imageSize).split(\"x\").map(Number);\nconst imageSize = orientation === \"landscape\" ? Math.max(a, b) + \"x\" + Math.min(a, b) : Math.min(a, b) + \"x\" + Math.max(a, b);\nconst frame = orientation === \"landscape\"\n    ? \"The output is a horizontal canvas painting in a 5:4 ratio (75 x 60 cm), wider than tall.\"\n    : \"The output is a vertical canvas painting in a 4:5 ratio (60 x 75 cm), taller than wide.\";\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    frame + \" Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, picture frame or canvas edge around it in the reference. A decorative border that is part of the design itself (a patterned zellij or rug border, an ornamental band) is kept.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    // references with signs or posters were failing the checker 3 times out of 3: the painting leaves their writing out.\n    // License plates, vehicle emblems, badges and logos on objects stay as they are (the 48-color snap blurs them anyway)\n    \"The one exception: leave out the writing in the scene. Every sign, shop name, poster, label, sticker, calligraphy, inscription, signature and watermark is painted without any letter or word: a sign becomes a blank board in its own color, calligraphy or an inscription a simple ornamental band with no letters. License plates, vehicle emblems, badges and logos on objects may stay as they are.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no pixelated blocks, no gradients, no blur, no texture, no grain, no brush strokes, no outlines. Geometric tile patterns (zellij, mosaics, star patterns) in the reference are kept as crisp flat shapes.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no added border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.width, referenceHeight: size.height }, binary: $('Prepare').first().binary }];"
+        "jsCode": "// A fixed prompt: the model sees the reference itself, so no scene description is needed. The artwork keeps the\n// reference's shape: landscape (5:4) for a reference wider than tall, portrait (4:5) otherwise (a square one too).\nconst settings = $('Settings').first().json;\nconst size = $('Measure reference').first().json;\nif (!size.width || !size.height) throw new Error(\"Could not read the reference's size: \" + JSON.stringify(size).slice(0, 200));\nconst setting = String(settings.orientation || \"auto\").toLowerCase();\nconst orientation = setting === \"portrait\" || setting === \"landscape\" ? setting : size.width > size.height ? \"landscape\" : \"portrait\";\nconst [a, b] = String(settings.imageSize).split(\"x\").map(Number);\nconst imageSize = orientation === \"landscape\" ? Math.max(a, b) + \"x\" + Math.min(a, b) : Math.min(a, b) + \"x\" + Math.max(a, b);\nconst physical = String(settings.canvasSize).split('x').map(Number);\nconst portraitSize = Math.min(...physical) + ' x ' + Math.max(...physical);\nconst landscapeSize = Math.max(...physical) + ' x ' + Math.min(...physical);\nconst frame = orientation === 'landscape'\n    ? 'The output is a horizontal canvas painting in a 5:4 ratio (' + landscapeSize + ' cm), wider than tall.'\n    : 'The output is a vertical canvas painting in a 4:5 ratio (' + portraitSize + ' cm), taller than wide.';\nconst imagePrompt = [\n    \"Repaint this image as a highly detailed digital painting in flat cel-shaded color, like a fine gouache or screen-print illustration made for a paint-by-numbers canvas.\",\n    frame + \" Recompose the scene to fit this frame naturally: keep every subject whole and in proportion, extend the surrounding scenery where the frame needs more room, and never stretch, squash or distort anything.\",\n    \"Paint only the artwork itself: ignore any white or grey background, wall, shadow, picture frame or canvas edge around it in the reference. A decorative border that is part of the design itself (a patterned zellij or rug border, an ornamental band) is kept.\",\n    \"Keep everything from the artwork exactly: the same subjects, likeness, expressions, poses, objects and background, with realistic proportions.\",\n    // references with signs or posters were failing the checker 3 times out of 3: the painting leaves their writing out.\n    // License plates, vehicle emblems, badges and logos on objects stay as they are (the 48-color snap blurs them anyway)\n    \"The one exception: leave out the writing in the scene. Every sign, shop name, poster, label, sticker, calligraphy, inscription, signature and watermark is painted without any letter or word: a sign becomes a blank board in its own color, calligraphy or an inscription a simple ornamental band with no letters. License plates, vehicle emblems, badges and logos on objects may stay as they are.\",\n    \"Keep the original colors of the image.\",\n    \"Each area is painted in flat solid tones with crisp, clean, smooth edges, and shading is built from distinct flat tone steps.\",\n    \"Preserve every fine detail: facial features, eyes, lips, fingers, hair strands, clothing folds, individual leaves, reflections, architecture.\",\n    \"Smooth high-resolution shapes, not pixel art, no pixelated blocks, no gradients, no blur, no texture, no grain, no brush strokes, no outlines. Geometric tile patterns (zellij, mosaics, star patterns) in the reference are kept as crisp flat shapes.\",\n    \"The painting fills the entire image edge to edge. Do not add anything to the image: no color bar, no swatches, no palette, no legend, no labels, no text, no numbers, no added border, no margin.\",\n].join(\"\\n\");\nreturn [{ json: { imagePrompt, orientation, imageSize, referenceWidth: size.width, referenceHeight: size.height }, binary: $('Prepare').first().binary }];"
       }
     },
     {
@@ -1044,7 +926,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -1495,26 +1378,23 @@
     {
       "id": "ab000058-0000-4000-8000-000000000000",
       "name": "Create folder (Artwork Agent/1xxx)",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         6920,
         -320
       ],
       "parameters": {
-        "resource": "folder",
-        "name": "={{ $json.folderName }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Settings').first().json.agentFolderId }}"
-        },
-        "options": {}
+        "method": "POST",
+        "url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,appProperties",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.folderName, mimeType: 'application/vnd.google-apps.folder', parents: [$('Settings').first().json.agentFolderId], appProperties: { darlart_family: $('Settings').first().json.family, darlart_state: 'active', darlart_profile: $('Settings').first().json.profileVersion, darlart_size: $('Settings').first().json.canvasSize, darlart_colors: String($('Settings').first().json.colors) } }) }}",
+        "options": {
+          "timeout": 30000
+        }
       },
       "retryOnFail": true,
       "maxTries": 3,
@@ -1734,7 +1614,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000069-0000-4000-8000-000000000000",
@@ -1754,7 +1637,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000070-0000-4000-8000-000000000000",
@@ -1961,7 +1847,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "ab000078-0000-4000-8000-000000000000",
@@ -1973,7 +1862,7 @@
         240
       ],
       "parameters": {
-        "jsCode": "// Batch manifests in the queue, now that no reference is left in it\nconst files = $('List queue').first().json.files || [];\nconst manifests = files.filter((f) => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_batch\\.json$/.test(f.name));\nreturn manifests.length ? manifests.map((f) => ({ json: { manifestId: f.id, name: f.name } })) : [{ json: { none: true } }];"
+        "jsCode": "const files = $('List queue').first().json.files || [];\nconst manifests = files.filter(f => /^\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?_batch[.]json$/.test(f.name));\nreturn manifests.length ? manifests.map(f => ({ json: { manifestId: f.id, name: f.name } })) : [{ json: { none: true } }];"
       }
     },
     {
@@ -2223,6 +2112,93 @@
       },
       "executeOnce": true,
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "467cb1fe971dde0695890ba233cea532",
+      "name": "Context for Run Titling Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7470,
+        -480
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "b00c1b9d2de0cda5f450aeef872ad05d",
+      "name": "Context for Run Print Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7690,
+        -480
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "a4e47b862baf4821a9edfa724edb8049",
+      "name": "Context for Start next run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9670,
+        80
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "bd9080415eab0f9e9e9c8a7553780074",
+      "name": "Dispatch product families",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { family: \"classic\" } }, { json: { family: \"kids\" } }];"
+      }
+    },
+    {
+      "id": "3ba02b5a699f7af2872ed66ee512d4e5",
+      "name": "Run shared family stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -450,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "7d9bd0d96f7ff91ae169a273752e9eb2",
+      "name": "Validate batch family",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const manifest = $input.first().json;\nconst family = $('Settings').first().json.family;\nif (manifest.family && manifest.family !== family) throw new Error('Batch family does not match its queue');\nreturn $input.all();"
+      }
     }
   ],
   "connections": {
@@ -2241,7 +2217,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -2452,7 +2428,7 @@
         ],
         [
           {
-            "node": "Start attempt",
+            "node": "Validate batch family",
             "type": "main",
             "index": 0
           }
@@ -2463,7 +2439,7 @@
       "main": [
         [
           {
-            "node": "Start attempt",
+            "node": "Validate batch family",
             "type": "main",
             "index": 0
           }
@@ -2914,12 +2890,12 @@
       "main": [
         [
           {
-            "node": "Run Titling Agent",
+            "node": "Context for Run Titling Agent",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Run Print Agent",
+            "node": "Context for Run Print Agent",
             "type": "main",
             "index": 0
           },
@@ -3233,7 +3209,7 @@
       "main": [
         [
           {
-            "node": "Start next run",
+            "node": "Context for Start next run",
             "type": "main",
             "index": 0
           }
@@ -3261,12 +3237,71 @@
           }
         ]
       ]
+    },
+    "Context for Run Titling Agent": {
+      "main": [
+        [
+          {
+            "node": "Run Titling Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Run Print Agent": {
+      "main": [
+        [
+          {
+            "node": "Run Print Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Start next run": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch product families": {
+      "main": [
+        [
+          {
+            "node": "Run shared family stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate batch family": {
+      "main": [
+        [
+          {
+            "node": "Start attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
-    "errorWorkflow": "aokToPHKOa4MciN1"
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true
   },
-  "pinData": {}
+  "pinData": {},
+  "active": false
 }

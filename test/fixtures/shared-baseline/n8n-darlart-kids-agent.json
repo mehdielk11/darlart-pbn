@@ -1,0 +1,11 @@
+{
+  "name": "Darl'Art Kids Agent",
+  "id": "VzI0ECNgpUIrqyLD",
+  "nodes": [
+    {
+      "name": "form: Formulaire",
+      "type": "n8n-nodes-base.formTrigger",
+      "webhookId": "darlart-kids-upload"
+    }
+  ]
+}

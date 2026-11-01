@@ -1,0 +1,543 @@
+{
+  "name": "Darl'Art Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ee000001-0000-4000-8000-000000000000",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "telegramChatId",
+              "value": "-1003952514058",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "alertEveryMinutes",
+              "value": "60",
+              "type": "string"
+            },
+            {
+              "id": "set3",
+              "name": "maxRestarts",
+              "value": "5",
+              "type": "string"
+            },
+            {
+              "id": "set4",
+              "name": "restartWindowMinutes",
+              "value": "30",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ee000002-0000-4000-8000-000000000000",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// What failed, where, and the run's execution id (its lock is named <prefix>-<execution id>)\nconst e = $('Error Trigger').first().json;\nconst execution = e.execution || {};\nconst workflow = e.workflow || {};\nconst triggerError = (e.trigger && e.trigger.error) || null;\nreturn [{ json: {\n    executionId: execution.id ? String(execution.id) : \"\",\n    workflowId: String(workflow.id || \"\"),\n    workflowName: workflow.name || \"A workflow\",\n    step: execution.lastNodeExecuted || (triggerError && triggerError.node && triggerError.node.name) || \"\",\n    message: (execution.error && execution.error.message) || (triggerError && triggerError.message) || \"unknown error\",\n    url: execution.url || \"\",\n} }];"
+      },
+      "id": "ee000003-0000-4000-8000-000000000000",
+      "name": "Error details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "(name contains '_artwork-worker.lock' or name contains '_titling-agent.lock' or name contains '_print-agent.lock' or name contains '_shopify-uploader.lock' or name contains '_price-sync.lock' or name contains '_translation-sync.lock' or name contains '_titling-try-' or name contains '_upload-try-' or name contains '_failed-') and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,parents)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ee000004-0000-4000-8000-000000000000",
+      "name": "Find locks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only the failed run's own lock: its name ends with \"-<execution id>\"; and its try markers when the failure was an\n// account or service problem (the folders are not given up for it)\nconst d = $('Error details').first().json;\nconst id = d.executionId;\nconst service = d.step === \"Stop: OpenAI unavailable\" || /insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i.test(d.message);\nconst TRY = [\"_titling-try-\",\"_upload-try-\"];\nconst locks = id ? ($input.first().json.files || []).filter((f) => f.name.endsWith(\"-\" + id) && (f.name.includes(\".lock-\") || (service && TRY.some((p) => f.name.startsWith(p))))) : [];\nreturn locks.length ? locks.map((f) => ({ json: { id: f.id, name: f.name } })) : [{ json: { none: true } }];"
+      },
+      "id": "ee000005-0000-4000-8000-000000000000",
+      "name": "Locks of the run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anylock",
+              "leftValue": "={{ !$json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ee000006-0000-4000-8000-000000000000",
+      "name": "Any lock?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ee000007-0000-4000-8000-000000000000",
+      "name": "Delete the run's lock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        -80
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Locks of the run').all().filter((item) => !item.json.none).map((item) => ({ json: item.json }));"
+      },
+      "id": "ee000008-0000-4000-8000-000000000000",
+      "name": "Locks to delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        -208
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// What happens now, for the alert; the worker is started again only after a failure past its recorded try\nconst d = $('Error details').first().json;\nconst W = {\"worker\":\"dO8EdyDM4ua2hRrA\",\"form\":\"SLFvTtBEdGfSbgGu\",\"titling\":\"tOSHbCt7hJ6ORh8a\",\"print\":\"ytxV3m341mDLCdt4\",\"uploader\":\"XAwk67SiWmvVSu1d\"};\nconst beforeTry = [\"Settings\",\"List locks\",\"Lock state\",\"Lock free?\",\"Create lock\",\"List locks again\",\"Won the lock?\",\"Lock won?\",\"Step back (drop my lock)\",\"Busy: try again?\",\"Retry?\",\"Wait before retry\",\"List queue\",\"Next reference\",\"Anything queued?\",\"Has manifest?\",\"Download manifest\",\"Start attempt\",\"Record the try?\",\"Save manifest (try)\",\"Leftover manifests\",\"Any leftover?\",\"Download leftover\",\"Finished batches\",\"Any finished?\",\"Save finished manifest\",\"Move finished manifest\",\"Stop: OpenAI unavailable\",\"Save manifest (try given back)\"];\nconst released = $('Locks to delete').isExecuted ? $('Locks to delete').all().filter((item) => item.json.name.includes(\".lock-\")).length : 0;\nconst service = d.step === \"Stop: OpenAI unavailable\" || /insufficient_quota|exceeded your current quota|billing|invalid_api_key|incorrect api key|account is not active|unauthori[sz]ed|forbidden|\\b40[13]\\b|\\b429\\b|rate.?limit|too many requests|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|credentials? not found|could not be decrypted/i.test(d.message);\nconst settings = $('Settings').first().json;\nconst memory = $getWorkflowStaticData(\"global\");\nconst now = Date.now();\nlet next = \"\";\nlet restartWorker = false;\nif (d.workflowId === W.worker) {\n    // restarts of the last restartWindowMinutes: a failure that repeats whatever the reference stops being retried at once\n    memory.restarts = (memory.restarts || []).filter((t) => now - t < Number(settings.restartWindowMinutes) * 60000);\n    if (service) {\n        next = \"An account or service problem (credit, key, permission, rate limit): the worker is not restarted at once, the queue is kept.\";\n    } else if (d.step && !beforeTry.includes(d.step) && memory.restarts.length < Number(settings.maxRestarts)) {\n        restartWorker = true;\n        memory.restarts.push(now);\n        next = \"The worker starts again: this reference is retried, and set aside in Artwork Ref/Failed after 3 failed runs.\";\n    } else if (d.step && !beforeTry.includes(d.step)) {\n        next = \"The worker failed \" + memory.restarts.length + \" times in \" + settings.restartWindowMinutes + \" minutes, so it is not restarted at once; the queue is kept.\";\n    } else {\n        next = \"The worker stopped before painting; the queue is kept.\";\n    }\n} else if (d.workflowId === W.print) next = \"The next run (after the next artwork, or daily at 04:00) retries the unfinished folders.\";\nelse if (d.workflowId === W.titling) next = \"The next run (after the next artwork, or daily at 03:00) retries the folders without product texts.\";\nelse if (d.workflowId === W.uploader) next = \"The next run (after the next Print Agent run, or daily at 05:00) retries this folder.\";\nelse if (d.workflowId === W.form) next = \"This upload may not be queued: check Artwork Ref/Queue, and send the images again if they are missing.\";\n// the stage, for the Queue Watchdog's backoff marker (the form has none: it holds no queue)\nconst stage = { [W.worker]: \"worker\", [W.titling]: \"titling\", [W.print]: \"print\", [W.uploader]: \"uploader\" }[d.workflowId] || \"\";\nconst marker = stage ? (($('Find locks').first().json.files || []).find((f) => f.name === \"_failed-\" + stage && (f.parents || []).includes(settings.agentFolderId)) || null) : null;\n// the same failure is announced at most once every alertEveryMinutes (kept in this workflow's static data)\nmemory.alerts = memory.alerts || {};\nconst key = d.workflowId + \"|\" + d.step + \"|\" + String(d.message).slice(0, 120);\nfor (const [k, t] of Object.entries(memory.alerts)) if (now - t > 24 * 3600000) delete memory.alerts[k];\nconst sendAlert = !memory.alerts[key] || now - memory.alerts[key] >= Number(settings.alertEveryMinutes) * 60000;\nif (sendAlert) memory.alerts[key] = now;\nif (stage && !restartWorker) next += \" The Queue Watchdog starts it again in 30 minutes if work is still waiting (click Run now to go sooner).\";\nif (service && d.workflowId !== W.worker) next += \" This looks like an account or service problem (OpenAI credit or key, Shopify or Drive permission, rate limit): it does not count as a try on the folders.\";\nconst lines = [\n    \"Workflow failed: \" + d.workflowName,\n    d.step ? \"Step: \" + d.step : \"\",\n    \"Error: \" + String(d.message).slice(0, 600),\n    released ? \"Its queue lock was released, so the next runs are not blocked.\" : \"\",\n    next,\n    d.url,\n].filter(Boolean);\n// a worker restarted at once needs no backoff marker: the Queue Watchdog must not hold its queue back\nreturn [{ json: { restartWorker, sendAlert, stage: restartWorker ? \"\" : stage, markerId: marker ? marker.id : \"\", text: lines.join(\"\\n\") } }];"
+      },
+      "id": "ee000009-0000-4000-8000-000000000000",
+      "name": "Next steps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Restarttheworker",
+              "leftValue": "={{ $json.restartWorker }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ee000010-0000-4000-8000-000000000000",
+      "name": "Restart the worker?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "dO8EdyDM4ua2hRrA"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "ee000011-0000-4000-8000-000000000000",
+      "name": "Start the worker",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        -80
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ $json.sendAlert && String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ee000012-0000-4000-8000-000000000000",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($('Next steps').first().json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "ee000013-0000-4000-8000-000000000000",
+      "name": "Telegram: failure alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1984,
+        128
+      ],
+      "webhookId": "fd4f8b55-a5de-4ca8-949e-7d684db0c306",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Aqueuestage",
+              "leftValue": "={{ !!$json.stage }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ade17326-1f69-4c81-89b0-5a0fb274c84e",
+      "name": "A queue stage?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.markerId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.markerId ? '/' + $json.markerId : '') + '?supportsAllDrives=true&fields=id,name,modifiedTime' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.markerId ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-' + $json.stage, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "7c55660a-b4a5-4ad3-a6c2-52e3cd45f6f5",
+      "name": "Mark the failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1984,
+        304
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Error details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error details": {
+      "main": [
+        [
+          {
+            "node": "Find locks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find locks": {
+      "main": [
+        [
+          {
+            "node": "Locks of the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks of the run": {
+      "main": [
+        [
+          {
+            "node": "Any lock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any lock?": {
+      "main": [
+        [
+          {
+            "node": "Locks to delete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Next steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Locks to delete": {
+      "main": [
+        [
+          {
+            "node": "Delete the run's lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete the run's lock": {
+      "main": [
+        [
+          {
+            "node": "Next steps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next steps": {
+      "main": [
+        [
+          {
+            "node": "Restart the worker?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "A queue stage?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restart the worker?": {
+      "main": [
+        [
+          {
+            "node": "Start the worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: failure alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A queue stage?": {
+      "main": [
+        [
+          {
+            "node": "Mark the failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Casablanca"
+  },
+  "versionId": "e5e4df39-118c-43fd-b363-4f2722f6116e",
+  "id": "aokToPHKOa4MciN1",
+  "tags": []
+}

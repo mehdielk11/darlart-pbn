@@ -1,0 +1,662 @@
+{
+  "name": "Darl'Art Artwork Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Darl'Art Artwork Agent",
+        "formDescription": "Upload up to 20 artwork references (JPG, PNG or WEBP, 5 MB each). Each one is painted with exactly 48 Darl'Art colors, one after another (about 2 minutes each), and saved in Drive (Artwork Agent/1xxx). You can close this page after sending.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Artwork references",
+              "fieldType": "file",
+              "acceptFileTypes": ".jpg,.jpeg,.png,.webp",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "buttonLabel": "Queue artworks"
+        }
+      },
+      "id": "47f80ecb-0c5f-49fe-9c6f-e58cc0914fa4",
+      "name": "Formulaire",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "e65ad540-5254-442f-80c0-223fec78b351"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Every uploaded file is checked: a real JPG, PNG or WEBP (read from the file's first bytes, so a renamed PDF is\n// refused) of MAX_MB at most. Up to MAX_FILES good files are queued, one item each; the refused ones are listed.\nconst MAX_MB = 5;\nconst MAX_FILES = 20;\nconst item = $input.first();\nconst keys = Object.keys(item.binary || {});\nconst batchId = $now.setZone(\"Africa/Casablanca\").toFormat(\"yyyy-MM-dd_HH-mm-ss\");\nconst accepted = [];\nconst refused = [];\nfor (const key of keys) {\n    const file = item.binary[key];\n    const name = file.fileName || key;\n    const bytes = await this.helpers.getBinaryDataBuffer(0, key);\n    const head = bytes.subarray(0, 12);\n    const ascii = (from, to) => head.subarray(from, to).toString(\"latin1\");\n    let format = \"\";\n    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) format = \"jpg\";\n    else if (head[0] === 0x89 && ascii(1, 4) === \"PNG\") format = \"png\";\n    else if (ascii(0, 4) === \"RIFF\" && ascii(8, 12) === \"WEBP\") format = \"webp\";\n    let reason = \"\";\n    if (!format) reason = \"not a JPG, PNG or WEBP image\";\n    else if (bytes.length > MAX_MB * 1024 * 1024) reason = (bytes.length / 1024 / 1024).toFixed(1) + \" MB, the maximum is \" + MAX_MB + \" MB\";\n    else if (bytes.length < 100) reason = \"empty or damaged\";\n    else if (accepted.length >= MAX_FILES) reason = \"more than \" + MAX_FILES + \" files in one upload\";\n    if (reason) { refused.push({ name, reason }); continue; }\n    const queueName = batchId + \"_\" + String(accepted.length + 1).padStart(2, \"0\") + \".\" + format;\n    const mimeType = { jpg: \"image/jpeg\", png: \"image/png\", webp: \"image/webp\" }[format];\n    accepted.push({ json: { batchId, queueName, originalName: name }, binary: { reference: { ...file, mimeType, fileName: queueName, fileExtension: format } } });\n}\nif (!accepted.length) return [{ json: { none: true, batchId, refused } }];\nreturn accepted.map((a) => ({ json: { ...a.json, refused }, binary: a.binary }));"
+      },
+      "id": "9f1b185e-7d55-4d60-b908-2ca662257060",
+      "name": "Check uploads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set0",
+              "name": "queueFolderId",
+              "value": "13fjEqSw2tqYfKwn23RPDdItLigrRvjTb",
+              "type": "string"
+            },
+            {
+              "id": "set1",
+              "name": "agentFolderId",
+              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
+              "type": "string"
+            },
+            {
+              "id": "set2",
+              "name": "telegramChatId",
+              "value": "-1003952514058",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "77c036d9-9fe5-4a56-93ec-ae04d6c9fd79",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Anythingtoqueue",
+              "leftValue": "={{ !$('Check uploads').first().json.none }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "659584f0-e45e-46dc-b1e5-17ef4c781139",
+      "name": "Anything to queue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// <batchId>_batch.json: what the worker paints and what it made of each reference\nconst accepted = $('Check uploads').all().map((item) => item.json);\nconst manifest = {\n    batchId: accepted[0].batchId,\n    submittedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n    files: accepted.map((a) => ({ queueName: a.queueName, originalName: a.originalName, status: \"queued\", tries: 0 })),\n    refused: accepted[0].refused,\n};\nconst fileName = manifest.batchId + \"_batch.json\";\nreturn [{\n    json: { fileName },\n    binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName } },\n}];"
+      },
+      "id": "d9733b62-e23d-4f14-9f24-eb8bbb72d5a6",
+      "name": "Batch manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Settings').first().json.queueFolderId }}"
+        },
+        "options": {}
+      },
+      "id": "33a42fdd-580f-47e0-b501-472eac20c6ea",
+      "name": "Save batch manifest",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1104,
+        -96
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// The accepted references, with their files, for the queue folder\nreturn $('Check uploads').all().map((item) => ({ json: item.json, binary: item.binary }));"
+      },
+      "id": "77639fe9-e966-4aa1-aa2e-0741d584c0ef",
+      "name": "Queue files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "reference",
+        "name": "={{ $json.queueName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Settings').first().json.queueFolderId }}"
+        },
+        "options": {}
+      },
+      "id": "98f8a36a-d124-4deb-8537-c18d2b592293",
+      "name": "Save queued references",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1552,
+        -96
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "dO8EdyDM4ua2hRrA"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "3ccd2d7e-926f-48c6-8f51-e381c1be88a9",
+      "name": "Start worker",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1760,
+        -96
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The page shown after sending: what was queued and what was refused\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst queued = first.none ? [] : checked.map((c) => c.originalName);\nconst refused = first.refused || [];\nconst folderUrl = \"https://drive.google.com/drive/folders/\" + $('Settings').first().json.agentFolderId;\nlet html = \"<h2>\" + queued.length + \" artwork\" + (queued.length > 1 ? \"s\" : \"\") + \" queued</h2>\"\n    + \"<p>They are painted one after another, about 2 minutes each, and appear in Drive as Artwork Agent/1xxx. You can close this page.</p>\"\n    + \"<ul>\" + queued.map((n) => \"<li>\" + esc(n) + \"</li>\").join(\"\") + \"</ul>\";\nif (refused.length) html += \"<h3>\" + refused.length + \" refused</h3><ul>\" + refused.map((r) => \"<li>\" + esc(r.name) + \": \" + esc(r.reason) + \"</li>\").join(\"\") + \"</ul>\";\nhtml += '<p><a href=\"' + folderUrl + '\" target=\"_blank\">Open Artwork Agent in Drive</a></p>';\nreturn [{ json: { html: '<div style=\"font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;text-align:left\">' + html + \"</div>\" } }];"
+      },
+      "id": "73efbbf1-64ea-4409-b5f6-4097722a3788",
+      "name": "Build queued page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        -96
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}"
+      },
+      "id": "1d421713-a83a-469b-a1ac-986f9c1e1987",
+      "name": "Page: queued",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        2208,
+        -96
+      ],
+      "webhookId": "ddbd0055-8cf4-4c22-9e84-8a10f836d990"
+    },
+    {
+      "parameters": {
+        "jsCode": "// The page shown after sending: what was queued and what was refused\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst esc = (s) => String(s).replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst queued = first.none ? [] : checked.map((c) => c.originalName);\nconst refused = first.refused || [];\nconst folderUrl = \"https://drive.google.com/drive/folders/\" + $('Settings').first().json.agentFolderId;\nlet html = \"<h2>Nothing was queued</h2><p>None of the files can be used:</p>\"\n    + \"<ul>\" + refused.map((r) => \"<li>\" + esc(r.name) + \": \" + esc(r.reason) + \"</li>\").join(\"\") + \"</ul>\"\n    + '<p><a href=\"javascript:history.back()\">Try again</a></p>';\nreturn [{ json: { html: '<div style=\"font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;text-align:left\">' + html + \"</div>\" } }];"
+      },
+      "id": "82474a9c-ed06-4724-a18c-bade9bb5fb81",
+      "name": "Build refused page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramon",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "146d0088-8be3-4fb2-883b-a65ffe209efe",
+      "name": "Telegram on?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.queueFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9edea2bb-c6e8-4b69-9224-0108d67683f1",
+      "name": "List queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2208,
+        128
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Queued, refused, and the whole queue: how many references wait (earlier batches first) and roughly how long\nconst checked = $('Check uploads').all().map((item) => item.json);\nconst first = checked[0];\nconst refused = first.refused || [];\nconst queued = checked.map((c) => c.originalName);\nconst waiting = ($input.first().json.files || []).filter((f) => new RegExp(\"^\\\\d{4}-\\\\d{2}-\\\\d{2}_\\\\d{2}-\\\\d{2}-\\\\d{2}_\\\\d{2}\\\\.(jpg|png|webp)$\").test(f.name));\nconst ahead = waiting.filter((f) => f.name.slice(0, 19) < first.batchId).length;\nconst lines = [\"Artwork Agent: \" + queued.length + \" image\" + (queued.length === 1 ? \"\" : \"s\") + \" queued for painting (batch \" + first.batchId + \")\"];\nfor (const name of queued) lines.push(\"- \" + name);\nif (refused.length) {\n    lines.push(\"\", refused.length + \" refused:\");\n    for (const r of refused) lines.push(\"- \" + r.name + \": \" + r.reason);\n}\nlines.push(\"\", \"Queue: \" + waiting.length + \" image\" + (waiting.length === 1 ? \"\" : \"s\") + \" waiting\" + (ahead ? \", \" + ahead + \" from earlier uploads first\" : \"\") + \". About \" + (waiting.length * 2) + \" min to paint them all, one after another.\");\nlines.push(\"Each one gets its folder Artwork Agent/1xxx; you get the painted artwork here.\");\nreturn [{ json: { text: lines.join(\"\\n\") } }];"
+      },
+      "id": "a4f44762-2e64-4acf-9a66-2df04953d304",
+      "name": "Queued message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "36418819-ff6e-4d4b-8d92-84fd6db11076",
+      "name": "Telegram: queued",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        128
+      ],
+      "webhookId": "d2f52f38-ec3b-4a9e-97f1-3b02af8ab9ba",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "Telegramonrefused",
+              "leftValue": "={{ String($('Settings').first().json.telegramChatId || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3783027d-6421-493e-85d8-354960cfa60a",
+      "name": "Telegram on? (refused)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const refused = $('Check uploads').first().json.refused || [];\nconst lines = [\"Artwork Agent: nothing queued, none of the \" + refused.length + \" file\" + (refused.length === 1 ? \"\" : \"s\") + \" can be used:\"];\nfor (const r of refused) lines.push(\"- \" + r.name + \": \" + r.reason);\nreturn [{ json: { text: lines.join(\"\\n\") } }];"
+      },
+      "id": "60491c57-b56b-4cde-86ab-97dbc2675885",
+      "name": "Refused message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Settings').first().json.telegramChatId }}",
+        "text": "={{ String($json.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "f391ccbf-885e-4927-8b8e-47978ea874d8",
+      "name": "Telegram: refused",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        320
+      ],
+      "webhookId": "682671bb-3ae3-4e40-8126-07ce22e6f0c3",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html }}"
+      },
+      "id": "cbe5d17d-91c2-43f0-af4b-56518a2e7bc7",
+      "name": "Page: nothing queued",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        160
+      ],
+      "webhookId": "28d5a457-ba67-4349-a6da-134d769ad104"
+    }
+  ],
+  "connections": {
+    "Formulaire": {
+      "main": [
+        [
+          {
+            "node": "Check uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check uploads": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Anything to queue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to queue?": {
+      "main": [
+        [
+          {
+            "node": "Batch manifest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build refused page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram on? (refused)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch manifest": {
+      "main": [
+        [
+          {
+            "node": "Save batch manifest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save batch manifest": {
+      "main": [
+        [
+          {
+            "node": "Queue files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue files": {
+      "main": [
+        [
+          {
+            "node": "Save queued references",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save queued references": {
+      "main": [
+        [
+          {
+            "node": "Start worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start worker": {
+      "main": [
+        [
+          {
+            "node": "Build queued page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram on?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build queued page": {
+      "main": [
+        [
+          {
+            "node": "Page: queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on?": {
+      "main": [
+        [
+          {
+            "node": "List queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List queue": {
+      "main": [
+        [
+          {
+            "node": "Queued message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queued message": {
+      "main": [
+        [
+          {
+            "node": "Telegram: queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram on? (refused)": {
+      "main": [
+        [
+          {
+            "node": "Refused message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refused message": {
+      "main": [
+        [
+          {
+            "node": "Telegram: refused",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build refused page": {
+      "main": [
+        [
+          {
+            "node": "Page: nothing queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "timezone": "Africa/Casablanca"
+  },
+  "versionId": "75d1e4fd-7147-4597-8dc4-00555e5db430",
+  "id": "SLFvTtBEdGfSbgGu",
+  "tags": []
+}

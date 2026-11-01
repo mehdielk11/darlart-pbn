@@ -134,7 +134,9 @@ function workflowBuilder(idPrefix) {
     const completionPage = (name, position, responseText) => node(name, "n8n-nodes-base.form", 2.3, position, { operation: "completion", respondWith: "showText", responseText });
     const save = (file, name) => {
         const out = path.join(root, file);
-        fs.writeFileSync(out, JSON.stringify({ name, nodes, connections, settings: { executionOrder: "v1", timezone: SETTINGS.timezone, errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} }, null, 2) + "\n");
+        const workflow = { name, nodes, connections, settings: { executionOrder: "v1", timezone: SETTINGS.timezone, errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
+        if (name === "Darl'Art Artwork Worker") require("./lib/shared-profile-build").applySharedProductProfiles(workflow);
+        fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
         console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");
     };
     return { nodes, connections, node, connect, code, ifNode, settingsNode, runWorkflow, completionPage, save, telegramOn, telegramText, telegramPhoto };

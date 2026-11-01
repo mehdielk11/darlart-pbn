@@ -49,114 +49,14 @@
     {
       "id": "cc000004-0000-4000-8000-000000000000",
       "name": "Settings",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         220,
         200
       ],
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "set0",
-              "name": "agentFolderId",
-              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set1",
-              "name": "pricesSheetId",
-              "value": "1iv2qOUSHPMWgdlZ5ZoCxx9WPljK9V3eWKZp7cYlB9Pk",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "shopDomain",
-              "value": "smgi0i-0a.myshopify.com",
-              "type": "string"
-            },
-            {
-              "id": "set3",
-              "name": "apiVersion",
-              "value": "2026-07",
-              "type": "string"
-            },
-            {
-              "id": "set4",
-              "name": "status",
-              "value": "DRAFT",
-              "type": "string"
-            },
-            {
-              "id": "set5",
-              "name": "sizes",
-              "value": "20x25,32x40,40x50",
-              "type": "string"
-            },
-            {
-              "id": "set6",
-              "name": "compareAtMultiplier",
-              "value": 0,
-              "type": "number"
-            },
-            {
-              "id": "set7",
-              "name": "sharedImages",
-              "value": "gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409",
-              "type": "string"
-            },
-            {
-              "id": "set8",
-              "name": "maxPerRun",
-              "value": 10,
-              "type": "number"
-            },
-            {
-              "id": "set9",
-              "name": "maxTries",
-              "value": 3,
-              "type": "number"
-            },
-            {
-              "id": "set10",
-              "name": "pbnApiUrl",
-              "value": "http://127.0.0.1:3000",
-              "type": "string"
-            },
-            {
-              "id": "set11",
-              "name": "telegramChatId",
-              "value": "-1003952514058",
-              "type": "string"
-            },
-            {
-              "id": "set12",
-              "name": "batchDoneFolderId",
-              "value": "1qph_ttrwCa303b2GxsHGpdLujqUm2y_B",
-              "type": "string"
-            },
-            {
-              "id": "set13",
-              "name": "batchStuckHours",
-              "value": 6,
-              "type": "number"
-            },
-            {
-              "id": "set14",
-              "name": "onlineStorePublicationId",
-              "value": "gid://shopify/Publication/400869785881",
-              "type": "string"
-            },
-            {
-              "id": "setmode",
-              "name": "runMode",
-              "value": "={{ $json.mode || 'upload' }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst base = {\"agentFolderId\":\"1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH\",\"pricesSheetId\":\"1iv2qOUSHPMWgdlZ5ZoCxx9WPljK9V3eWKZp7cYlB9Pk\",\"shopDomain\":\"smgi0i-0a.myshopify.com\",\"apiVersion\":\"2026-07\",\"status\":\"DRAFT\",\"sizes\":\"20x25,32x40,40x50\",\"compareAtMultiplier\":0,\"sharedImages\":\"gid://shopify/MediaImage/53185401553177,gid://shopify/MediaImage/53185401487641,gid://shopify/MediaImage/53185401520409\",\"maxPerRun\":10,\"maxTries\":3,\"pbnApiUrl\":\"http://127.0.0.1:3000\",\"telegramChatId\":\"-1003952514058\",\"batchDoneFolderId\":\"1qph_ttrwCa303b2GxsHGpdLujqUm2y_B\",\"batchStuckHours\":6,\"onlineStorePublicationId\":\"gid://shopify/Publication/400869785881\",\"runMode\":\"={{ $json.mode || 'upload' }}\"};\nconst config = {\"queueFolderId\":\"1Botmw2f1ip61J_5PBkyvOlkYjRLHH3kl\",\"doneFolderId\":\"19Ru3ux6Cco74DfsOzT2SmltmYVFGEk8b\",\"refFolderId\":\"1EaCP2LkIJv6Csi9Rtai-bbhRNaFbhc3T\",\"failedFolderId\":\"1KqDreO51jl7jj4l-fy69tCM_cDIe8AhY\",\"canvasSize\":\"24x30\",\"version\":\"shared-kids-v1\"};\nreturn [{ json: resolveStageSettings(base, $input.first().json || {}, config) }];"
       },
       "executeOnce": true
     },
@@ -332,7 +232,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_shopify-uploader.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (20) }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_shopify-uploader.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: ('staleMinutes=' + (20)) + \";family=\" + $(\"Settings\").first().json.family }) }}",
         "options": {
           "timeout": 30000
         }
@@ -545,7 +445,7 @@
         200
       ],
       "parameters": {
-        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/export?mimeType=text/csv",
+        "url": "={{ $(\"Settings\").first().json.family === \"kids\" ? \"https://docs.google.com/spreadsheets/d/\" + $(\"Settings\").first().json.pricesSheetId + \"/export?format=csv&gid=188180018\" : \"https://www.googleapis.com/drive/v3/files/\" + $json.id + \"/export?mimeType=text/csv\" }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
         "options": {
@@ -569,7 +469,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits.\n// A price of 0 means \"not sold\": no variant for that combination (the product page shows it greyed out).\nconst settings = $('Settings').first().json;\nconst file = $('Prices file').first().json;\nconst text = String($input.first().json.data || \"\").replace(/^\\uFEFF/, \"\");\n// empty rows of the sheet export as \",,,\" lines\nconst lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;\"\\s]/g, \"\"));\n// one CSV line into cells; a quoted cell may hold a comma (e.g. \"179,00\" in a French-format sheet)\nconst split = (line) => {\n    const cells = [];\n    let cell = \"\";\n    let quoted = false;\n    for (let i = 0; i < line.length; i++) {\n        const ch = line[i];\n        if (quoted) {\n            if (ch === '\"' && line[i + 1] === '\"') { cell += '\"'; i++; }\n            else if (ch === '\"') quoted = false;\n            else cell += ch;\n        } else if (ch === '\"') quoted = true;\n        else if (ch === \",\" || ch === \";\") { cells.push(cell.trim()); cell = \"\"; }\n        else cell += ch;\n    }\n    cells.push(cell.trim());\n    return cells;\n};\nconst header = split(lines.shift() || \"\").map((h) => h.toLowerCase().replace(/\\s+/g, \"_\"));\nconst col = (name) => header.indexOf(name);\nfor (const name of [\"canvas_type\", \"size\", \"colors\", \"price\"]) {\n    if (col(name) < 0) throw new Error(file.name + \": missing column \" + name + \" (columns: canvas_type,size,colors,price)\");\n}\n// \"179\", \"179.00\", \"179,00\" or \"179,00 MAD\"; an empty price cell counts as 0 (not sold)\nconst money = (value) => Number(String(value).replace(/[^\\d,.-]/g, \"\").replace(\",\", \".\") || \"0\");\nconst normSize = (value) => String(value || \"\").toLowerCase().trim().replace(/\\s*cm$/, \"\").replace(/\\s*[x×]\\s*/, \"x\");\nconst soldSizes = String(settings.sizes || \"\").split(\",\").map(normSize).filter(Boolean);\nconst rows = [];\nconst seen = new Set();\nlines.forEach((line, i) => {\n    const cells = split(line);\n    const size = normSize(cells[col(\"size\")]);\n    if (soldSizes.length && !soldSizes.includes(size)) return; // not a size the store sells\n    let canvasType = cells[col(\"canvas_type\")];\n    if (!/canvas$/i.test(canvasType)) canvasType += \" Canvas\"; // \"Rolled\" -> \"Rolled Canvas\", the store's wording\n    const colors = String(parseInt(cells[col(\"colors\")], 10));\n    const price = money(cells[col(\"price\")]);\n    const compareCell = col(\"compare_at_price\") >= 0 ? cells[col(\"compare_at_price\")] : \"\";\n    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);\n    const where = file.name + \" line \" + (i + 2);\n    if (!/^\\d+x\\d+$/.test(size)) throw new Error(where + \": size must look like 30x40\");\n    if (colors === \"NaN\") throw new Error(where + \": colors must be a number\");\n    if (!(price >= 0)) throw new Error(where + \": price must be a number (0 = not sold)\");\n    const key = size + \"|\" + canvasType + \"|\" + colors;\n    if (seen.has(key)) throw new Error(where + \": \" + key.replace(/\\|/g, \" / \") + \" is listed twice\");\n    seen.add(key);\n    const sold = price > 0;\n    rows.push({ key, size, canvasType, colors, sold, price: price.toFixed(2), compareAtPrice: sold && compareAt > price ? compareAt.toFixed(2) : null });\n});\nif (!rows.length) throw new Error(file.name + \" has no prices\" + (soldSizes.length ? \" for the sizes in Settings (\" + soldSizes.join(\", \") + \")\" : \"\"));\nconst missing = soldSizes.filter((s) => !rows.some((r) => r.size === s));\nif (missing.length) throw new Error(file.name + \" has no prices for \" + missing.join(\", \") + \" (sizes in Settings; a price of 0 marks a combination not sold)\");\nconst soldRows = rows.filter((r) => r.sold);\nif (!soldRows.length) throw new Error(file.name + \": every price is 0, a product needs at least one combination for sale\");\nif (soldRows.length > 100) throw new Error(file.name + \": Shopify allows 100 variants per product, the sheet has \" + soldRows.length + \" prices above 0\");\n\nconst area = (s) => s.split(\"x\").reduce((a, b) => a * Number(b), 1);\nconst unique = (values) => [...new Set(values)];\nconst order = (list) => {\n    const sizes = unique(list.map((r) => r.size)).sort((a, b) => area(a) - area(b));\n    const canvasTypes = unique(list.map((r) => r.canvasType)).sort();\n    const colors = unique(list.map((r) => r.colors)).sort((a, b) => a - b);\n    list.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);\n    return { sizes, canvasTypes, colors };\n};\norder(rows);\n// the options list only the values that have a combination for sale (Shopify has no option value without a variant)\nconst values = order(soldRows);\nconst productOptions = [\n    { name: \"Size\", position: 1, values: values.sizes.map((name) => ({ name })) },\n    { name: \"Canvas Type\", position: 2, values: values.canvasTypes.map((name) => ({ name })) },\n    { name: \"Colors\", position: 3, values: values.colors.map((name) => ({ name })) },\n];\nconst variants = soldRows.map((r, i) => ({\n    optionValues: [\n        { optionName: \"Size\", name: r.size },\n        { optionName: \"Canvas Type\", name: r.canvasType },\n        { optionName: \"Colors\", name: r.colors },\n    ],\n    price: r.price,\n    compareAtPrice: r.compareAtPrice,\n    position: i + 1,\n    inventoryPolicy: \"DENY\",\n    inventoryItem: { tracked: false, requiresShipping: true },\n}));\nreturn [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, notSold: rows.length - soldRows.length, productOptions, variants, rows } }];"
+        "jsCode": "// The CSV becomes the product's options and variants: Size / Canvas Type / Colors, like the store's other kits.\n// A price of 0 means \"not sold\": no variant for that combination (the product page shows it greyed out).\nconst settings = $('Settings').first().json;\nconst file = $('Prices file').first().json;\nconst text = String($input.first().json.data || \"\").replace(/^\\uFEFF/, \"\");\n// empty rows of the sheet export as \",,,\" lines\nconst lines = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l.replace(/[,;\"\\s]/g, \"\"));\n// one CSV line into cells; a quoted cell may hold a comma (e.g. \"179,00\" in a French-format sheet)\nconst split = (line) => {\n    const cells = [];\n    let cell = \"\";\n    let quoted = false;\n    for (let i = 0; i < line.length; i++) {\n        const ch = line[i];\n        if (quoted) {\n            if (ch === '\"' && line[i + 1] === '\"') { cell += '\"'; i++; }\n            else if (ch === '\"') quoted = false;\n            else cell += ch;\n        } else if (ch === '\"') quoted = true;\n        else if (ch === \",\" || ch === \";\") { cells.push(cell.trim()); cell = \"\"; }\n        else cell += ch;\n    }\n    cells.push(cell.trim());\n    return cells;\n};\nconst header = split(lines.shift() || \"\").map((h) => h.toLowerCase().replace(/\\s+/g, \"_\"));\nconst col = (name) => header.indexOf(name);\nfor (const name of [\"canvas_type\", \"size\", \"colors\", \"price\"]) {\n    if (col(name) < 0) throw new Error(file.name + \": missing column \" + name + \" (columns: canvas_type,size,colors,price)\");\n}\n// \"179\", \"179.00\", \"179,00\" or \"179,00 MAD\"; an empty price cell counts as 0 (not sold)\nconst money = (value) => Number(String(value).replace(/[^\\d,.-]/g, \"\").replace(\",\", \".\") || \"0\");\nconst normSize = (value) => String(value || \"\").toLowerCase().trim().replace(/\\s*cm$/, \"\").replace(/\\s*[x×]\\s*/, \"x\");\nconst soldSizes = String(settings.sizes || \"\").split(\",\").map(normSize).filter(Boolean);\nconst rows = [];\nconst seen = new Set();\nlines.forEach((line, i) => {\n    const cells = split(line);\n    const size = normSize(cells[col(\"size\")]);\n    if (soldSizes.length && !soldSizes.includes(size)) return; // not a size the store sells\n    let canvasType = cells[col(\"canvas_type\")];\n    if (!/canvas$/i.test(canvasType)) canvasType += \" Canvas\"; // \"Rolled\" -> \"Rolled Canvas\", the store's wording\n    const colors = String(parseInt(cells[col(\"colors\")], 10));\n    const price = money(cells[col(\"price\")]);\n    const compareCell = col(\"compare_at_price\") >= 0 ? cells[col(\"compare_at_price\")] : \"\";\n    const compareAt = compareCell ? money(compareCell) : price * Number(settings.compareAtMultiplier || 0);\n    const where = file.name + \" line \" + (i + 2);\n    if (!/^\\d+(?:[.]\\d+)?x\\d+(?:[.]\\d+)?$/.test(size)) throw new Error(where + \": size must look like 30x40\");\n    if (settings.family === \"kids\" && colors !== \"18\") throw new Error(where + \": Kids price rows must use 18 colors\");\n    if (colors === \"NaN\") throw new Error(where + \": colors must be a number\");\n    if (!(price >= 0)) throw new Error(where + \": price must be a number (0 = not sold)\");\n    const key = size + \"|\" + canvasType + \"|\" + colors;\n    if (seen.has(key)) throw new Error(where + \": \" + key.replace(/\\|/g, \" / \") + \" is listed twice\");\n    seen.add(key);\n    const sold = price > 0;\n    rows.push({ key, size, canvasType, colors, sold, price: price.toFixed(2), compareAtPrice: sold && compareAt > price ? compareAt.toFixed(2) : null });\n});\nif (!rows.length) throw new Error(file.name + \" has no prices\" + (soldSizes.length ? \" for the sizes in Settings (\" + soldSizes.join(\", \") + \")\" : \"\"));\nconst missing = soldSizes.filter((s) => !rows.some((r) => r.size === s));\nif (missing.length) throw new Error(file.name + \" has no prices for \" + missing.join(\", \") + \" (sizes in Settings; a price of 0 marks a combination not sold)\");\nconst soldRows = rows.filter((r) => r.sold);\nif (!soldRows.length) throw new Error(file.name + \": every price is 0, a product needs at least one combination for sale\");\nif (soldRows.length > 100) throw new Error(file.name + \": Shopify allows 100 variants per product, the sheet has \" + soldRows.length + \" prices above 0\");\n\nconst area = (s) => s.split(\"x\").reduce((a, b) => a * Number(b), 1);\nconst unique = (values) => [...new Set(values)];\nconst order = (list) => {\n    const sizes = unique(list.map((r) => r.size)).sort((a, b) => area(a) - area(b));\n    const canvasTypes = unique(list.map((r) => r.canvasType)).sort();\n    const colors = unique(list.map((r) => r.colors)).sort((a, b) => a - b);\n    list.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size) || canvasTypes.indexOf(a.canvasType) - canvasTypes.indexOf(b.canvasType) || a.colors - b.colors);\n    return { sizes, canvasTypes, colors };\n};\norder(rows);\n// the options list only the values that have a combination for sale (Shopify has no option value without a variant)\nconst values = order(soldRows);\nconst productOptions = [\n    { name: \"Size\", position: 1, values: values.sizes.map((name) => ({ name })) },\n    { name: \"Canvas Type\", position: 2, values: values.canvasTypes.map((name) => ({ name })) },\n    { name: \"Colors\", position: 3, values: values.colors.map((name) => ({ name })) },\n];\nconst variants = soldRows.map((r, i) => ({\n    optionValues: [\n        { optionName: \"Size\", name: r.size },\n        { optionName: \"Canvas Type\", name: r.canvasType },\n        { optionName: \"Colors\", name: r.colors },\n    ],\n    price: r.price,\n    compareAtPrice: r.compareAtPrice,\n    position: i + 1,\n    inventoryPolicy: \"DENY\",\n    inventoryItem: { tracked: false, requiresShipping: true },\n}));\nreturn [{ json: { pricesVersion: file.modifiedTime, variantCount: variants.length, notSold: rows.length - soldRows.length, productOptions, variants, rows } }];"
       }
     },
     {
@@ -632,7 +532,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()) && (f.appProperties || {}).darlart_family !== \"kids\");\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst family = $('Settings').first().json.family;\nconst expectedSize = \"24x30\";\nconst files = $input.first().json.files || [];\nconst folders = files.filter(f => /^\\d+$/.test(String(f.name).trim()))\n    .filter(f => { const c = folderContext(f); return c.eligible && c.family === family; })\n    .filter(f => family !== 'kids' || (f.appProperties || {}).darlart_size === expectedSize)\n    .sort((a,b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map(f => ({ json: { id: f.id, name: String(f.name).trim(), family } })) : [{ json: { none: true } }];"
       }
     },
     {
@@ -695,7 +595,7 @@
         200
       ],
       "parameters": {
-        "jsCode": "// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <folder>_shopify.json yet,\n// and were not given up (maxTries tries); folders never tried first, then the oldest\nconst settings = $('Settings').first().json;\nconst maxTries = Number(settings.maxTries) || 3;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));\n    if (!art) return;\n    // the files' prefix: the folder number (a date+time in folders made before 2026-10-05)\n    const stamp = art.name.slice(0, -\"_art.png\".length);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const featured = find(\"_featured.png\"); // made by the Print Agent\n    const markerName = stamp + \"_shopify.json\";\n    // the WebP copies that go to Shopify\n    const names = { featured: stamp + \"_featured.webp\", mockup: stamp + \"_mockup.webp\" };\n    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));\n    if (!product || !mockup || !featured || find(\"_shopify.json\")) return;\n    const tries = files.filter((f) => f.name.startsWith(\"_upload-try-\")).length;\n    if (tries >= maxTries || files.some((f) => f.name === \"_upload-gave-up\")) return;\n    pending.push({ json: { folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName, tries } });\n});\npending.sort((a, b) => a.json.tries - b.json.tries || Number(a.json.folder) - Number(b.json.folder));\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 10);\nreturn todo.length ? todo : [{ json: { none: true } }];"
+        "jsCode": "// Keeps the folders that have their product JSON, artwork, featured image and mockup, and no <folder>_shopify.json yet,\n// and were not given up (maxTries tries); folders never tried first, then the oldest\nconst settings = $('Settings').first().json;\nconst maxTries = Number(settings.maxTries) || 3;\nconst folders = $('Folders').all();\nconst pending = [];\n$input.all().forEach((item, i) => {\n    const folder = folders[i].json;\n    if (folder.none) return;\n    const files = item.json.files || [];\n    const art = files.find((f) => /^.+_art\\.png$/.test(f.name));\n    if (!art) return;\n    // the files' prefix: the folder number (a date+time in folders made before 2026-10-05)\n    const stamp = art.name.slice(0, -\"_art.png\".length);\n    const find = (suffix) => files.find((f) => f.name === stamp + suffix);\n    const product = find(\"_product.json\");\n    const mockup = find(\"_mockup.png\");\n    const featured = find(\"_featured.png\"); // made by the Print Agent\n    const markerName = stamp + \"_shopify.json\";\n    // the WebP copies that go to Shopify\n    const names = { featured: stamp + \"_featured.webp\", mockup: stamp + \"_mockup.webp\" };\n    const inDrive = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, files.some((f) => f.name === name)]));\n    if (!product || !mockup || !featured || find(\"_shopify.json\")) return;\n    const tries = files.filter((f) => f.name.startsWith(\"_upload-try-\")).length;\n    if (tries >= maxTries || files.some((f) => f.name === \"_upload-gave-up\")) return;\n    pending.push({ json: { printFolderId: (files.find(f => f.name === \"Print\" && f.mimeType === \"application/vnd.google-apps.folder\") || {}).id || \"\", folderId: folder.id, folder: folder.name, stamp, productId: product.id, artworkId: art.id, artworkName: art.name, mockupId: mockup.id, mockupName: mockup.name, featuredId: featured.id, names, inDrive, markerName, tries } });\n});\npending.sort((a, b) => a.json.tries - b.json.tries || Number(a.json.folder) - Number(b.json.folder));\nconst todo = pending.slice(0, Number(settings.maxPerRun) || 10);\nreturn todo.length ? todo : [{ json: { none: true } }];"
       }
     },
     {
@@ -799,7 +699,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000031-0000-4000-8000-000000000000",
@@ -1159,7 +1062,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits collections are filled by hand later: never a collection with \"mini kit\" in its title, and never the tag\n// they match on (mini-kit). Kids Kits are chosen by the Titling Agent (its \"kids\" answer): their collections and the\n// kids-kits tag are kept.\nconst kitCollection = (title) => /\bmini[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// the collection-page filters (Search & Discovery): Category (the product's themes) and Difficulty level\nconst metafields = [];\nconst category = (product.category || []).map((c) => String(c).trim()).filter(Boolean).slice(0, 5);\nif (category.length) metafields.push({ namespace: \"custom\", key: \"category\", type: \"list.single_line_text_field\", value: JSON.stringify(category) });\n// the same categories as Category entries (translatable filter values), matched by name or handle\nconst entries = ((($('Category entries').first().json.data || {}).metaobjects || {}).nodes || []);\nconst entryIds = category.map((name) => {\n    const entry = entries.find((e) => String((e.field || {}).value || \"\").toLowerCase() === name.toLowerCase() || e.handle === slug(name));\n    return entry ? entry.id : null;\n}).filter(Boolean);\nif (entryIds.length) metafields.push({ namespace: \"custom\", key: \"theme_category\", type: \"list.metaobject_reference\", value: JSON.stringify(entryIds) });\nif (product.difficulty) metafields.push({ namespace: \"custom\", key: \"difficulty_level\", type: \"single_line_text_field\", value: String(product.difficulty) });\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(\"x\", \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n    ...(metafields.length ? { metafields } : {}),\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
+        "jsCode": "// The product JSON (Titling Agent) + the CSV variants + the images, as one productSet input\nconst settings = $('Settings').first().json;\nconst folder = $('Loop over folders').first().json;\nconst product = $('Download product JSON').first().json;\nif ((product.kids === true) !== (settings.family === 'kids')) throw new Error('Product metadata family conflicts with its folder');\nconst prices = $('Prices').first().json;\nconst targets = $('Upload targets').first().json;\n\nconst title = String(product.title || \"\").trim();\nif (!title) throw new Error(\"Folder \" + folder.folder + \": the product JSON has no title\");\nconst slug = (s) => String(s).toLowerCase().normalize(\"NFD\").replace(/[\\u0300-\\u036f]/g, \"\").replace(/&/g, \" \").replace(/[^a-z0-9]+/g, \"-\").replace(/^-|-$/g, \"\");\n// the folder number keeps the handle unique: a rerun updates this draft, an existing product is never touched\nconst handle = (slug(product.handle || title) || \"kit\") + \"-\" + folder.folder;\n\nconst escape = (s) => s.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\");\nconst descriptionHtml = String(product.description || \"\").split(/\\n\\s*\\n/).map((p) => p.trim()).filter(Boolean)\n    .map((p) => \"<p>\" + escape(p).replace(/\\n/g, \"<br>\") + \"</p>\").join(\"\\n\");\n\n// the image order is enforced after creation (Image order): 1 featured image, 2 mockup, then the shared images.\n// Each image gets its own alt text, so it can be recognized among the product's media.\nconst alts = { featured: title, mockup: title + \" - finished painting on the wall\" };\nconst files = [\n    { originalSource: targets.featured.resourceUrl, contentType: \"IMAGE\", alt: alts.featured },\n    { originalSource: targets.mockup.resourceUrl, contentType: \"IMAGE\", alt: alts.mockup },\n];\nconst shared = [];\nString(settings.sharedImages || \"\").split(\",\").map((s) => s.trim()).filter(Boolean).forEach((image, i) => {\n    if (image.startsWith(\"gid://\")) {\n        files.push({ id: image });\n        shared.push({ id: image });\n    } else {\n        const alt = title + \" - kit details \" + (i + 1);\n        files.push({ originalSource: image, contentType: \"IMAGE\", alt });\n        shared.push({ alt });\n    }\n});\n\n// Mini Kits collections are filled by hand later: never a collection with \"mini kit\" in its title, and never the tag\n// they match on (mini-kit). Kids Kits are chosen by the Titling Agent (its \"kids\" answer): their collections and the\n// kids-kits tag are kept.\nconst kitCollection = (title) => /\bmini[s-]*kits?\b/i.test(String(title || \"\"));\nconst tags = (product.tags || []).filter((tag) => !kitCollection(tag));\n\n// the collection-page filters (Search & Discovery): Category (the product's themes) and Difficulty level\nconst metafields = [];\nconst category = (product.category || []).map((c) => String(c).trim()).filter(Boolean).slice(0, 5);\nif (category.length) metafields.push({ namespace: \"custom\", key: \"category\", type: \"list.single_line_text_field\", value: JSON.stringify(category) });\n// the same categories as Category entries (translatable filter values), matched by name or handle\nconst entries = ((($('Category entries').first().json.data || {}).metaobjects || {}).nodes || []);\nconst entryIds = category.map((name) => {\n    const entry = entries.find((e) => String((e.field || {}).value || \"\").toLowerCase() === name.toLowerCase() || e.handle === slug(name));\n    return entry ? entry.id : null;\n}).filter(Boolean);\nif (entryIds.length) metafields.push({ namespace: \"custom\", key: \"theme_category\", type: \"list.metaobject_reference\", value: JSON.stringify(entryIds) });\nif (product.difficulty) metafields.push({ namespace: \"custom\", key: \"difficulty_level\", type: \"single_line_text_field\", value: String(product.difficulty) });\n\n// SKU = folder + size digits + color count + canvas type initial, e.g. 1001 + 2025 + 12 + R = 1001202512R\nconst sku = (variant) => {\n    const value = (name) => variant.optionValues.find((o) => o.optionName === name).name;\n    return folder.folder + value(\"Size\").replace(/[^0-9]/g, \"\") + value(\"Colors\") + value(\"Canvas Type\").charAt(0).toUpperCase();\n};\n\nconst input = {\n    title,\n    handle,\n    descriptionHtml,\n    productType: product.productType || \"Paint by Numbers Kit\",\n    vendor: product.vendor || \"Darl'Art\",\n    status: settings.status || \"DRAFT\",\n    tags,\n    collections: (product.collections || []).filter((c) => !kitCollection(c.title)).map((c) => c.id).filter(Boolean),\n    productOptions: prices.productOptions,\n    variants: prices.variants.map((variant) => ({ ...variant, inventoryItem: { ...variant.inventoryItem, sku: sku(variant) } })),\n    files,\n    ...(metafields.length ? { metafields } : {}),\n};\nreturn [{ json: { handle, title, alts, shared, input } }];"
       }
     },
     {
@@ -1538,7 +1441,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000066-0000-4000-8000-000000000000",
@@ -1937,7 +1843,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueErrorOutput"
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000083-0000-4000-8000-000000000000",
@@ -2008,6 +1917,267 @@
           "timeout": 30000
         }
       }
+    },
+    {
+      "id": "a1ce51ae4515e78fd21b703dfcae91c8",
+      "name": "Context for Check batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2750,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "a4e47b862baf4821a9edfa724edb8049",
+      "name": "Context for Start next run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3630,
+        -680
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "bd9080415eab0f9e9e9c8a7553780074",
+      "name": "Dispatch product families",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { family: \"classic\" } }, { json: { family: \"kids\" } }];"
+      }
+    },
+    {
+      "id": "3ba02b5a699f7af2872ed66ee512d4e5",
+      "name": "Run shared family stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -450,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "4fa14bbcf2aee956e8c098dfd1e89296",
+      "name": "Find existing product",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5050,
+        650
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://{{ $('Settings').first().json.shopDomain }}/admin/api/{{ $('Settings').first().json.apiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'query ExistingProduct($identifier: ProductIdentifierInput!) { productByIdentifier(identifier: $identifier) { id handle status } }', variables: { identifier: { handle: $json.handle } } }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "d1479112e82bb9f24248ae21fe4a91fd",
+      "name": "Preserve existing product status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5270,
+        650
+      ],
+      "parameters": {
+        "jsCode": "const built = $('Build product').first().json;\nconst response = $input.first().json;\nif (response.errors?.length || !response.data || !Object.prototype.hasOwnProperty.call(response.data, 'productByIdentifier')) throw new Error('Cannot safely reconcile existing Shopify product');\nconst product = response.data.productByIdentifier;\nif (product && product.handle !== built.handle) throw new Error('Shopify handle mismatch during retry');\nreturn [{ json: { ...built, input: { ...built.input, ...(product ? { id: product.id, status: product.status } : {}) } } }];"
+      }
+    },
+    {
+      "id": "7d28ff76174ce6da1271319d752f0896",
+      "name": "Validate Kids print files?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "115c6b36d2eccc78eabc6577940ae1f7",
+              "leftValue": "={{ $(\"Settings\").first().json.family === \"kids\" }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9e672b0f903cb825984550c6bb5011e0",
+      "name": "Kids Print folder exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2820,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "2e3bab3045ef55d9ecf161db6831a60e",
+              "leftValue": "={{ !!$(\"Loop over folders\").first().json.printFolderId }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a95f1f1f2e5cbd41c3fd925d0d4ec9db",
+      "name": "List Kids production files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        360
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Loop over folders').first().json.printFolderId }}' in parents and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType,modifiedTime)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "405fcd224066e349c7d746042c2bd61d",
+      "name": "Kids production readiness",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3260,
+        360
+      ],
+      "parameters": {
+        "jsCode": "const folder = $('Loop over folders').first().json;\nconst size = $('Settings').first().json.sizes;\nconst reverse = size.split('x').reverse().join('x');\nconst names = new Set(($input.first().json.files || []).map(f => f.name));\nconst missing = ['_blank.svg', '_catalog.pdf', '_user.pdf'].filter(suffix =>\n    ![folder.stamp + '_18' + suffix, folder.stamp + '_' + size + '_18' + suffix, folder.stamp + '_' + reverse + '_18' + suffix].some(name => names.has(name)));\nreturn [{ json: { ...folder, ready: missing.length === 0, missing } }];"
+      }
+    },
+    {
+      "id": "f66c0f5f4d21625fc74307f3d7c37f96",
+      "name": "Kids print files ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3480,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1969bfd12074283d1bed6ddbe664bd4c",
+              "leftValue": "={{ $json.ready === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
     }
   ],
   "connections": {
@@ -2015,7 +2185,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -2026,7 +2196,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -2381,7 +2551,7 @@
         ],
         [
           {
-            "node": "Heartbeat (refresh lock)",
+            "node": "Validate Kids print files?",
             "type": "main",
             "index": 0
           }
@@ -2541,7 +2711,7 @@
       "main": [
         [
           {
-            "node": "Create draft product",
+            "node": "Find existing product",
             "type": "main",
             "index": 0
           }
@@ -2741,7 +2911,7 @@
       "main": [
         [
           {
-            "node": "Check batches",
+            "node": "Context for Check batches",
             "type": "main",
             "index": 0
           }
@@ -2774,7 +2944,7 @@
       "main": [
         [
           {
-            "node": "Start next run",
+            "node": "Context for Start next run",
             "type": "main",
             "index": 0
           }
@@ -2945,12 +3115,147 @@
           }
         ]
       ]
+    },
+    "Context for Check batches": {
+      "main": [
+        [
+          {
+            "node": "Check batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Start next run": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch product families": {
+      "main": [
+        [
+          {
+            "node": "Run shared family stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find existing product": {
+      "main": [
+        [
+          {
+            "node": "Preserve existing product status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preserve existing product status": {
+      "main": [
+        [
+          {
+            "node": "Create draft product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Kids print files?": {
+      "main": [
+        [
+          {
+            "node": "Kids Print folder exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kids Print folder exists?": {
+      "main": [
+        [
+          {
+            "node": "List Kids production files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop over folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Kids production files": {
+      "main": [
+        [
+          {
+            "node": "Kids production readiness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kids production readiness": {
+      "main": [
+        [
+          {
+            "node": "Kids print files ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kids print files ready?": {
+      "main": [
+        [
+          {
+            "node": "Heartbeat (refresh lock)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop over folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
-    "errorWorkflow": "aokToPHKOa4MciN1"
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true
   },
-  "pinData": {}
+  "pinData": {},
+  "active": false
 }

@@ -877,6 +877,6 @@ connect("Batches to rename", "Rename sent batch");
 
 const workflow = { name: "Darl'Art Shopify Uploader", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-shopify-uploader.json");
-require("./lib/kids-guards").applyClassicKidsGuards(workflow);
+require("./lib/shared-profile-build").applySharedProductProfiles(workflow);
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

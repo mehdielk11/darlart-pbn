@@ -657,6 +657,6 @@ connect("Start again?", "Run Shopify Uploader", 0);
 
 const workflow = { name: "Darl'Art Print Agent", nodes, connections, settings: { executionOrder: "v1", timezone: "Africa/Casablanca", errorWorkflow: ERROR_WORKFLOW_ID }, pinData: {} };
 const out = path.join(root, "automation/n8n-darlart-print-agent.json");
-require("./lib/kids-guards").applyClassicKidsGuards(workflow);
+require("./lib/shared-profile-build").applySharedProductProfiles(workflow);
 fs.writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
 console.log("Wrote " + path.relative(root, out) + ": " + nodes.length + " nodes");

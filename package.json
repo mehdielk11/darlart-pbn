@@ -12,8 +12,9 @@
     "vercel-build": "npm run build:frontend && npm run build",
     "build:server": "tsc -p server",
     "start:server": "node server/dist/server/src/index.js",
-    "test": "npm run build:server && node --test --test-concurrency=1 test/core.test.js test/kids.test.js",
-    "prepare:mockups": "npm run build:server && node server/scripts/prepare-mockups.js"
+    "test": "npm run build:server && node --test --test-concurrency=1 test/core.test.js test/kids.test.js test/shared-profiles.test.js",
+    "prepare:mockups": "npm run build:server && node server/scripts/prepare-mockups.js",
+    "build:workflows": "node scripts/build-shared-workflows.js"
   },
   "author": "drake7707",
   "devDependencies": {

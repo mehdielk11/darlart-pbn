@@ -49,120 +49,14 @@
     {
       "id": "cc000004-0000-4000-8000-000000000000",
       "name": "Settings",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         220,
         200
       ],
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "set0",
-              "name": "agentFolderId",
-              "value": "1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH",
-              "type": "string"
-            },
-            {
-              "id": "set1",
-              "name": "pbnApiUrl",
-              "value": "http://127.0.0.1:3000",
-              "type": "string"
-            },
-            {
-              "id": "set2",
-              "name": "colorsList",
-              "value": "12,24,36,48",
-              "type": "string"
-            },
-            {
-              "id": "set3",
-              "name": "canvasSizes",
-              "value": "60x75",
-              "type": "string"
-            },
-            {
-              "id": "set4",
-              "name": "difficulty",
-              "value": "hard",
-              "type": "string"
-            },
-            {
-              "id": "set5",
-              "name": "orientation",
-              "value": "auto",
-              "type": "string"
-            },
-            {
-              "id": "set6",
-              "name": "palette",
-              "value": "darlart-v3",
-              "type": "string"
-            },
-            {
-              "id": "set7",
-              "name": "cropMode",
-              "value": "attention",
-              "type": "string"
-            },
-            {
-              "id": "set8",
-              "name": "paperSize",
-              "value": "a4",
-              "type": "string"
-            },
-            {
-              "id": "set9",
-              "name": "mockupColors",
-              "value": 48,
-              "type": "number"
-            },
-            {
-              "id": "set10",
-              "name": "maxPerRun",
-              "value": 5,
-              "type": "number"
-            },
-            {
-              "id": "set11",
-              "name": "maxFailedRuns",
-              "value": 3,
-              "type": "number"
-            },
-            {
-              "id": "set12",
-              "name": "lockStaleMinutes",
-              "value": 20,
-              "type": "number"
-            },
-            {
-              "id": "set13",
-              "name": "parallelJobs",
-              "value": 1,
-              "type": "number"
-            },
-            {
-              "id": "set14",
-              "name": "jobTimeoutMinutes",
-              "value": 10,
-              "type": "number"
-            },
-            {
-              "id": "set15",
-              "name": "pollSeconds",
-              "value": 30,
-              "type": "number"
-            },
-            {
-              "id": "set16",
-              "name": "telegramChatId",
-              "value": "-1003952514058",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst base = {\"agentFolderId\":\"1OwvTpeI7Y2a7FV_VWvYZmsgrY2tWS2HH\",\"pbnApiUrl\":\"http://127.0.0.1:3000\",\"colorsList\":\"12,24,36,48\",\"canvasSizes\":\"60x75\",\"difficulty\":\"hard\",\"orientation\":\"auto\",\"palette\":\"darlart-v3\",\"cropMode\":\"attention\",\"paperSize\":\"a4\",\"mockupColors\":48,\"maxPerRun\":5,\"maxFailedRuns\":3,\"lockStaleMinutes\":20,\"parallelJobs\":1,\"jobTimeoutMinutes\":10,\"pollSeconds\":30,\"telegramChatId\":\"-1003952514058\"};\nconst config = {\"queueFolderId\":\"1Botmw2f1ip61J_5PBkyvOlkYjRLHH3kl\",\"doneFolderId\":\"19Ru3ux6Cco74DfsOzT2SmltmYVFGEk8b\",\"refFolderId\":\"1EaCP2LkIJv6Csi9Rtai-bbhRNaFbhc3T\",\"failedFolderId\":\"1KqDreO51jl7jj4l-fy69tCM_cDIe8AhY\",\"canvasSize\":\"24x30\",\"version\":\"shared-kids-v1\"};\nreturn [{ json: resolveStageSettings(base, $input.first().json || {}, config) }];"
       }
     },
     {
@@ -273,7 +167,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: '_print-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: 'staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes)) }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: '_print-agent.lock-' + $execution.id, mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId], description: ('staleMinutes=' + (Number($('Settings').first().json.lockStaleMinutes))) + \";family=\" + $(\"Settings\").first().json.family }) }}",
         "options": {
           "timeout": 30000
         }
@@ -523,7 +417,7 @@
         40
       ],
       "parameters": {
-        "jsCode": "// One item per numbered folder (1001, 1002...), oldest first\nconst folders = ($input.first().json.files || []).filter((f) => /^\\d+$/.test(String(f.name).trim()) && (f.appProperties || {}).darlart_family !== \"kids\");\nfolders.sort((a, b) => Number(a.name) - Number(b.name));\nif (!folders.length) return [{ json: { none: true } }];\nreturn folders.map((f) => ({ json: { id: f.id, name: String(f.name).trim() } }));"
+        "jsCode": "function resolveFamily(value) {\n    const family = value === undefined || value === null || value === '' ? 'classic' : value;\n    if (family !== 'classic' && family !== 'kids') throw new Error('Unknown product family');\n    return family;\n}\nfunction folderContext(folder) {\n    const metadata = folder.appProperties || {};\n    const family = resolveFamily(metadata.darlart_family);\n    return { family, eligible: !['migrating', 'review', 'validation'].includes(metadata.darlart_state) };\n}\nfunction parseQueueName(name) {\n    const match = /^(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(?:_\\d+)?)_(\\d{2})\\.(jpg|jpeg|png|webp)$/i.exec(name);\n    return match ? { batchId: match[1], index: Number(match[2]), extension: match[3].toLowerCase() } : null;\n}\nfunction resolveStageSettings(base, input, config) {\n    const family = resolveFamily(input.family);\n    // Invocation cannot override prices, physical dimensions, colors or destination IDs.\n    const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };\n    if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';\n    if (family === 'kids') {\n        const overrides = {\n            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,\n            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',\n            queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,\n            refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,\n            batchDoneFolderId: config.doneFolderId,\n        };\n        for (const key of Object.keys(overrides)) if (Object.prototype.hasOwnProperty.call(base, key)) settings[key] = overrides[key];\n    }\n    return settings;\n}\nconst family = $('Settings').first().json.family;\nconst expectedSize = \"24x30\";\nconst files = $input.first().json.files || [];\nconst folders = files.filter(f => /^\\d+$/.test(String(f.name).trim()))\n    .filter(f => { const c = folderContext(f); return c.eligible && c.family === family; })\n    .filter(f => family !== 'kids' || (f.appProperties || {}).darlart_size === expectedSize)\n    .sort((a,b) => Number(a.name) - Number(b.name));\nreturn folders.length ? folders.map(f => ({ json: { id: f.id, name: String(f.name).trim(), family } })) : [{ json: { none: true } }];"
       }
     },
     {
@@ -831,7 +725,7 @@
         40
       ],
       "parameters": {
-        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$('List Print files').all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    // given up after maxFailedRuns runs with failed jobs (delete its \"_print-failed-\" markers to try again)\n    if (state.rootFiles.filter((n) => n.startsWith(state.stamp + \"_print-failed-\")).length >= Number(settings.maxFailedRuns || 3)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    // 1095_12_blank.svg, or with the size (several sizes made, or a folder from before 2026-10-05): ..._60x75_12_blank.svg\n    const has = (size, n, suffix) => (sizes.length === 1 && printFiles.has(state.stamp + \"_\" + n + suffix))\n        || printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, withSize: sizes.length > 1, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
+        "jsCode": "// One job per canvas size x color count still missing; the mockup job goes last in its folder (it marks the folder done)\nconst settings = $('Settings').first().json;\nconst states = $('Folder states').all();\nconst colors = String(settings.colorsList).split(\",\").map((c) => Number(c.trim())).filter((c) => c > 1);\nconst sizes = String(settings.canvasSizes).split(\",\").map((s) => s.trim().toLowerCase().replace(/\\s+/g, \"\")).filter(Boolean);\nconst mockupColors = Number(settings.mockupColors);\nconst flip = (size) => size.split(\"x\").reverse().join(\"x\");\nconst jobs = [];\nlet folderCount = 0;\n$('List Print files').all().forEach((item, i) => {\n    const state = states[i].json;\n    if (state.none || folderCount >= Number(settings.maxPerRun)) return;\n    // given up after maxFailedRuns runs with failed jobs (delete its \"_print-failed-\" markers to try again)\n    if (state.rootFiles.filter((n) => n.startsWith(state.stamp + \"_print-failed-\")).length >= Number(settings.maxFailedRuns || 3)) return;\n    const printFiles = new Set((item.json.files || []).map((f) => f.name));\n    // 1095_12_blank.svg, or with the size (several sizes made, or a folder from before 2026-10-05): ..._60x75_12_blank.svg\n    const has = (size, n, suffix) => (sizes.length === 1 && printFiles.has(state.stamp + \"_\" + n + suffix))\n        || printFiles.has(state.stamp + \"_\" + size + \"_\" + n + suffix) || printFiles.has(state.stamp + \"_\" + flip(size) + \"_\" + n + suffix);\n    const needMockupFile = !state.rootFiles.includes(state.stamp + \"_mockup.png\");\n    const folderJobs = [];\n    sizes.forEach((size, s) => {\n        for (const n of colors) {\n            const needSvg = !has(size, n, \"_blank.svg\");\n            const needPdf = !has(size, n, \"_catalog.pdf\");\n            const needUser = !has(size, n, \"_user.pdf\");\n            const needMockup = needMockupFile && s === 0 && n === mockupColors;\n            if (needSvg || needPdf || needUser || needMockup) folderJobs.push({ size, colors: n, needSvg, needPdf, needUser, needMockup });\n        }\n    });\n    if (needMockupFile && !folderJobs.some((j) => j.needMockup)) {\n        folderJobs.push({ size: sizes[0], colors: mockupColors, needSvg: false, needPdf: false, needUser: false, needMockup: true });\n    }\n    if (!folderJobs.length) return;\n    folderCount++;\n    folderJobs.sort((a, b) => Number(a.needMockup) - Number(b.needMockup));\n    for (const job of folderJobs) {\n        jobs.push({ json: { folderId: state.folderId, folder: state.folder, stamp: state.stamp, withSize: sizes.length > 1, artworkId: state.artworkId, printFolderId: state.printFolderId, ...job } });\n    }\n});\n\nconst checkpoint = ($('Find PBN checkpoint').first().json.files || [])[0];\nlet records = {};\nif (checkpoint && checkpoint.description) {\n    try { records = JSON.parse(checkpoint.description).records || {}; }\n    catch { throw new Error('PBN checkpoint is malformed; refusing to submit duplicate jobs'); }\n}\nconst key = j => [j.folderId, j.artworkId, j.size, j.colors, settings.family, settings.profileVersion, settings.difficulty, settings.palette, settings.cropMode].join('|');\nfor (const item of jobs) {\n    const old = records[key(item.json)];\n    if (old && old.jobId && ['sent', 'completed'].includes(old.status)) item.json.resumeJobId = old.jobId;\n}\nreturn jobs.length ? jobs : [{ json: { none: true } }];"
       },
       "executeOnce": true
     },
@@ -926,7 +820,7 @@
         -40
       ],
       "parameters": {
-        "jsCode": "// The jobs' state (built from the planned jobs the first time), and the jobs to send now: as many as there are free\n// places among parallelJobs\nconst settings = $('Settings').first().json;\nconst first = $input.first().json;\nconst state = Array.isArray(first.jobs) ? first : {\n    jobs: $input.all().map((item) => ({ ...item.json, jobId: \"\", status: \"pending\", error: \"\", sentAt: 0, result: null, saved: false })),\n    saved: [],\n    errors: [],\n};\nconst places = Math.max(1, Number(settings.parallelJobs) || 1) - state.jobs.filter((j) => j.status === \"sent\").length;\nconst send = [];\nstate.jobs.forEach((j, i) => { if (j.status === \"pending\" && send.length < places) send.push(i); });\nreturn [{ json: { ...state, send } }];"
+        "jsCode": "// The jobs' state (built from the planned jobs the first time), and the jobs to send now: as many as there are free\n// places among parallelJobs\nconst settings = $('Settings').first().json;\nconst first = $input.first().json;\nconst state = Array.isArray(first.jobs) ? first : {\n    jobs: $input.all().map((item) => ({ ...item.json, jobId: item.json.resumeJobId || \"\", status: item.json.resumeJobId ? \"sent\" : \"pending\", error: \"\", sentAt: item.json.resumeJobId ? Date.now() : 0, result: null, saved: false })),\n    saved: [],\n    errors: [],\n};\nconst places = Math.max(1, Number(settings.parallelJobs) || 1) - state.jobs.filter((j) => j.status === \"sent\").length;\nconst send = [];\nstate.jobs.forEach((j, i) => { if (j.status === \"pending\" && send.length < places) send.push(i); });\nreturn [{ json: { ...state, send } }];"
       }
     },
     {
@@ -1213,7 +1107,7 @@
         -40
       ],
       "parameters": {
-        "jsCode": "// Each sent job's state. A job the API no longer knows (restarted) has failed; so has one with no result\n// 2 x jobTimeoutMinutes + 5 after it was sent (the API gives up on a job after jobTimeoutMinutes itself).\n// The files of the jobs finished now are saved this round; a folder's mockup (it marks the folder done for the\n// Watchdog) once all the folder's jobs are finished, and only if none failed.\nconst settings = $('Settings').first().json;\nconst checked = !Array.isArray($input.first().json.jobs);\nconst state = JSON.parse(JSON.stringify($('Jobs sent').first().json));\nif (checked) {\n    const asked = $('Jobs to check').all().map((item) => item.json.jobId);\n    const answers = $input.all().map((item) => item.json);\n    const limit = (2 * Number(settings.jobTimeoutMinutes || 10) + 5) * 60000;\n    asked.forEach((jobId, k) => {\n        const job = state.jobs.find((j) => j.jobId === jobId);\n        const a = answers[k] || {};\n        if (!job) return;\n        if (a.jobId === jobId && a.status === \"completed\" && a.result) {\n            job.status = \"completed\";\n            job.result = { label: (a.result.canvas && a.result.canvas.label) || job.size, files: (a.result.files || []).map((x) => ({ name: x.name, url: x.url })) };\n        } else if (a.jobId === jobId && a.status === \"failed\") Object.assign(job, { status: \"failed\", error: String(a.error || \"failed\").slice(0, 300) });\n        else if (JSON.stringify(a).includes(\"Job not found\")) Object.assign(job, { status: \"failed\", error: \"the pbn API no longer has this job (restarted?)\" });\n        else if (Date.now() - job.sentAt > limit) Object.assign(job, { status: \"failed\", error: \"no result \" + Math.round(limit / 60000) + \" min after it was sent\" });\n    });\n}\nconst files = [];\nfor (const job of state.jobs) {\n    if (job.status !== \"completed\" || job.saved) continue;\n    const url = (name) => (job.result.files.find((x) => x.name === name) || {}).url;\n    const want = [];\n    // 1095_12_blank.svg; the canvas size is in the name only when several sizes are made\n    const prefix = job.stamp + \"_\" + (job.withSize ? job.result.label + \"_\" : \"\") + job.colors;\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    if (job.needSvg) want.push({ url: url(\"blank.svg\"), name: prefix + \"_blank.svg\", parent: job.printFolderId });\n    if (job.needPdf) want.push({ url: url(\"painting.pdf\"), name: prefix + \"_catalog.pdf\", parent: job.printFolderId });\n    if (job.needUser) want.push({ url: url(\"template.pdf\"), name: prefix + \"_user.pdf\", parent: job.printFolderId });\n    if (job.needMockup && !url(\"mockup.png\")) want.push({ url: \"\" });\n    if (want.some((w) => !w.url)) {\n        Object.assign(job, { status: \"failed\", error: \"the pbn API result is missing a file\" });\n        continue;\n    }\n    files.push(...want);\n    job.saved = true;\n}\n// mockups: a folder whose jobs are all finished, none failed\nfor (const job of state.jobs) {\n    if (!job.needMockup || job.status !== \"completed\" || job.mockupSaved) continue;\n    const folderJobs = state.jobs.filter((j) => j.folder === job.folder);\n    if (folderJobs.some((j) => j.status === \"pending\" || j.status === \"sent\" || j.status === \"failed\")) continue;\n    files.push({ url: job.result.files.find((x) => x.name === \"mockup.png\").url, name: job.stamp + \"_mockup.png\", parent: job.folderId });\n    job.mockupSaved = true;\n}\nstate.finished = !state.jobs.some((j) => j.status === \"pending\" || j.status === \"sent\");\nstate.checks = (state.checks || 0) + (checked ? 1 : 0);\nreturn [{ json: { ...state, toSave: files } }];"
+        "jsCode": "// Each sent job's state. A job the API no longer knows (restarted) has failed; so has one with no result\n// 2 x jobTimeoutMinutes + 5 after it was sent (the API gives up on a job after jobTimeoutMinutes itself).\n// The files of the jobs finished now are saved this round; a folder's mockup (it marks the folder done for the\n// Watchdog) once all the folder's jobs are finished, and only if none failed.\nconst settings = $('Settings').first().json;\nconst checked = !Array.isArray($input.first().json.jobs);\nconst state = JSON.parse(JSON.stringify($('Jobs sent').first().json));\nif (checked) {\n    const asked = $('Jobs to check').all().map((item) => item.json.jobId);\n    const answers = $input.all().map((item) => item.json);\n    const limit = (2 * Number(settings.jobTimeoutMinutes || 10) + 5) * 60000;\n    asked.forEach((jobId, k) => {\n        const job = state.jobs.find((j) => j.jobId === jobId);\n        const a = answers[k] || {};\n        if (!job) return;\n        if (a.jobId === jobId && a.status === \"completed\" && a.result) {\n            if ($(\"Settings\").first().json.family === \"kids\" && (a.result.colorsUsed !== 18 || a.result.colorsRequested !== 18)) { Object.assign(job, { status: \"failed\", error: \"Kids template must contain 18 actually used paints\" }); return; }\n            job.status = \"completed\";\n            job.result = { label: (a.result.canvas && a.result.canvas.label) || job.size, files: (a.result.files || []).map((x) => ({ name: x.name, url: x.url })) };\n        } else if (a.jobId === jobId && a.status === \"failed\") Object.assign(job, { status: \"failed\", error: String(a.error || \"failed\").slice(0, 300) });\n        else if (JSON.stringify(a).includes(\"Job not found\")) Object.assign(job, { status: \"failed\", error: \"the pbn API no longer has this job (restarted?)\" });\n        else if (Date.now() - job.sentAt > limit) Object.assign(job, { status: \"deferred\", error: \"Polling deferred: no result \" + Math.round(limit / 60000) + \" min after it was sent\" });\n    });\n}\nconst files = [];\nfor (const job of state.jobs) {\n    if (job.status !== \"completed\" || job.saved) continue;\n    const url = (name) => (job.result.files.find((x) => x.name === name) || {}).url;\n    const want = [];\n    // 1095_12_blank.svg; the canvas size is in the name only when several sizes are made\n    const prefix = job.stamp + \"_\" + (job.withSize ? job.result.label + \"_\" : \"\") + job.colors;\n    // the Blank SVG (grey outlines, black numbers, no colors): the file printed on the canvas\n    if (job.needSvg) want.push({ url: url(\"blank.svg\"), name: prefix + \"_blank.svg\", parent: job.printFolderId });\n    if (job.needPdf) want.push({ url: url(\"painting.pdf\"), name: prefix + \"_catalog.pdf\", parent: job.printFolderId });\n    if (job.needUser) want.push({ url: url(\"template.pdf\"), name: prefix + \"_user.pdf\", parent: job.printFolderId });\n    if (job.needMockup && !url(\"mockup.png\")) want.push({ url: \"\" });\n    if (want.some((w) => !w.url)) {\n        Object.assign(job, { status: \"failed\", error: \"the pbn API result is missing a file\" });\n        continue;\n    }\n    files.push(...want);\n    job.saved = true;\n}\n// mockups: a folder whose jobs are all finished, none failed\nfor (const job of state.jobs) {\n    if (!job.needMockup || job.status !== \"completed\" || job.mockupSaved) continue;\n    const folderJobs = state.jobs.filter((j) => j.folder === job.folder);\n    if (folderJobs.some((j) => j.status === \"pending\" || j.status === \"sent\" || j.status === \"failed\" || j.status === \"deferred\")) continue;\n    files.push({ url: job.result.files.find((x) => x.name === \"mockup.png\").url, name: job.stamp + \"_mockup.png\", parent: job.folderId });\n    job.mockupSaved = true;\n}\nstate.finished = !state.jobs.some((j) => j.status === \"pending\" || j.status === \"sent\");\nstate.checks = (state.checks || 0) + (checked ? 1 : 0);\nreturn [{ json: { ...state, toSave: files } }];"
       }
     },
     {
@@ -1400,7 +1294,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_print-report.json' and trashed = false"
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '{{ $(\"Settings\").first().json.family === \"kids\" ? \"_print-report-kids.json\" : \"_print-report.json\" }}' and trashed = false"
             },
             {
               "name": "fields",
@@ -1600,7 +1494,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000061-0000-4000-8000-000000000000",
@@ -1620,7 +1517,7 @@
           "parameters": [
             {
               "name": "q",
-              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_failed-print' and trashed = false"
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_failed-{{ $(\"Settings\").first().json.family === \"kids\" ? \"kids-\" : \"\" }}print' and trashed = false"
             },
             {
               "name": "fields",
@@ -1668,7 +1565,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify(($json.files || []).length ? { modifiedTime: $now.toUTC().toISO() } : { name: '_failed-print', mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
+        "jsonBody": "={{ JSON.stringify(($json.files || []).length ? { modifiedTime: $now.toUTC().toISO() } : { name: \"_failed-\" + ($(\"Settings\").first().json.family === \"kids\" ? \"kids-\" : \"\") + \"print\", mimeType: 'text/plain', parents: [$('Settings').first().json.agentFolderId] }) }}",
         "options": {
           "timeout": 30000
         }
@@ -1738,7 +1635,7 @@
         "nodeCredentialType": "googleDriveOAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.reportId ? { description: $json.description } : { name: '_print-report.json', mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
+        "jsonBody": "={{ JSON.stringify($json.reportId ? { description: $json.description } : { name: ($('Settings').first().json.family === 'kids' ? '_print-report-kids.json' : '_print-report.json'), mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
         "options": {
           "timeout": 30000
         }
@@ -1796,7 +1693,10 @@
           "parse_mode": "HTML"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "cc000068-0000-4000-8000-000000000000",
@@ -1966,6 +1866,336 @@
       },
       "executeOnce": true,
       "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a4e47b862baf4821a9edfa724edb8049",
+      "name": "Context for Start next run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5390,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "1cf35a539c91fab0c6acbc90f33595b8",
+      "name": "Context for Run Shopify Uploader",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5390,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => ({ json: { ...item.json, family: $(\"Settings\").first().json.family, mode: item.json.mode || \"run\" }, pairedItem: { item: index } }));"
+      }
+    },
+    {
+      "id": "bd9080415eab0f9e9e9c8a7553780074",
+      "name": "Dispatch product families",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { family: \"classic\" } }, { json: { family: \"kids\" } }];"
+      }
+    },
+    {
+      "id": "3ba02b5a699f7af2872ed66ee512d4e5",
+      "name": "Run shared family stage",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -450,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $workflow.id }}"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      }
+    },
+    {
+      "id": "fedef8ff4e36c6949813aed395ecef0b",
+      "name": "Kids print profile?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4830,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "kids-print",
+              "leftValue": "={{ $(\"Settings\").first().json.family === \"kids\" }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "570452b8aefb46e28334edace83281ff",
+      "name": "Create Kids pbn job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5060,
+        -340
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Settings').first().json.pbnApiUrl }}/v1/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "canvasSize",
+              "value": "={{ $('Jobs to send').item.json.size }}"
+            },
+            {
+              "name": "orientation",
+              "value": "={{ $('Settings').first().json.orientation }}"
+            },
+            {
+              "name": "colors",
+              "value": "={{ $('Jobs to send').item.json.colors }}"
+            },
+            {
+              "name": "difficulty",
+              "value": "={{ $('Settings').first().json.difficulty }}"
+            },
+            {
+              "name": "palette",
+              "value": "={{ $('Settings').first().json.palette }}"
+            },
+            {
+              "name": "cropMode",
+              "value": "={{ $('Settings').first().json.cropMode }}"
+            },
+            {
+              "name": "paperSize",
+              "value": "={{ $('Settings').first().json.paperSize }}"
+            },
+            {
+              "name": "orderId",
+              "value": "={{ $('Jobs to send').item.json.folder }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "image"
+            },
+            {
+              "name": "requireExactColors",
+              "value": "true"
+            },
+            {
+              "name": "physicalSvg",
+              "value": "true"
+            },
+            {
+              "name": "paintCanvasSizes",
+              "value": "={{ $('Settings').first().json.canvasSizes }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "413afd9d0bb84c18c404169f621d1bd4",
+      "name": "Find PBN checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3800,
+        -700
+      ],
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "='{{ $('Settings').first().json.agentFolderId }}' in parents and name = '_pbn-jobs-{{ $('Settings').first().json.family }}.json' and trashed = false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,description)"
+            },
+            {
+              "name": "orderBy",
+              "value": "createdTime desc"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "a202f0b0db1134b742d37621e18e5399",
+      "name": "Checkpoint accepted jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5000,
+        -700
+      ],
+      "parameters": {
+        "jsCode": "const state = $input.first().json;\nconst settings = $('Settings').first().json;\nconst file = ($('Find PBN checkpoint').first().json.files || [])[0] || {};\nlet records = {};\nif (file.description) records = JSON.parse(file.description).records || {};\nconst key = j => [j.folderId, j.artworkId, j.size, j.colors, settings.family, settings.profileVersion, settings.difficulty, settings.palette, settings.cropMode].join('|');\nfor (const j of state.jobs || []) if (j.jobId) records[key(j)] = { jobId: j.jobId, status: j.status === 'deferred' ? 'sent' : j.status, updatedAt: Date.now() };\nrecords = Object.fromEntries(Object.entries(records).sort((a,b) => b[1].updatedAt - a[1].updatedAt).slice(0, 100));\nconst description = JSON.stringify({ version: 1, family: settings.family, records });\nif (description.length > 30000) throw new Error('PBN checkpoint exceeds metadata budget');\nlet checkpointId = file.id || '';\nfor (const name of ['Save accepted PBN checkpoint', 'Save polled PBN checkpoint']) {\n    if ($(name).isExecuted && $(name).last().json.id) checkpointId = $(name).last().json.id;\n}\nreturn [{ json: { checkpointId, description } }];"
+      }
+    },
+    {
+      "id": "b97fdb5365e4daa815d501c9ccf9fde1",
+      "name": "Save accepted PBN checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5220,
+        -700
+      ],
+      "parameters": {
+        "method": "={{ $json.checkpointId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.checkpointId ? '/' + $json.checkpointId : '') + '?supportsAllDrives=true&fields=id' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.checkpointId ? { description: $json.description } : { name: '_pbn-jobs-' + $('Settings').first().json.family + '.json', mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "a904a42afaedebaeaa9d5b8f09a547ec",
+      "name": "Continue accepted jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5440,
+        -700
+      ],
+      "parameters": {
+        "jsCode": "return $(\"Jobs sent\").all();"
+      }
+    },
+    {
+      "id": "6d4ea8aaa03c3e345fff6485b19a2dec",
+      "name": "Checkpoint polled jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5000,
+        -700
+      ],
+      "parameters": {
+        "jsCode": "const state = $input.first().json;\nconst settings = $('Settings').first().json;\nconst file = ($('Find PBN checkpoint').first().json.files || [])[0] || {};\nlet records = {};\nif (file.description) records = JSON.parse(file.description).records || {};\nconst key = j => [j.folderId, j.artworkId, j.size, j.colors, settings.family, settings.profileVersion, settings.difficulty, settings.palette, settings.cropMode].join('|');\nfor (const j of state.jobs || []) if (j.jobId) records[key(j)] = { jobId: j.jobId, status: j.status === 'deferred' ? 'sent' : j.status, updatedAt: Date.now() };\nrecords = Object.fromEntries(Object.entries(records).sort((a,b) => b[1].updatedAt - a[1].updatedAt).slice(0, 100));\nconst description = JSON.stringify({ version: 1, family: settings.family, records });\nif (description.length > 30000) throw new Error('PBN checkpoint exceeds metadata budget');\nlet checkpointId = file.id || '';\nfor (const name of ['Save accepted PBN checkpoint', 'Save polled PBN checkpoint']) {\n    if ($(name).isExecuted && $(name).last().json.id) checkpointId = $(name).last().json.id;\n}\nreturn [{ json: { checkpointId, description } }];"
+      }
+    },
+    {
+      "id": "88f1beede6902ebae08f7d86ee35ffbe",
+      "name": "Save polled PBN checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5220,
+        -700
+      ],
+      "parameters": {
+        "method": "={{ $json.checkpointId ? 'PATCH' : 'POST' }}",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files' + ($json.checkpointId ? '/' + $json.checkpointId : '') + '?supportsAllDrives=true&fields=id' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.checkpointId ? { description: $json.description } : { name: '_pbn-jobs-' + $('Settings').first().json.family + '.json', mimeType: 'application/json', parents: [$('Settings').first().json.agentFolderId], description: $json.description }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "88d43a98ac197d03d29dd3b960f70390",
+      "name": "Continue polled jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5440,
+        -700
+      ],
+      "parameters": {
+        "jsCode": "return $(\"Jobs checked\").all();"
+      }
     }
   ],
   "connections": {
@@ -1973,7 +2203,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -1984,7 +2214,7 @@
       "main": [
         [
           {
-            "node": "Settings",
+            "node": "Dispatch product families",
             "type": "main",
             "index": 0
           }
@@ -2232,7 +2462,7 @@
         ],
         [
           {
-            "node": "Plan jobs",
+            "node": "Find PBN checkpoint",
             "type": "main",
             "index": 0
           }
@@ -2283,7 +2513,7 @@
         ],
         [
           {
-            "node": "Plan jobs",
+            "node": "Find PBN checkpoint",
             "type": "main",
             "index": 0
           }
@@ -2294,7 +2524,7 @@
       "main": [
         [
           {
-            "node": "Plan jobs",
+            "node": "Find PBN checkpoint",
             "type": "main",
             "index": 0
           }
@@ -2407,7 +2637,7 @@
       "main": [
         [
           {
-            "node": "Create pbn job",
+            "node": "Kids print profile?",
             "type": "main",
             "index": 0
           }
@@ -2429,7 +2659,7 @@
       "main": [
         [
           {
-            "node": "Jobs running?",
+            "node": "Checkpoint accepted jobs",
             "type": "main",
             "index": 0
           }
@@ -2496,7 +2726,7 @@
       "main": [
         [
           {
-            "node": "Files to download",
+            "node": "Checkpoint polled jobs",
             "type": "main",
             "index": 0
           }
@@ -2816,12 +3046,151 @@
       "main": [
         [
           {
-            "node": "Start next run",
+            "node": "Context for Start next run",
             "type": "main",
             "index": 0
           },
           {
+            "node": "Context for Run Shopify Uploader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Start next run": {
+      "main": [
+        [
+          {
+            "node": "Start next run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context for Run Shopify Uploader": {
+      "main": [
+        [
+          {
             "node": "Run Shopify Uploader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch product families": {
+      "main": [
+        [
+          {
+            "node": "Run shared family stage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kids print profile?": {
+      "main": [
+        [
+          {
+            "node": "Create Kids pbn job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create pbn job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Kids pbn job": {
+      "main": [
+        [
+          {
+            "node": "Jobs sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find PBN checkpoint": {
+      "main": [
+        [
+          {
+            "node": "Plan jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checkpoint accepted jobs": {
+      "main": [
+        [
+          {
+            "node": "Save accepted PBN checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save accepted PBN checkpoint": {
+      "main": [
+        [
+          {
+            "node": "Continue accepted jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue accepted jobs": {
+      "main": [
+        [
+          {
+            "node": "Jobs running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checkpoint polled jobs": {
+      "main": [
+        [
+          {
+            "node": "Save polled PBN checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save polled PBN checkpoint": {
+      "main": [
+        [
+          {
+            "node": "Continue polled jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue polled jobs": {
+      "main": [
+        [
+          {
+            "node": "Files to download",
             "type": "main",
             "index": 0
           }
@@ -2832,7 +3201,11 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Africa/Casablanca",
-    "errorWorkflow": "aokToPHKOa4MciN1"
+    "errorWorkflow": "aokToPHKOa4MciN1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true
   },
-  "pinData": {}
+  "pinData": {},
+  "active": false
 }
