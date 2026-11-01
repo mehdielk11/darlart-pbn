@@ -1,5 +1,7 @@
 /** Shared build-time contract. Embedded functions must remain self-contained for n8n Code nodes. */
 function validateKidsConfig(config) {
+    const colors = Number(config.colors ?? 16);
+    if (!Number.isInteger(colors) || colors < 2 || colors > 64) throw new Error('Kids colors must be an integer from 2 to 64');
     const size = String(config.canvasSize || '24x30').toLowerCase();
     if (!/^\d+(?:\.\d+)?x\d+(?:\.\d+)?$/.test(size)) throw new Error('Invalid Kids canvas size');
     const [w, h] = size.split('x').map(Number);
@@ -7,7 +9,7 @@ function validateKidsConfig(config) {
     for (const field of ['queueFolderId', 'doneFolderId', 'refFolderId', 'failedFolderId']) {
         if (!String(config[field] || '').trim()) throw new Error('Missing Kids ' + field);
     }
-    return { ...config, canvasSize: size, version: 'shared-kids-v1' };
+    return { ...config, colors, canvasSize: size, version: 'shared-kids-' + colors + '-v2' };
 }
 
 function resolveFamily(value) {
@@ -33,9 +35,10 @@ function resolveStageSettings(base, input, config) {
     const settings = { ...base, family, profileVersion: family === 'kids' ? config.version : 'classic-v1' };
     if (Object.prototype.hasOwnProperty.call(base, 'runMode')) settings.runMode = input.mode || 'upload';
     if (family === 'kids') {
+        settings.kidsColors = config.colors;
         const overrides = {
-            colors: 18, canvasSize: config.canvasSize, colorsList: '18', canvasSizes: config.canvasSize,
-            mockupColors: 18, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',
+            colors: config.colors, canvasSize: config.canvasSize, colorsList: String(config.colors), canvasSizes: config.canvasSize,
+            mockupColors: config.colors, difficulty: 'hard', sizes: config.canvasSize, cropMode: 'center',
             queueFolderId: config.queueFolderId, doneFolderId: config.doneFolderId,
             refFolderId: config.refFolderId, failedFolderId: config.failedFolderId,
             batchDoneFolderId: config.doneFolderId,

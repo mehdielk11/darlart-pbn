@@ -42,10 +42,11 @@ function adaptCommon(source, rawConfig) {
     if (folders) folders.parameters.jsCode = embeddedHelpers() + `
 const family = $('Settings').first().json.family;
 const expectedSize = ${JSON.stringify(config.canvasSize)};
+const expectedColors = ${JSON.stringify(String(config.colors))};
 const files = $input.first().json.files || [];
 const folders = files.filter(f => /^\\d+$/.test(String(f.name).trim()))
     .filter(f => { const c = folderContext(f); return c.eligible && c.family === family; })
-    .filter(f => family !== 'kids' || (f.appProperties || {}).darlart_size === expectedSize)
+    .filter(f => family !== 'kids' || ((f.appProperties || {}).darlart_size === expectedSize && (f.appProperties || {}).darlart_colors === expectedColors))
     .sort((a,b) => Number(a.name) - Number(b.name));
 return folders.length ? folders.map(f => ({ json: { id: f.id, name: String(f.name).trim(), family } })) : [{ json: { none: true } }];`;
     for (const n of [...workflow.nodes]) if (n.type.endsWith('.executeWorkflow')) {
@@ -159,7 +160,7 @@ function adaptPrint(source, config) {
     const checked = get('Jobs checked');
     if (!checked.parameters.jsCode.includes('job.status = "completed";')) throw new Error('Unknown print job result schema');
     checked.parameters.jsCode = checked.parameters.jsCode.replace('job.status = "completed";',
-        'if ($("Settings").first().json.family === "kids" && (a.result.colorsUsed !== 18 || a.result.colorsRequested !== 18)) { Object.assign(job, { status: "failed", error: "Kids template must contain 18 actually used paints" }); return; }\n            job.status = "completed";');
+        'if ($("Settings").first().json.family === "kids" && (a.result.colorsUsed !== $("Settings").first().json.kidsColors || a.result.colorsRequested !== $("Settings").first().json.kidsColors)) { Object.assign(job, { status: "failed", error: "Kids template must contain " + $("Settings").first().json.kidsColors + " actually used paints" }); return; }\n            job.status = "completed";');
     // Separate durable tally per family; both use the same shared Print lock.
     const find = get('Find print report');
     const q = find.parameters.queryParameters.parameters.find(p => p.name === 'q');
@@ -174,7 +175,7 @@ function adaptPriceSource(get) {
     get('Export prices sheet').parameters.url = '={{ $("Settings").first().json.family === "kids" ? "https://docs.google.com/spreadsheets/d/" + $("Settings").first().json.pricesSheetId + "/export?format=csv&gid=188180018" : "https://www.googleapis.com/drive/v3/files/" + $json.id + "/export?mimeType=text/csv" }}';
     const parser = get('Prices');
     parser.parameters.jsCode = parser.parameters.jsCode.replace('if (colors === "NaN")',
-        'if (settings.family === "kids" && colors !== "18") throw new Error(where + ": Kids price rows must use 18 colors");\n    if (colors === "NaN")');
+        'if (settings.family === "kids" && colors !== String(settings.kidsColors)) throw new Error(where + ": Kids price rows must use " + settings.kidsColors + " colors");\n    if (colors === "NaN")');
     parser.parameters.jsCode = parser.parameters.jsCode.replace('/^\\d+x\\d+$/', '/^\\d+(?:[.]\\d+)?x\\d+(?:[.]\\d+)?$/');
 }
 
@@ -209,9 +210,10 @@ return [{ json: { ...built, input: { ...built.input, ...(product ? { id: product
     const readiness = codeNode('Kids production readiness', `const folder = $('Loop over folders').first().json;
 const size = $('Settings').first().json.sizes;
 const reverse = size.split('x').reverse().join('x');
+const colors = String($('Settings').first().json.kidsColors);
 const names = new Set(($input.first().json.files || []).map(f => f.name));
 const missing = ['_blank.svg', '_catalog.pdf', '_user.pdf'].filter(suffix =>
-    ![folder.stamp + '_18' + suffix, folder.stamp + '_' + size + '_18' + suffix, folder.stamp + '_' + reverse + '_18' + suffix].some(name => names.has(name)));
+    ![folder.stamp + '_' + colors + suffix, folder.stamp + '_' + size + '_' + colors + suffix, folder.stamp + '_' + reverse + '_' + colors + suffix].some(name => names.has(name)));
 return [{ json: { ...folder, ready: missing.length === 0, missing } }];`, [3260, 360]);
     const ready = ifNode('Kids print files ready?', '={{ $json.ready === true }}', [3480, 360]);
     workflow.nodes.push(hasPrint, listing, readiness, ready);
@@ -228,7 +230,7 @@ function adaptPriceSync(source, config) {
     adaptPriceSource(get);
     const collect = get('Collect products');
     collect.parameters.jsCode = collect.parameters.jsCode.replace('if ((p.tags || []).includes("kids-kits")) return false;',
-        'if (((p.tags || []).includes("kids-kits") ? "kids" : "classic") !== $("Settings").first().json.family) return false;\n    if ($("Settings").first().json.family === "kids" && !p.variants.nodes.every(v => v.selectedOptions.some(o => o.name === "Colors" && o.value === "18") && v.selectedOptions.some(o => o.name === "Size" && o.value === $("Settings").first().json.sizes))) return false;');
+        'if (((p.tags || []).includes("kids-kits") ? "kids" : "classic") !== $("Settings").first().json.family) return false;\n    if ($("Settings").first().json.family === "kids" && !p.variants.nodes.every(v => v.selectedOptions.some(o => o.name === "Colors" && o.value === String($("Settings").first().json.kidsColors)) && v.selectedOptions.some(o => o.name === "Size" && o.value === $("Settings").first().json.sizes))) return false;');
     collect.parameters.jsCode = collect.parameters.jsCode.replace('// Kids are owned by the independent Kids workflow.', '// Select the execution\'s product family.');
     get('Changes').parameters.jsCode = get('Changes').parameters.jsCode.replace('row.size.replace("x", "")', 'row.size.replace(/[^0-9]/g, "")');
     return workflow;
@@ -248,7 +250,7 @@ function adaptWatchdog(source, config) {
     const recent = get('Recent folders');
     recent.parameters.jsCode = embeddedHelpers() + recent.parameters.jsCode
         .replace('(f.appProperties || {}).darlart_family !== "kids" && new Date(f.createdTime).getTime() >= since',
-            'folderContext(f).family === settings.family && folderContext(f).eligible');
+            'folderContext(f).family === settings.family && folderContext(f).eligible && (settings.family !== "kids" || ((f.appProperties || {}).darlart_colors === String(settings.kidsColors) && (f.appProperties || {}).darlart_size === ' + JSON.stringify(validateKidsConfig(config).canvasSize) + '))');
     const plan = get('Stages to start');
     plan.parameters.jsCode = embeddedHelpers() + plan.parameters.jsCode
         .replace(/pending\.worker = queueFiles\.filter[^\n]+;/,

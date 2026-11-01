@@ -12,7 +12,7 @@
       ],
       "parameters": {
         "formTitle": "Darl'Art Kids Artwork Agent",
-        "formDescription": "Upload Kids references. Exactly 18 paints, 24x30 cm (landscape reversed). Progress is reported in Telegram.",
+        "formDescription": "Upload Kids references. Exactly 16 paints, 24x30 cm (landscape reversed). Progress is reported in Telegram.",
         "formFields": {
           "values": [
             {
@@ -129,7 +129,7 @@
         -100
       ],
       "parameters": {
-        "jsCode": "// <batchId>_batch.json: what the worker paints and what it made of each reference\nconst accepted = $('Check uploads').all().map((item) => item.json);\nconst manifest = {\n    family: \"kids\", profileVersion: \"shared-kids-v1\",\n    batchId: accepted[0].batchId,\n    submittedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n    files: accepted.map((a) => ({ queueName: a.queueName, originalName: a.originalName, status: \"queued\", tries: 0 })),\n    refused: accepted[0].refused,\n};\nconst fileName = manifest.batchId + \"_batch.json\";\nreturn [{\n    json: { fileName },\n    binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName } },\n}];"
+        "jsCode": "// <batchId>_batch.json: what the worker paints and what it made of each reference\nconst accepted = $('Check uploads').all().map((item) => item.json);\nconst manifest = {\n    family: \"kids\", profileVersion: \"shared-kids-16-v2\",\n    batchId: accepted[0].batchId,\n    submittedAt: $now.setZone(\"Africa/Casablanca\").toISO(),\n    files: accepted.map((a) => ({ queueName: a.queueName, originalName: a.originalName, status: \"queued\", tries: 0 })),\n    refused: accepted[0].refused,\n};\nconst fileName = manifest.batchId + \"_batch.json\";\nreturn [{\n    json: { fileName },\n    binary: { data: { data: Buffer.from(JSON.stringify(manifest, null, 2)).toString(\"base64\"), mimeType: \"application/json\", fileName } },\n}];"
       }
     },
     {

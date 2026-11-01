@@ -5,7 +5,7 @@ Kids Agent is an upload/queue handoff. Artwork Worker, Titling, Print, Shopify U
 ## Configuration and guarantees
 
 - `automation/kids-config.json`: one 4:5 portrait size from 20x25 to 32x40, currently 24x30. Landscape is reversed.
-- Kids artwork and printing: 18 paints; HARD PBN; strict final used-paint check; physical SVG footer outside the painting area; matching paint packing sizes. These existing API capabilities need no server change for this refactor.
+- Kids artwork and printing: 16 paints; HARD PBN; strict final used-paint check; physical SVG footer outside the painting area; matching paint packing sizes. These existing API capabilities need no server change for this refactor.
 - Same Artwork Agent root, numeric folder names and numeric SKU rules. Family/state/size are internal Drive appProperties. Existing migrated folders and Shopify URLs remain intact.
 - Same price workbook, Kids tab gid 188180018. Rolled 189, stretched 0: only the positive-price variant is enabled. Price Sync updates existing variant IDs.
 - One existing lock per processing stage. Worker allocation always locks the existing Classic queue, even for Kids references.
@@ -42,3 +42,9 @@ The preparation script is offline. It copies credential IDs/names from freshly d
 ## Rollback
 
 Pause intake and unpublish Watchdog/shared processing first. Reconcile active API jobs and locks. Restore the saved nine workflow snapshots together, including the original Kids exclusions, then restore their recorded publication states. Never run combined Kids ownership alongside shared Kids processing. Workflow rollback does not reverse completed Drive/Shopify writes. Preserve numeric folders, existing product IDs, queues and URLs.
+
+## 16-color cutover
+
+Use the regenerated imports in place of the previous 18-color package. At the same cutover, change the Kids price-tab colors cells from 18 to 16, retaining rolled 189 and stretched 0. Do not change the Classic tab. Existing 18-color folders are excluded from normal generation and pricing until explicitly migrated.
+
+Existing products must be recolored and have their print files, previews and variants regenerated. The updated migrate-kids.cjs uses separate revision-specific backups/journals and staging/archive names so it cannot reuse a completed 18-color migration. It preserves existing numeric folder IDs, product IDs and URLs. Run a selected pilot on Ubuntu yourself after deploying this branch; do not run the previous 18-color migration script. No migration was executed while preparing this update.

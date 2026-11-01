@@ -40,7 +40,7 @@ test('accepted PBN jobs survive a polling budget and resume without another POST
     const w = adaptPrint(baseline('print-agent'), config);
     const get = name => w.nodes.find(n => n.name === name);
     const settings = (await new AsyncFunction('$input', get('Settings').parameters.jsCode)({first:()=>({json:{family:'kids'}})}))[0].json;
-    let state = { jobs: [{ folderId:'f', artworkId:'art', folder:'1201', stamp:'1201', size:'24x30', colors:18, jobId:'accepted-job', status:'sent', sentAt:0 }], send:[], saved:[], errors:[] };
+    let state = { jobs: [{ folderId:'f', artworkId:'art', folder:'1201', stamp:'1201', size:'24x30', colors:16, jobId:'accepted-job', status:'sent', sentAt:0 }], send:[], saved:[], errors:[] };
     const ctx = {Settings:settings, 'Find PBN checkpoint':{files:[]}, 'Jobs sent':state};
     const dollar = name => ({first:()=>({json:ctx[name]||{}}),last:()=>({json:ctx[name]||{}}),all:()=>name==='Jobs to check'?[{json:{jobId:'accepted-job'}}]:[],isExecuted: !!ctx[name]});
     const accepted = await new AsyncFunction('$input','$',get('Checkpoint accepted jobs').parameters.jsCode)({first:()=>({json:state})},dollar);
@@ -81,12 +81,12 @@ test('Uploader retry preserves an existing ACTIVE product and rejects an uncerta
 });
 
 test('price and translation scans select their own family from a mixed catalog', async () => {
-    const make=(id,family,colors='18')=>({id,title:id,handle:'art-'+id,tags:family==='kids'?['kids-kits']:[],descriptionHtml:'A painting',variants:{nodes:[{sku:id+'243018R',selectedOptions:[{name:'Colors',value:colors},{name:'Size',value:'24x30'}]}]}});
+    const make=(id,family,colors='16')=>({id,title:id,handle:'art-'+id,tags:family==='kids'?['kids-kits']:[],descriptionHtml:'A painting',variants:{nodes:[{sku:id+'243016R',selectedOptions:[{name:'Colors',value:colors},{name:'Size',value:'24x30'}]}]}});
     const products=[make('1201','classic'),make('1202','kids'),make('1203','kids','24')];
     for(const [stage,adapt] of [['price-sync',adaptPriceSync],['translation-sync',adaptTranslation]]) {
         const w=adapt(baseline(stage),config), code=w.nodes.find(n=>n.name==='Collect products').parameters.jsCode;
         for(const family of ['classic','kids']) {
-            const ctx={Settings:{family,sizes:'24x30',locales:'fr,ar'},'Next page':{products:[]}};
+            const ctx={Settings:{family,kidsColors:16,sizes:'24x30',locales:'fr,ar'},'Next page':{products:[]}};
             const result=await new AsyncFunction('$input','$',code)({first:()=>({json:{data:{products:{nodes:products,pageInfo:{hasNextPage:false}}}}})},name=>({first:()=>({json:ctx[name]})}));
             assert.deepEqual(result[0].json.products.map(p=>p.id),family==='classic'?['1201']:stage==='price-sync'?['1202']:['1202','1203']);
         }
@@ -155,7 +155,7 @@ test('shared Print leaves Classic API inputs intact and plans exactly one Kids c
         const settings = (await new AsyncFunction('$input', get('Settings').parameters.jsCode)({ first: () => ({ json: { family } }) }))[0].json;
         const context = name => ({ first: () => ({ json: settings }), all: () => name === 'Folder states' ? [{ json: { folderId: 'f', folder: '1201', stamp: '1201', artworkId: 'art', printFolderId: '', rootFiles: ['1201_art.png'] } }] : [{ json: { files: [] } }] });
         const jobs = await new AsyncFunction('$', get('Plan jobs').parameters.jsCode)(context);
-        assert.deepEqual([...new Set(jobs.map(j => j.json.colors))], family === 'kids' ? [18] : [12,24,36,48]);
+        assert.deepEqual([...new Set(jobs.map(j => j.json.colors))], family === 'kids' ? [16] : [12,24,36,48]);
         assert.ok(jobs.every(j => j.json.size === (family === 'kids' ? '24x30' : '60x75')));
     }
 });
@@ -167,12 +167,13 @@ test('shared Kids price parser disables stretched at zero and rejects other pain
         const settings = (await new AsyncFunction('$input', get('Settings').parameters.jsCode)({ first: () => ({ json: { family: 'kids' } }) }))[0].json;
         const dollar = name => ({ first: () => ({ json: name === 'Settings' ? settings : { name: 'Kids prices', modifiedTime: 'fixture' } }) });
         const run = text => new AsyncFunction('$input', '$', get('Prices').parameters.jsCode)({ first: () => ({ json: { data: text } }) }, dollar);
-        const csv = 'canvas_type,size,colors,price\nRolled,24x30,18,189\nStretched,24x30,18,0';
+        const csv = 'canvas_type,size,colors,price\nRolled,24x30,16,189\nStretched,24x30,16,0';
         const result = (await run(csv))[0].json;
         assert.equal(result.variants.length, 1);
         assert.equal(result.variants[0].price, '189.00');
-        assert.ok(result.variants[0].optionValues.some(o => o.optionName === 'Colors' && o.name === '18'));
-        await assert.rejects(run(csv.replaceAll(',18,', ',12,')), /18 colors/);
+        assert.ok(result.variants[0].optionValues.some(o => o.optionName === 'Colors' && o.name === '16'));
+        await assert.rejects(run(csv.replaceAll(',16,', ',12,')), /16 colors/);
+        await assert.rejects(run(csv.replaceAll(',16,', ',18,')), /16 colors/);
         if (stage === 'shopify-uploader') assert.deepEqual(get('Create draft product').parameters, source.nodes.find(n => n.name === 'Create draft product').parameters);
     }
 });
@@ -180,12 +181,12 @@ test('shared Kids price parser disables stretched at zero and rejects other pain
 test('Kids upload waits for all three print artifacts, including landscape files', async () => {
     const w = adaptUploader(baseline('shopify-uploader'), config);
     const code = w.nodes.find(n => n.name === 'Kids production readiness').parameters.jsCode;
-    const dollar = name => ({ first: () => ({ json: name === 'Settings' ? { sizes: '24x30' } : { folder: '1201', stamp: '1201', printFolderId: 'print' } }) });
+    const dollar = name => ({ first: () => ({ json: name === 'Settings' ? { sizes: '24x30', kidsColors: 16 } : { folder: '1201', stamp: '1201', printFolderId: 'print' } }) });
     const run = names => new AsyncFunction('$input', '$', code)({ first: () => ({ json: { files: names.map(name => ({ name })) } }) }, dollar);
-    assert.equal((await run(['1201_18_blank.svg', '1201_18_catalog.pdf']))[0].json.ready, false);
+    assert.equal((await run(['1201_16_blank.svg', '1201_16_catalog.pdf']))[0].json.ready, false);
     assert.equal((await run(['1201_12_blank.svg', '1201_12_catalog.pdf', '1201_12_user.pdf']))[0].json.ready, false);
-    assert.equal((await run(['1201_18_blank.svg', '1201_18_catalog.pdf', '1201_18_user.pdf']))[0].json.ready, true);
-    assert.equal((await run(['1201_30x24_18_blank.svg', '1201_30x24_18_catalog.pdf', '1201_30x24_18_user.pdf']))[0].json.ready, true);
+    assert.equal((await run(['1201_16_blank.svg', '1201_16_catalog.pdf', '1201_16_user.pdf']))[0].json.ready, true);
+    assert.equal((await run(['1201_30x24_16_blank.svg', '1201_30x24_16_catalog.pdf', '1201_30x24_16_user.pdf']))[0].json.ready, true);
     const gate = w.connections['Kids print files ready?'].main;
     assert.equal(gate[1][0].node, 'Loop over folders');
     assert.equal(gate[0][0].node, 'Heartbeat (refresh lock)');
@@ -210,9 +211,9 @@ test('notifications retry transient failures and only successful batch sends per
 test('Price Sync updates the existing variant ID and does not recreate an unchanged Kids variant', async () => {
     const w = adaptPriceSync(baseline('price-sync'), config);
     const code = w.nodes.find(n => n.name === 'Changes').parameters.jsCode;
-    const options = [{ name: 'Size', value: '24x30' }, { name: 'Canvas Type', value: 'Rolled Canvas' }, { name: 'Colors', value: '18' }];
+    const options = [{ name: 'Size', value: '24x30' }, { name: 'Canvas Type', value: 'Rolled Canvas' }, { name: 'Colors', value: '16' }];
     const product = { id: 'product', folder: '1201', title: 'Kids', tags: ['kids-kits'], variants: { nodes: [{ id: 'existing-variant', price: '189.00', compareAtPrice: null, selectedOptions: options }] } };
-    const row = { key: '24x30|Rolled Canvas|18', size: '24x30', canvasType: 'Rolled Canvas', colors: '18', sold: true, price: '189.00', compareAtPrice: null };
+    const row = { key: '24x30|Rolled Canvas|16', size: '24x30', canvasType: 'Rolled Canvas', colors: '16', sold: true, price: '189.00', compareAtPrice: null };
     const context = { Prices: { rows: [row] }, 'Collect products': { products: [product] } };
     const dollar = name => ({ first: () => ({ json: context[name] }) });
     const run = () => new AsyncFunction('$', code)(dollar);
@@ -230,7 +231,7 @@ test('shared Worker preserves the allocation lock and accepts both queue formats
     checkGraph(w);
     const get = name => w.nodes.find(n => n.name === name);
     const resolve = async family => (await new AsyncFunction('$input', get('Settings').parameters.jsCode)({ first: () => ({ json: { family } }) }))[0].json;
-    assert.equal((await resolve('kids')).colors, 18);
+    assert.equal((await resolve('kids')).colors, 16);
     assert.equal((await resolve('kids')).queueFolderId, config.queueFolderId);
     assert.equal((await resolve('classic')).colors, 48);
     const originalQueue = source.nodes.find(n => n.name === 'Settings').parameters.assignments.assignments.find(a => a.name === 'queueFolderId').value;
@@ -256,7 +257,7 @@ test('family-scoped Titling cannot mix folders or let the model choose the famil
     const w = adaptTitling(baseline('titling-agent'), config);
     checkGraph(w);
     const get = name => w.nodes.find(n => n.name === name);
-    const folders = [{ id: 'c', name: '1200' }, { id: 'k', name: '1201', appProperties: { darlart_family: 'kids', darlart_size: '24x30' } }, { id: 'v', name: '1202', appProperties: { darlart_family: 'kids', darlart_state: 'validation' } }];
+    const folders = [{ id: 'c', name: '1200' }, { id: 'k', name: '1201', appProperties: { darlart_family: 'kids', darlart_size: '24x30', darlart_colors: '16' } }, { id: 'v', name: '1202', appProperties: { darlart_family: 'kids', darlart_state: 'validation' } }, {id:'old18',name:'1203',appProperties:{darlart_family:'kids',darlart_size:'24x30',darlart_colors:'18'}}];
     for (const family of ['classic', 'kids']) {
         const settings = { family, baseTags: 'paint-by-numbers', productType: 'Paint by Numbers Kit', vendor: "Darl'Art" };
         const dollar = name => ({ first: () => ({ json: name === 'Settings' ? settings : name === 'Themes' ? { themes: [], categoryChoices: [], difficultyChoices: [] } : { folder: '1201', artworkName: '1201_art.png', stamp: '1201', productName: '1201_product.json' } }) });
@@ -278,6 +279,21 @@ test('family resolution rejects unknown families and excludes non-production sta
     assert.deepEqual(folderContext({ appProperties: { darlart_family: 'kids', darlart_state: 'active' } }), { family: 'kids', eligible: true });
 });
 
+test('migration uses configured 16-color prices and a separate revision journal', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../scripts/ops/migrate-kids.cjs'), 'utf8');
+    const body = /function prices\(csv\) \{[\s\S]*?\n\}/.exec(source)[0];
+    const prices = new Function('SIZE','COLORS','return (' + body + ')')(config.canvasSize, config.colors);
+    assert.equal(config.colors,16);
+    assert.deepEqual(prices('canvas_type,size,colors,price\nRolled,24x30,16,189\nStretched,24x30,16,0'),[{canvasType:'Rolled Canvas',price:189}]);
+    assert.throws(()=>prices('canvas_type,size,colors,price\nRolled,24x30,18,189'),/Configure positive Kids prices/);
+    assert.match(source, /const COLORS = PROFILE.colors/);
+    assert.match(source, /"kids-" \+ COLORS \+ "-" \+ SIZE \+ "-hard-v2"/);
+    assert.match(source, /"kids-migration-" \+ REVISION/);
+    assert.match(source, /"_kids-staging-" \+ REVISION/);
+    assert.ok(!source.includes('kids-migration-2026-10-31'));
+    assert.ok(!source.includes('remains held for exact-color review'));
+});
+
 test('both timestamp-only Classic and execution-qualified Kids queue names resolve safely', () => {
     assert.equal(parseQueueName('2026-11-01_01-02-03_01.jpg').batchId, '2026-11-01_01-02-03');
     assert.equal(parseQueueName('2026-11-01_01-02-03_14739_01.png').batchId, '2026-11-01_01-02-03_14739');
@@ -289,7 +305,7 @@ test('Kids profile is configuration-owned and Classic defaults remain intact', (
     const classic = resolveStageSettings(base, {}, config);
     for (const k of Object.keys(base)) assert.equal(classic[k], base[k]);
     const kids = resolveStageSettings(base, { family: 'kids', colors: 4, canvasSize: '1x1', queueFolderId: 'attacker-input', telegramChatId: 'other' }, config);
-    assert.equal(kids.colors, 18);
+    assert.equal(kids.colors, 16);
     assert.equal(kids.canvasSize, '24x30');
     assert.equal(kids.sizes, '24x30');
     assert.equal(kids.queueFolderId, config.queueFolderId);

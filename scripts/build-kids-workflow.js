@@ -16,7 +16,7 @@ function buildKidsWorkflow(config) {
     node.parameters.assignments.assignments.push({ id: 'family', name: 'family', value: 'kids', type: 'string' });
     const form = get('Formulaire');
     form.parameters.formTitle = "Darl'Art Kids Artwork Agent";
-    form.parameters.formDescription = 'Upload Kids references. Exactly 18 paints, ' + settings.canvasSize + ' cm (landscape reversed). Progress is reported in Telegram.';
+    form.parameters.formDescription = 'Upload Kids references. Exactly ' + settings.colors + ' paints, ' + settings.canvasSize + ' cm (landscape reversed). Progress is reported in Telegram.';
     form.parameters.formFields.values[0].multipleFiles = true;
     form.webhookId = config.formWebhookId || 'darlart-kids-upload';
     // Keep the production endpoint even when n8n derives the path from a separate field.
